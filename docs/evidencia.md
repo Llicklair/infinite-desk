@@ -10,17 +10,23 @@ Cada medición real: qué se probó, qué salió, qué cambió por ello.
 
 ---
 
-## 2026-09-25 · el fondo rompe el buscador: rehecho con WebView2 en composición — MONTADO, por confirmar
+## 2026-09-25 · el fondo rompe Windows: rehecho con WebView2 en composición — FUNCIONA
 
-- **Negativo (uso real, varias veces):** con el fondo de Chrome en la `WorkerW`, el buscador y la
-  barra de tareas se quedaban sordos "cada dos por tres". Ni cachear la `WorkerW` ni
-  `AttachThreadInput(false)` tras `SetParent` lo arreglaron. Aislado: parado el fondo (mundo y
-  puente en marcha), 20 min sin un fallo. Culpable: el fondo.
-- Montaje nuevo: una ventana del puente por monitor en la `WorkerW`, WebView2 en modo composición
-  (DirectComposition: sin ventanas hijas de otro proceso), ratón por entrada cruda en vez de hook.
-  Arranca: "2 monitor(es) en la WorkerW".
-- **Por medir con manos:** que se vea y anime en los dos monitores, el ratón sobre el escritorio,
-  y sobre todo que el buscador aguante.
+- **Negativo 1 (uso real, varias veces):** con Chrome en la `WorkerW`, buscador y barra de tareas
+  sordos "cada dos por tres". Ni cachear la `WorkerW` ni `AttachThreadInput(false)` tras
+  `SetParent`. Aislado parando el fondo (mundo y puente en marcha): 20 min sin un fallo.
+- **Negativo 2:** WebView2 en composición con `SendMouseInput` desde el mismo hilo dueño de la
+  ventana de la `WorkerW`: "no reacciona nada de Windows, ni el clic izquierdo". Separado en dos
+  hilos (anfitrión que nunca espera, pintor con WebView2): igual.
+- **Negativo 3:** el ratón no llegaba al fondo del monitor principal: `WindowFromPoint` no se salta
+  las ventanas de opacidad 0 (la de WebView2, el overlay de NVIDIA). Ahora se recorren las de
+  primer nivel saltando las que atraviesa el ratón.
+- **Aislado con dos pruebas** (`--fondo --solo-ventanas` / `--solo-webview`): nuestras ventanas
+  vacías en la `WorkerW`, todo responde; WebView2 sin nada en la `WorkerW`, deja de responder.
+  Culpable: WebView2 crea una ventana de opacidad 0 del tamaño de su padre, donde esté su padre,
+  y se queda con los clics. Arreglo: padre en (-32000, -32000) y sus ventanas "atraviesa clics";
+  el ratón llega a la página como mensajes, no como entrada.
+- Resultado (uso real): "sí, todo responde"; gira con el ratón en los dos monitores.
 - Laterales del mismo día: un Discord minimizado se restauraba a 314×50 al entrar (recuadro
   blanco en el escritorio): `entrar.ps1` ya solo restaura ventanas de 300×200 o más. Y la foto
   del primer intento se había quedado como fondo de Windows: devuelto el anterior del historial.

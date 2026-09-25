@@ -43,7 +43,11 @@ function windows() {
   // Parar el fondo que haya (el de esta copia o uno anterior): si no, la copia está bloqueada.
   if (existsSync(exe)) execFileSync(exe, ["--fondo", "--parar"], { stdio: "ignore" });
   else if (existsSync(join(compilado, "infinite-desk-bridge.exe"))) execFileSync(join(compilado, "infinite-desk-bridge.exe"), ["--fondo", "--parar"], { stdio: "ignore" });
-  esperar(4000); // cierra sus Chrome por las buenas y repone el fondo de Windows
+  esperar(4000); // cierra por las buenas y repone el fondo de Windows
+  // Y si no cerró, a la fuerza: solo el proceso del fondo (el puente es el mismo .exe, sin --fondo).
+  execFileSync("powershell", ["-NoProfile", "-Command",
+    "Get-CimInstance Win32_Process -Filter \"Name='infinite-desk-bridge.exe'\" | Where-Object CommandLine -like '*--fondo*' | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }"],
+  { stdio: "ignore" });
 
   if (quitar) {
     for (const args of [[MENU, "/f"], [ARRANQUE, "/v", "infinite-desk-fondo", "/f"]]) {

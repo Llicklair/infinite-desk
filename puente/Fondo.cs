@@ -1,19 +1,26 @@
 // El mundo como fondo animado de Windows, detrás de los iconos, sin Lively (ADR 0004).
 //
-// Detrás de los iconos solo va una ventana DEL PROPIO PUENTE por monitor, en la WorkerW del
-// Explorador (la que Windows pinta entre el fondo y los iconos). Dentro, el motor de Edge que trae
-// Windows (WebView2) pinta fondo.html en modo composición (DirectComposition): no crea ventanas
-// hijas de otro proceso. La primera versión metía ventanas de Chrome en la WorkerW, y eso engancha
-// la cola de entrada del Explorador a la de Chrome (lo hace Windows con padre e hija de procesos
-// distintos, y no se puede deshacer): cada vez que Chrome se entretenía, el buscador y la barra
-// de tareas se quedaban sordos (uso real, "cada dos por tres"; parado el fondo, no volvió a pasar).
-// Así, el Explorador solo queda enganchado a este hilo, que no hace otra cosa que responder.
+// LA REGLA (aprendida rompiendo Windows tres veces): toda ventana que se mete en la WorkerW del
+// Explorador (la que Windows pinta entre el fondo y los iconos) engancha la cola de entrada del
+// Explorador a la del HILO dueño de esa ventana, y Windows no deja deshacerlo. Si ese hilo espera
+// a algo, el Explorador deja de procesar la entrada: el buscador, la barra de tareas y hasta los
+// clics del escritorio se quedan sordos. Pasó con ventanas de Chrome (su hilo se entretenía) y
+// con WebView2 cuando el mismo hilo le pasaba el ratón con una llamada que espera a otro proceso.
 //
-// El ratón no llega detrás de los iconos: se lee con entrada "cruda" (RegisterRawInputDevices,
-// no un hook: no se mete en la cadena del ratón de todo el sistema) y, si el cursor está sobre el
-// escritorio vacío, se le pasa a WebView2 con SendMouseInput. El botón derecho no: es el menú del
-// escritorio. Cada página sabe su monitor por ?monitor=N y se pausa sola si algo tapa ese monitor
-// entero (fondo-estado.js). `--fondo --parar` lo cierra desde otro proceso.
+// Así que dos hilos:
+// - ANFITRIÓN: crea una ventana por monitor en la WorkerW y solo atiende su bucle de mensajes.
+//   No llama a WebView2, no lee el ratón, no espera a otros procesos. Nunca se bloquea.
+// - PINTOR: todo lo demás. El motor de Edge que trae Windows (WebView2) en modo composición, con
+//   una ventana OCULTA de este hilo como padre (si WebView2 crea ventanas internas, cuelgan de
+//   ella, no del Explorador); su imagen llega a las ventanas del anfitrión por DirectComposition.
+//   Aquí se lee el ratón (entrada cruda, sin hook) y se decide la pausa. Si este hilo se
+//   atasca, el fondo se congela, pero Windows sigue respondiendo.
+// - El ratón llega a la página como MENSAJES (PostWebMessageAsJson), nunca como entrada: con
+//   SendMouseInput el navegador capturaba el ratón en su ventana invisible (WebView2 crea una de
+//   opacidad 0 por monitor) y Windows dejaba de responder a los clics hasta cerrar el fondo.
+//
+// Cada página sabe su monitor por ?monitor=N y se pausa sola si algo tapa ese monitor entero
+// (fondo-estado.js). `--fondo --parar` lo cierra; si en 3 s no ha cerrado, el proceso se mata.
 using System.Drawing;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -33,47 +40,96 @@ static class Fondo
         return 0;
     }
 
-    public static int Correr(string mundo)
+    public static int Correr(string mundo, string solo = "")
     {
         using var unico = new Mutex(true, UNICO, out bool primero);
         if (!primero) { Console.Error.WriteLine("infinite-desk fondo: ya hay uno en marcha"); return 0; }
         using var alto = new EventWaitHandle(false, EventResetMode.ManualReset, PARAR);
-        Registro.Anotar("fondo: arranca");
+        Registro.Anotar($"fondo: arranca{(solo == "" ? "" : $" (diagnóstico: solo {solo})")}");
 
-        // WebView2 y el bucle de mensajes, en un hilo STA propio (el principal de .NET es MTA).
-        var hilo = new Thread(() =>
-        {
-            SynchronizationContext.SetSynchronizationContext(new WindowsFormsSynchronizationContext());
-            var lienzos = new Lienzos(mundo);
-            new Thread(() => { alto.WaitOne(); lienzos.Cerrar(); }) { IsBackground = true }.Start();
-            lienzos.Empezar();
-            Application.Run();
-            lienzos.Limpiar();
-        });
-        hilo.SetApartmentState(ApartmentState.STA);
-        hilo.Start();
-        hilo.Join();
+        var anfitrion = Hilo("anfitrión");
+        var pintor = Hilo("pintor");
+        var lienzos = new Lienzos(mundo, anfitrion.contexto, solo);
+        pintor.contexto.Post(_ => lienzos.Empezar(), null);
+
+        alto.WaitOne();
+        Registro.Anotar("fondo: se para");
+        pintor.contexto.Post(_ => { lienzos.Limpiar(); Application.ExitThread(); }, null);
+        // Si el pintor no suelta en 3 s, no se espera más: fuera el proceso (nada de dejar
+        // ventanas colgando del Explorador).
+        if (!pintor.hilo.Join(3000)) { Registro.Anotar("fondo: el pintor no cerró; se mata"); Environment.Exit(1); }
+        anfitrion.contexto.Post(_ => Application.ExitThread(), null);
+        anfitrion.hilo.Join(1000);
         RepintarFondo();
         return 0;
     }
 
-    /// <summary>Todo el fondo: una ventana con su WebView2 por monitor, y lo que las vigila.</summary>
-    sealed class Lienzos(string mundo)
+    /// <summary>Un hilo STA con su bucle de mensajes de Windows Forms y su contexto para mandarle trabajo.</summary>
+    static (Thread hilo, SynchronizationContext contexto) Hilo(string nombre)
     {
-        readonly SynchronizationContext ui = SynchronizationContext.Current!;
+        SynchronizationContext? contexto = null;
+        using var listo = new ManualResetEventSlim();
+        var hilo = new Thread(() =>
+        {
+            contexto = new WindowsFormsSynchronizationContext();
+            SynchronizationContext.SetSynchronizationContext(contexto);
+            listo.Set();
+            Application.Run();
+        }) { Name = $"fondo: {nombre}", IsBackground = true };
+        hilo.SetApartmentState(ApartmentState.STA);
+        hilo.Start();
+        listo.Wait();
+        return (hilo, contexto!);
+    }
+
+    /// <summary>
+    /// Una ventana del anfitrión en la WorkerW. Solo existe para que DirectComposition pinte en
+    /// ella: no maneja nada (ni ratón, ni foco, ni avisa a su padre).
+    /// </summary>
+    sealed class Anfitriona : NativeWindow
+    {
+        public Anfitriona(IntPtr worker, int indice, RECT r) => CreateHandle(new CreateParams
+        {
+            Caption = $"infinite-desk fondo {indice}",
+            Parent = worker,
+            Style = unchecked((int)(WS_CHILD | WS_VISIBLE | WS_DISABLED)),
+            ExStyle = (int)(WS_EX_NOACTIVATE | WS_EX_NOPARENTNOTIFY),
+            X = r.Left, Y = r.Top, Width = r.Right - r.Left, Height = r.Bottom - r.Top,
+        });
+    }
+
+    /// <summary>Todo lo del pintor: WebView2, composición, ratón y pausa. Vive en el hilo pintor.</summary>
+    sealed class Lienzos(string mundo, SynchronizationContext anfitrion, string solo)
+    {
         readonly string ficheroEstado = Path.Combine(mundo, "fondo-estado.js");
         readonly string url = new Uri(Path.Combine(mundo, "fondo.html")).AbsoluteUri;
         readonly List<Pantalla> pantallas = [];
+        readonly List<Anfitriona> anfitrionas = [];
         readonly System.Windows.Forms.Timer reloj = new() { Interval = 500 };
         CoreWebView2Environment? entorno;
         IDCompositionDevice? composicion;
+        Oyente? oyente;
         IntPtr worker;
         string firma = "", tapados = "";
         bool rehaciendo;
 
         public void Empezar()
         {
+            oyente = new Oyente(e => { foreach (var p in pantallas) p.Raton(e); });
             reloj.Tick += (_, _) => Vigilar();
+            // Cada 5 s, qué le pasa al ratón en cada monitor (uso real: "en el principal no va").
+            var recuento = new System.Windows.Forms.Timer { Interval = 5000 };
+            recuento.Tick += (_, _) =>
+            {
+                for (int i = 0; i < pantallas.Count; i++)
+                {
+                    var q = pantallas[i];
+                    if (q.Fuera + q.Tapados + q.Enviados == 0) continue;
+                    Registro.Anotar($"fondo: ratón en monitor {i}: {q.Enviados} enviados, {q.Tapados} sobre otra ventana ({q.UltimaTapadora}), {q.Fuera} fuera");
+                    q.Fuera = q.Tapados = q.Enviados = 0;
+                }
+            };
+            recuento.Start();
             reloj.Start();
             _ = Rehacer();
         }
@@ -81,11 +137,13 @@ static class Fondo
         /// <summary>Cada medio segundo: ¿sigue la WorkerW (el Explorador se reinicia)?, ¿cambiaron los monitores?, ¿qué está tapado?</summary>
         void Vigilar()
         {
-            var monitores = Monitores();
-            var nueva = string.Join(";", monitores.Select(m => $"{m.monitor.Left},{m.monitor.Top},{m.monitor.Right},{m.monitor.Bottom}@{m.escala}"));
-            if (!rehaciendo && (nueva != firma || worker == IntPtr.Zero || !IsWindow(worker))) { _ = Rehacer(); return; }
+            if (!rehaciendo && (Firma(Monitores()) != firma || worker == IntPtr.Zero || !IsWindow(worker))) { _ = Rehacer(); return; }
             Pausar(pantallas.Select(p => Tapado(p.Trabajo)).ToArray());
+            foreach (var p in pantallas) p.Atravesables();
         }
+
+        static string Firma((RECT monitor, RECT trabajo, double escala)[] ms) =>
+            string.Join(";", ms.Select(m => $"{m.monitor.Left},{m.monitor.Top},{m.monitor.Right},{m.monitor.Bottom}@{m.escala}"));
 
         async Task Rehacer()
         {
@@ -96,7 +154,19 @@ static class Fondo
                 worker = WorkerW();
                 if (worker == IntPtr.Zero) return; // sin Explorador todavía: a la próxima vuelta
                 var monitores = Monitores();
-                firma = string.Join(";", monitores.Select(m => $"{m.monitor.Left},{m.monitor.Top},{m.monitor.Right},{m.monitor.Bottom}@{m.escala}"));
+                firma = Firma(monitores);
+                // Las ventanas de la WorkerW, en el hilo anfitrión (Send: el pintor espera al
+                // anfitrión, nunca al revés).
+                if (solo != "webview") anfitrion.Send(_ =>
+                {
+                    for (int i = 0; i < monitores.Length; i++)
+                    {
+                        var r = monitores[i].monitor;
+                        MapWindowPoints(IntPtr.Zero, worker, ref r, 2); // la WorkerW empieza en la esquina del escritorio virtual
+                        anfitrionas.Add(new Anfitriona(worker, i, r));
+                    }
+                }, null);
+                if (solo == "ventanas") { Registro.Anotar($"fondo: {anfitrionas.Count} ventana(s) vacías en la WorkerW, sin WebView2"); return; }
                 entorno ??= await CoreWebView2Environment.CreateAsync(null,
                     Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "infinite-desk", "webview-fondo"),
                     new CoreWebView2EnvironmentOptions(
@@ -105,12 +175,10 @@ static class Fondo
                 composicion ??= CrearComposicion();
                 for (int i = 0; i < monitores.Length; i++)
                 {
-                    var p = new Pantalla(i, monitores[i].monitor, monitores[i].trabajo, worker);
+                    var (monitor, trabajo, escala) = monitores[i];
+                    var p = new Pantalla(monitor, trabajo);
                     pantallas.Add(p);
-                    await p.Montar(entorno, composicion, $"{url}?monitor={i}", monitores[i].escala);
-                    // El ratón "crudo" se registra una vez por proceso: lo recibe la primera ventana
-                    // y se reparte a todas (cada una mira si el cursor está en su monitor).
-                    if (i == 0) p.Escuchar(e => { foreach (var q in pantallas) q.Raton(e); });
+                    await p.Montar(entorno, composicion, solo == "webview" ? IntPtr.Zero : anfitrionas[i].Handle, $"{url}?monitor={i}", escala);
                 }
                 composicion.Commit();
                 tapados = "";
@@ -137,66 +205,162 @@ static class Fondo
             catch (IOException) { } // la página lo estaba leyendo: a la próxima vuelta
         }
 
-        /// <summary>Del hilo que espera la señal de parar: se cierra desde el hilo de la interfaz.</summary>
-        public void Cerrar() => ui.Post(_ => Application.ExitThread(), null);
-
         public void Limpiar()
         {
             foreach (var p in pantallas) p.Cerrar();
             pantallas.Clear();
+            var viejas = anfitrionas.ToArray();
+            anfitrionas.Clear();
+            if (viejas.Length > 0) anfitrion.Send(_ => { foreach (var a in viejas) a.DestroyHandle(); }, null);
             try { File.Delete(ficheroEstado); } catch (IOException) { }
         }
     }
 
-    /// <summary>Un monitor: nuestra ventana en la WorkerW, su WebView2 y el ratón que le toca.</summary>
-    sealed class Pantalla(int indice, RECT monitor, RECT trabajo, IntPtr worker) : NativeWindow
+    /// <summary>
+    /// Un monitor, del lado del pintor: su WebView2 con una ventana oculta del pintor como padre, y
+    /// su imagen llevada por DirectComposition a la ventana del anfitrión en la WorkerW.
+    /// </summary>
+    sealed class Pantalla(RECT monitor, RECT trabajo)
     {
         public readonly RECT Trabajo = trabajo;
+        readonly NativeWindow padre = new();
         CoreWebView2CompositionController? web;
         IDCompositionTarget? destino;
         uint ultimoClic;
         POINT ultimoSitio;
         bool dentro;
+        /// <summary>Recuento para el registro: fuera del monitor, sobre otra ventana (y cuál), enviados.</summary>
+        public int Fuera, Tapados, Enviados;
+        long ultimoMovimiento;
+        public string UltimaTapadora = "";
 
-        public async Task Montar(CoreWebView2Environment entorno, IDCompositionDevice composicion, string url, double escala)
+        public async Task Montar(CoreWebView2Environment entorno, IDCompositionDevice composicion, IntPtr anfitriona, string url, double escala)
         {
-            // Sus coordenadas dentro de la WorkerW, que empieza en la esquina del escritorio virtual.
-            var r = monitor;
-            MapWindowPoints(IntPtr.Zero, worker, ref r, 2);
-            CreateHandle(new CreateParams
+            int ancho = monitor.Right - monitor.Left, alto = monitor.Bottom - monitor.Top;
+            // Oculta, de primer nivel (ni en la WorkerW ni en la barra de tareas) y FUERA de la
+            // pantalla: WebView2 crea por su cuenta una ventana de opacidad 0 donde está su padre,
+            // y esa ventana se quedaba con los clics de los iconos y la barra de tareas (medido:
+            // con WebView2 y nada nuestro en la WorkerW, Windows dejaba de responder; sin WebView2, no).
+            padre.CreateHandle(new CreateParams
             {
-                Caption = $"infinite-desk fondo {indice}",
-                Parent = worker,
-                Style = unchecked((int)(WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN)),
-                ExStyle = (int)WS_EX_NOACTIVATE,
-                X = r.Left, Y = r.Top, Width = r.Right - r.Left, Height = r.Bottom - r.Top,
+                Caption = "infinite-desk fondo (pintor)",
+                Style = unchecked((int)WS_POPUP),
+                ExStyle = (int)(WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE),
+                X = -32000, Y = -32000, Width = ancho, Height = alto,
             });
-            web = await entorno.CreateCoreWebView2CompositionControllerAsync(Handle);
+            web = await entorno.CreateCoreWebView2CompositionControllerAsync(padre.Handle);
             web.DefaultBackgroundColor = Color.FromArgb(255, 7, 9, 18); // el del mundo: nada de blanco mientras carga
             web.ShouldDetectMonitorScaleChanges = false;
             web.RasterizationScale = escala;
-            web.Bounds = new Rectangle(0, 0, r.Right - r.Left, r.Bottom - r.Top);
-            destino = composicion.CreateTargetForHwnd(Handle, true);
+            web.Bounds = new Rectangle(0, 0, ancho, alto);
             var visual = composicion.CreateVisual();
-            destino.SetRoot(visual);
+            if (anfitriona != IntPtr.Zero)
+            {
+                destino = composicion.CreateTargetForHwnd(anfitriona, true);
+                destino.SetRoot(visual);
+            }
             web.RootVisualTarget = visual;
             web.IsVisible = true;
             web.CoreWebView2.Navigate(url);
         }
 
-        Action<(ushort botones, short rueda)>? alRaton;
-
-        /// <summary>Ratón "crudo" aunque la ventana no tenga el foco (RIDEV_INPUTSINK): lo lee este hilo.</summary>
-        public void Escuchar(Action<(ushort botones, short rueda)> que)
+        /// <summary>
+        /// Un evento de ratón del sistema (en el pintor). Solo si el cursor está en ESTE monitor y
+        /// sobre el escritorio vacío (no sobre otra ventana) se le pasa a la página; nunca se come nada.
+        /// </summary>
+        public void Raton((ushort botones, short rueda) e)
         {
-            alRaton = que;
-            var dispositivo = new RAWINPUTDEVICE { usUsagePage = 1, usUsage = 2, dwFlags = 0x100, hwndTarget = Handle };
+            if (web == null) return;
+            var (botones, rueda) = e;
+            // Moverse sin botones ni rueda: como mucho unas 60 veces por segundo (cada una recorre las ventanas).
+            if (botones == 0 && Environment.TickCount64 - ultimoMovimiento < 16) return;
+            if (botones == 0) ultimoMovimiento = Environment.TickCount64;
+            GetCursorPos(out var p);
+            bool enMonitor = p.X >= monitor.Left && p.X < monitor.Right && p.Y >= monitor.Top && p.Y < monitor.Bottom;
+            bool aqui = enMonitor && SobreElEscritorio(p);
+            if (!enMonitor) Fuera++;
+            else if (!aqui) { Tapados++; UltimaTapadora = ClaseEn(p); }
+            else Enviados++;
+            // A la página como MENSAJES, nunca como entrada (SendMouseInput): con entrada de verdad el
+            // navegador capturaba el ratón en su ventana invisible y Windows dejaba de responder a
+            // los clics (barra de tareas, iconos) hasta cerrar el fondo (uso real).
+            if (!aqui)
+            {
+                if (dentro) Decir("fuera", p);
+                dentro = false;
+                return;
+            }
+            dentro = true;
+            if ((botones & 0x0001) != 0) // RI_MOUSE_LEFT_BUTTON_DOWN; el doble clic hay que deducirlo
+            {
+                uint ahora = (uint)Environment.TickCount;
+                bool doble = ahora - ultimoClic <= GetDoubleClickTime()
+                    && Math.Abs(p.X - ultimoSitio.X) <= GetSystemMetrics(36) / 2 && Math.Abs(p.Y - ultimoSitio.Y) <= GetSystemMetrics(37) / 2;
+                ultimoClic = doble ? 0 : ahora;
+                ultimoSitio = p;
+                Decir(doble ? "doble" : "bajar", p);
+            }
+            else if ((botones & 0x0002) != 0) Decir("subir", p);
+            else if ((botones & 0x0400) != 0) Decir("rueda", p, rueda);
+            else Decir("mover", p);
+        }
+
+        /// <summary>Un mensaje de ratón a la página, en píxeles físicos relativos al monitor.</summary>
+        void Decir(string tipo, POINT p, int rueda = 0) =>
+            web?.CoreWebView2.PostWebMessageAsJson($"{{\"t\":\"{tipo}\",\"x\":{p.X - monitor.Left},\"y\":{p.Y - monitor.Top},\"d\":{rueda}}}");
+
+        /// <summary>
+        /// Red de seguridad: toda ventana visible y en capas del proceso de WebView2 pasa a
+        /// "atraviesa clics", por si alguna vuelve a ponerse encima del escritorio.
+        /// </summary>
+        public void Atravesables()
+        {
+            if (web == null) return;
+            uint navegador;
+            try { navegador = web.CoreWebView2.BrowserProcessId; } catch (Exception) { return; }
+            EnumWindows((h, _) =>
+            {
+                GetWindowThreadProcessId(h, out uint pid);
+                if (pid != navegador || !IsWindowVisible(h)) return true;
+                long ex = GetWindowLongPtr(h, -20).ToInt64();
+                if ((ex & 0x80000 /*LAYERED*/) != 0 && (ex & 0x20 /*TRANSPARENT*/) == 0)
+                {
+                    SetWindowLongPtr(h, -20, (IntPtr)(ex | 0x20 | WS_EX_NOACTIVATE));
+                    Registro.Anotar($"fondo: ventana invisible de WebView2 {h} ahora atraviesa clics");
+                }
+                return true;
+            }, IntPtr.Zero);
+        }
+
+        public void Cerrar()
+        {
+            try { web?.Close(); } catch (Exception) { }
+            web = null;
+            if (destino != null) Marshal.ReleaseComObject(destino);
+            destino = null;
+            if (padre.Handle != IntPtr.Zero) padre.DestroyHandle();
+        }
+    }
+
+    /// <summary>
+    /// Ratón "crudo" en una ventana solo de mensajes del pintor (RIDEV_INPUTSINK: aunque no tenga
+    /// el foco). No es un hook: no se mete en la cadena del ratón de todo el sistema.
+    /// </summary>
+    sealed class Oyente : NativeWindow
+    {
+        readonly Action<(ushort botones, short rueda)> alRaton;
+
+        public Oyente(Action<(ushort botones, short rueda)> alRaton)
+        {
+            this.alRaton = alRaton;
+            CreateHandle(new CreateParams { Caption = "infinite-desk fondo (ratón)", Parent = (IntPtr)(-3) /*HWND_MESSAGE*/ });
+            var dispositivo = new RAWINPUTDEVICE { usUsagePage = 1, usUsage = 2, dwFlags = 0x100 /*RIDEV_INPUTSINK*/, hwndTarget = Handle };
             RegisterRawInputDevices([dispositivo], 1, Marshal.SizeOf<RAWINPUTDEVICE>());
         }
 
         protected override void WndProc(ref Message m)
         {
-            if (m.Msg == 0x00FF /*WM_INPUT*/ && alRaton != null && Leer(m.LParam) is { } e) alRaton(e);
+            if (m.Msg == 0x00FF /*WM_INPUT*/ && Leer(m.LParam) is { } e) alRaton(e);
             base.WndProc(ref m);
         }
 
@@ -216,58 +380,42 @@ static class Fondo
             }
             finally { Marshal.FreeHGlobal(buffer); }
         }
-
-        /// <summary>
-        /// Un evento de ratón del sistema. Solo si el cursor está en ESTE monitor y sobre el
-        /// escritorio vacío (no sobre otra ventana) se le pasa a la página; nunca se come nada.
-        /// </summary>
-        public void Raton((ushort botones, short rueda) e)
-        {
-            if (web == null) return;
-            var (botones, rueda) = e;
-            {
-                GetCursorPos(out var p);
-                bool aqui = p.X >= monitor.Left && p.X < monitor.Right && p.Y >= monitor.Top && p.Y < monitor.Bottom && SobreElEscritorio(p);
-                if (!aqui)
-                {
-                    if (dentro) web!.SendMouseInput(CoreWebView2MouseEventKind.Leave, CoreWebView2MouseEventVirtualKeys.None, 0, new Point());
-                    dentro = false;
-                    return;
-                }
-                dentro = true;
-                var punto = new Point(p.X - monitor.Left, p.Y - monitor.Top);
-                var teclas = (GetAsyncKeyState(0x01) & 0x8000) != 0 ? CoreWebView2MouseEventVirtualKeys.LeftButton : CoreWebView2MouseEventVirtualKeys.None;
-                if ((botones & 0x0001) != 0) // RI_MOUSE_LEFT_BUTTON_DOWN; el doble clic hay que deducirlo
-                {
-                    uint ahora = (uint)Environment.TickCount;
-                    bool doble = ahora - ultimoClic <= GetDoubleClickTime()
-                        && Math.Abs(p.X - ultimoSitio.X) <= GetSystemMetrics(36) / 2 && Math.Abs(p.Y - ultimoSitio.Y) <= GetSystemMetrics(37) / 2;
-                    ultimoClic = doble ? 0 : ahora;
-                    ultimoSitio = p;
-                    web!.SendMouseInput(doble ? CoreWebView2MouseEventKind.LeftButtonDoubleClick : CoreWebView2MouseEventKind.LeftButtonDown, teclas, 0, punto);
-                }
-                else if ((botones & 0x0002) != 0) web!.SendMouseInput(CoreWebView2MouseEventKind.LeftButtonUp, teclas, 0, punto);
-                else if ((botones & 0x0400) != 0) web!.SendMouseInput(CoreWebView2MouseEventKind.Wheel, teclas, unchecked((uint)rueda), punto);
-                else web!.SendMouseInput(CoreWebView2MouseEventKind.Move, teclas, 0, punto);
-            }
-        }
-
-        public void Cerrar()
-        {
-            try { web?.Close(); } catch (Exception) { }
-            web = null;
-            if (destino != null) Marshal.ReleaseComObject(destino);
-            destino = null;
-            if (Handle != IntPtr.Zero) DestroyHandle();
-        }
     }
 
-    /// <summary>El cursor está sobre el escritorio (los iconos o el fondo), no sobre otra ventana.</summary>
+    static string ClaseEn(POINT p)
+    {
+        var c = new StringBuilder(64);
+        var t = new StringBuilder(64);
+        var h = GetAncestor(WindowFromPoint(p), 2 /*GA_ROOT*/);
+        GetClassName(h, c, c.Capacity);
+        GetWindowText(h, t, t.Capacity);
+        return $"{c} '{t}'";
+    }
+
+    /// <summary>
+    /// El cursor está sobre el escritorio (los iconos o el fondo), no sobre otra ventana. No vale
+    /// WindowFromPoint: no se salta las ventanas que el ratón de verdad atraviesa, y WebView2 crea
+    /// por su cuenta una de opacidad 0 del tamaño de cada monitor (y el overlay de NVIDIA otra):
+    /// con ella, el ratón nunca llegaba al fondo del monitor principal (medido). Se recorren las
+    /// de primer nivel de arriba abajo, saltando las invisibles, las que atraviesa el ratón, las de
+    /// opacidad 0 y las ocultas por el sistema; la primera que queda decide.
+    /// </summary>
     static bool SobreElEscritorio(POINT p)
     {
-        var c = new StringBuilder(32);
-        GetClassName(WindowFromPoint(p), c, c.Capacity);
-        return c.ToString() is "SysListView32" or "SHELLDLL_DefView" or "WorkerW" or "Progman";
+        bool escritorio = false;
+        EnumWindows((h, _) =>
+        {
+            if (!IsWindowVisible(h) || !GetWindowRect(h, out RECT r) || p.X < r.Left || p.X >= r.Right || p.Y < r.Top || p.Y >= r.Bottom) return true;
+            long ex = GetWindowLongPtr(h, -20 /*GWL_EXSTYLE*/).ToInt64();
+            if ((ex & 0x20 /*WS_EX_TRANSPARENT*/) != 0) return true;
+            if ((ex & 0x80000 /*WS_EX_LAYERED*/) != 0 && GetLayeredWindowAttributes(h, out uint _, out byte alfa, out uint banderas) && (banderas & 2) != 0 && alfa == 0) return true;
+            if (DwmGetWindowAttribute(h, 14 /*DWMWA_CLOAKED*/, out int oculta, 4) == 0 && oculta != 0) return true;
+            var c = new StringBuilder(32);
+            GetClassName(h, c, c.Capacity);
+            escritorio = c.ToString() is "Progman" or "WorkerW";
+            return false;
+        }, IntPtr.Zero);
+        return escritorio;
     }
 
     /// <summary>¿Tapa la ventana activa toda esta área de trabajo (el mundo, algo maximizado)? Entonces no se ve.</summary>
@@ -307,7 +455,7 @@ static class Fondo
     {
         var progman = FindWindow("Progman", null);
         if (progman == IntPtr.Zero) return IntPtr.Zero;
-        SendMessageTimeout(progman, 0x052C, (IntPtr)0xD, (IntPtr)0x1, 0 /*SMTO_NORMAL*/, 1000, out _);
+        SendMessageTimeout(progman, 0x052C, (IntPtr)0xD, (IntPtr)0x1, 0x2 /*SMTO_ABORTIFHUNG*/, 1000, out _);
         var hija = FindWindowEx(progman, IntPtr.Zero, "WorkerW", null);
         if (hija != IntPtr.Zero) return hija;
         IntPtr hallada = IntPtr.Zero;
@@ -352,7 +500,8 @@ static class Fondo
     [DllImport("dcomp.dll")] static extern int DCompositionCreateDevice2(IntPtr dispositivoRender, ref Guid iid, out IntPtr dispositivo);
 
     // --- Win32 ------------------------------------------------------------------------------
-    const uint WS_CHILD = 0x40000000, WS_VISIBLE = 0x10000000, WS_CLIPCHILDREN = 0x02000000, WS_EX_NOACTIVATE = 0x08000000;
+    const uint WS_CHILD = 0x40000000, WS_VISIBLE = 0x10000000, WS_DISABLED = 0x08000000, WS_POPUP = 0x80000000,
+        WS_EX_NOACTIVATE = 0x08000000, WS_EX_NOPARENTNOTIFY = 0x4, WS_EX_TOOLWINDOW = 0x80;
 
     [StructLayout(LayoutKind.Sequential)] struct RECT { public int Left, Top, Right, Bottom; }
     [StructLayout(LayoutKind.Sequential)] struct POINT { public int X, Y; }
@@ -372,9 +521,15 @@ static class Fondo
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern IntPtr FindWindowEx(IntPtr padre, IntPtr despues, string? clase, string? titulo);
     [DllImport("user32.dll")] static extern IntPtr SendMessageTimeout(IntPtr h, uint m, IntPtr w, IntPtr l, uint f, uint ms, out IntPtr r);
     [DllImport("user32.dll")] static extern IntPtr WindowFromPoint(POINT p);
+    [DllImport("user32.dll")] static extern IntPtr GetAncestor(IntPtr h, uint f);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetWindowText(IntPtr h, StringBuilder s, int n);
+    [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW")] static extern IntPtr GetWindowLongPtr(IntPtr h, int i);
+    [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW")] static extern IntPtr SetWindowLongPtr(IntPtr h, int i, IntPtr v);
+    [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
+    [DllImport("user32.dll")] static extern bool GetLayeredWindowAttributes(IntPtr h, out uint clave, out byte alfa, out uint banderas);
+    [DllImport("dwmapi.dll")] static extern int DwmGetWindowAttribute(IntPtr h, int atributo, out int valor, int tam);
     [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")] static extern bool GetCursorPos(out POINT p);
-    [DllImport("user32.dll")] static extern short GetAsyncKeyState(int vk);
     [DllImport("user32.dll")] static extern uint GetDoubleClickTime();
     [DllImport("user32.dll")] static extern int GetSystemMetrics(int i);
     [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr h, out RECT r);

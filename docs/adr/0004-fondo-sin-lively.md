@@ -19,9 +19,12 @@ estático. Uso real: "no, tiene que tener animaciones también".
 - **Windows:** `infinite-desk-bridge --fondo` hace lo que hacía Lively. Por monitor, una ventana
   del propio puente en la `WorkerW` del Explorador (entre el fondo y los iconos), y dentro el
   motor de Edge que trae Windows (WebView2, librería `Microsoft.Web.WebView2`) pintando
-  `fondo.html` en modo composición (DirectComposition), a la escala de ese monitor. El ratón se
-  lee con entrada cruda (RegisterRawInputDevices) y se le pasa con `SendMouseInput` si el cursor
-  está sobre el escritorio vacío. Se pausa (deja de pintar) cuando algo tapa su monitor entero.
+  `fondo.html` en modo composición (DirectComposition), a la escala de ese monitor. Dos hilos:
+  el anfitrión solo es dueño de las ventanas de la `WorkerW` y nunca espera a nada (el
+  Explorador queda enganchado a él); el pintor lleva WebView2, con una ventana oculta FUERA de la
+  pantalla como padre. El ratón se lee con entrada cruda (RegisterRawInputDevices) y llega a la
+  página como mensajes (`PostWebMessageAsJson`), nunca como entrada. Se pausa (deja de pintar)
+  cuando algo tapa su monitor entero.
   `npm run fondo` lo copia a `%LOCALAPPDATA%` y lo deja arrancando al iniciar sesión.
 - Segunda versión, descartada: ventanas de Chrome (kiosco) metidas en la `WorkerW` y un hook de
   ratón. Padre e hija de procesos distintos enganchan sus colas de entrada y no se puede
@@ -39,7 +42,10 @@ estático. Uso real: "no, tiene que tener animaciones también".
 - Cero aplicaciones de terceros aparte del navegador, en los dos sistemas.
 - Lo aprendido a la fuerza, todo en `docs/evidencia.md`: mandar `0x052C` a Progman más de una
   vez, y colgar del Explorador ventanas de otro proceso que no responda al instante, dejan
-  sordos la barra de tareas y el buscador. Esconder la ventana para
+  sordos la barra de tareas y el buscador. WebView2 en composición crea por su cuenta una ventana
+  de opacidad 0 donde esté su padre, y esa ventana se queda con los clics: su padre va fuera de
+  la pantalla y sus ventanas se marcan "atraviesa clics". `--fondo --solo-ventanas` y
+  `--fondo --solo-webview` aíslan las dos mitades si vuelve a pasar algo así. Esconder la ventana para
   pausar la hace parpadear en blanco. El puente tiene que ser PerMonitorV2 por código: el del
   manifiesto no se aplicaba y el segundo monitor salía al doble.
 - El puente sigue siendo solo de Windows; llevarlo a macOS es otra decisión (otro ADR).

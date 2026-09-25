@@ -241,7 +241,60 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
       hayPuntero = true;
     });
     lienzo.addEventListener("pointerleave", () => (hayPuntero = false));
-    lienzo.addEventListener("dblclick", () => {
+    lienzo.addEventListener("dblclick", () => dobleClic());
+    // Detrás de los iconos (puente --fondo, ADR 0004) el ratón NO llega como entrada: el puente
+    // manda mensajes y aquí se gira, se acerca o se vuela con ellos. Pasárselo como entrada de
+    // verdad hacía que el navegador capturase el ratón en su ventana invisible, y Windows dejaba
+    // de responder (barra de tareas, iconos) hasta cerrarlo (uso real).
+    /** @type {{x: number, y: number} | null} */
+    let arrastre = null;
+    let recorrido = 0;
+    const esfera = new THREE.Spherical();
+    const desplazamiento = new THREE.Vector3();
+    /** @param {number} x @param {number} y en píxeles de la página */
+    const apuntarA = (x, y) => {
+      puntero.set((x / window.innerWidth) * 2 - 1, -(y / window.innerHeight) * 2 + 1);
+      hayPuntero = true;
+    };
+    /** @param {(s: THREE.Spherical) => void} cambio */
+    const orbitar = (cambio) => {
+      vuelo = null;
+      o.autoRotate = false;
+      ultimoToque = performance.now();
+      desplazamiento.copy(camara.position).sub(o.target);
+      esfera.setFromVector3(desplazamiento);
+      cambio(esfera);
+      esfera.phi = THREE.MathUtils.clamp(esfera.phi, 0.05, o.maxPolarAngle);
+      esfera.radius = THREE.MathUtils.clamp(esfera.radius, o.minDistance, o.maxDistance);
+      camara.position.copy(o.target).add(desplazamiento.setFromSpherical(esfera));
+      camara.lookAt(o.target);
+    };
+    /** @type {{addEventListener(t: string, f: (e: {data: any}) => void): void} | undefined} */
+    const webview = /** @type {any} */ (window).chrome?.webview;
+    webview?.addEventListener("message", ({ data: m }) => {
+      // El puente manda píxeles físicos; la página va en píxeles CSS.
+      const x = (m.x ?? 0) / window.devicePixelRatio;
+      const y = (m.y ?? 0) / window.devicePixelRatio;
+      if (m.t === "fuera") { hayPuntero = false; arrastre = null; return; }
+      apuntarA(x, y);
+      if (m.t === "bajar") { arrastre = { x, y }; recorrido = 0; }
+      else if (m.t === "mover" && arrastre) {
+        const dx = x - arrastre.x, dy = y - arrastre.y;
+        recorrido += Math.hypot(dx, dy);
+        arrastre = { x, y };
+        orbitar((s) => { s.theta -= (2 * Math.PI * dx) / window.innerHeight; s.phi -= (2 * Math.PI * dy) / window.innerHeight; });
+      } else if (m.t === "subir") {
+        if (arrastre && recorrido <= 5) { apuntado = apuntar(); clicSuelto(); }
+        arrastre = null;
+      } else if (m.t === "doble") { apuntado = apuntar(); dobleClic(); }
+      else if (m.t === "rueda") orbitar((s) => { s.radius *= m.d > 0 ? 1 / 1.1 : 1.1; });
+    });
+  }
+  /** Doble clic en el fondo: vuela a la isla bajo el cursor; en el vacío, de vuelta arriba. */
+  function dobleClic() {
+    const o = orbita;
+    if (!o) return;
+    {
       const a = apuntado;
       const isla = a?.tipo === "isla" ? a.isla
         : a?.tipo === "nodo" ? islas.find((i) => i.g3d === a.g3d) : undefined;
@@ -254,7 +307,7 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
       vuelo = { objetivo, posicion: objetivo.clone().addScaledVector(desde, 24).setY(objetivo.y + 6) };
       o.autoRotate = false;
       ultimoToque = performance.now();
-    });
+    }
   }
 
   /** @type {Set<string>} */
@@ -731,9 +784,13 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
     renderer.domElement.addEventListener("pointerdown", (e) => (desde = { x: e.clientX, y: e.clientY }));
     renderer.domElement.addEventListener("pointerup", (e) => {
       if (Math.hypot(e.clientX - desde.x, e.clientY - desde.y) > 5 || e.button !== 0) return;
-      if (apuntado?.tipo === "nodo") fichaDe(apuntado.g3d, apuntado.i);
-      else cerrarFicha();
+      clicSuelto();
     });
+  }
+  /** Un clic (sin arrastrar) en el fondo: la ficha del nodo apuntado, o se cierra. */
+  function clicSuelto() {
+    if (apuntado?.tipo === "nodo") fichaDe(apuntado.g3d, apuntado.i);
+    else cerrarFicha();
   }
 
   /** @param {string} codigo */

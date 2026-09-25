@@ -20,7 +20,9 @@ Win.SetProcessDpiAwarenessContext(-4 /*DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V
 
 // Otro oficio del mismo ejecutable: el mundo como fondo animado (ADR 0004). No abre el servidor.
 if (args.Contains("--fondo"))
-    return args.Contains("--parar") ? Fondo.Parar() : Fondo.Correr(args.FirstOrDefault(a => !a.StartsWith("--")) ?? BuscarMundo());
+    return args.Contains("--parar") ? Fondo.Parar() : Fondo.Correr(args.FirstOrDefault(a => !a.StartsWith("--")) ?? BuscarMundo(),
+        // Diagnóstico: --solo-ventanas (nuestras ventanas en la WorkerW, sin WebView2) o --solo-webview (al revés).
+        args.Contains("--solo-ventanas") ? "ventanas" : args.Contains("--solo-webview") ? "webview" : "");
 
 string mundo = args.Length > 0 ? args[0] : BuscarMundo();
 Registro.Empezar();
