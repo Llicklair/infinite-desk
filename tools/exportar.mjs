@@ -1,5 +1,5 @@
 // Uso: node tools/exportar.mjs [repo ...]
-// Sin argumentos, cada carpeta hermana de mirador con `.git` (tu carpeta dev).
+// Sin argumentos, cada carpeta hermana de infinitas con `.git` (tu carpeta dev).
 // Pide el grafo a gb (ARCHITECTURE 2), lo dispone en 3D y lo deja en wallpaper/grafos.js
 // como script clásico (ARCHITECTURE 3). Si gb no está instalado, falla o no ve módulos en un
 // repo, la isla es su árbol de carpetas (ADR 0003): quien no tenga gb también tiene mundo.
@@ -18,7 +18,7 @@ function hermanos() {
   const dev = dirname(proyecto);
   return readdirSync(dev, { withFileTypes: true })
     .filter((d) => d.isDirectory() && existsSync(join(dev, d.name, ".git")))
-    .map((d) => join(dev, d.name)); // mirador también: es un repo más de dev/ y tiene su isla
+    .map((d) => join(dev, d.name)); // infinitas también: es un repo más de dev/ y tiene su isla
 }
 
 const repos = process.argv.length > 2 ? process.argv.slice(2).map((r) => resolve(r)) : hermanos();

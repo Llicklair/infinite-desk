@@ -2,10 +2,10 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { encendidosPorAgentes, repoDeTitulo, siguienteRepo, tonoDeAgente } from "../src/vinculo.js";
 
-const repos = ["mirador", "galaxy-brain", "galaxy", "TTS pro", "forja", "atalaya"];
+const repos = ["infinitas", "galaxy-brain", "galaxy", "TTS pro", "forja", "atalaya"];
 
 test("título de VS Code: el repo es la carpeta del medio", () => {
-  assert.equal(repoDeTitulo("escena.js - mirador - Visual Studio Code", repos), "mirador");
+  assert.equal(repoDeTitulo("escena.js - infinitas - Visual Studio Code", repos), "infinitas");
   assert.equal(repoDeTitulo("● cli.py - galaxy-brain - Visual Studio Code", repos), "galaxy-brain");
 });
 
@@ -52,5 +52,5 @@ test("agentes: encienden sus módulos, el commit se distingue y dos a la vez son
 test("el tono de un agente es estable y está en 0..1", () => {
   assert.equal(tonoDeAgente("worktree-a"), tonoDeAgente("worktree-a"));
   assert.notEqual(tonoDeAgente("worktree-a"), tonoDeAgente("worktree-b"));
-  for (const n of ["x", "mirador", "agente-7"]) assert.ok(tonoDeAgente(n) >= 0 && tonoDeAgente(n) < 1);
+  for (const n of ["x", "infinitas", "agente-7"]) assert.ok(tonoDeAgente(n) >= 0 && tonoDeAgente(n) < 1);
 });

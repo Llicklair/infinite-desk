@@ -8,7 +8,7 @@ using System.Diagnostics;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
-namespace Mirador.Puente;
+namespace Infinitas.Puente;
 
 sealed class Agentes(string mundo, Func<object, Task> difundir)
 {

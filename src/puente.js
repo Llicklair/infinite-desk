@@ -1,4 +1,4 @@
-// Cliente del puente nativo (ADR 0002): mirador-puente escucha en 127.0.0.1 y actúa sobre las
+// Cliente del puente nativo (ADR 0002): infinitas-puente escucha en 127.0.0.1 y actúa sobre las
 // ventanas capturadas. Sin puente el mundo funciona como en la fase 1.
 //
 // El puente puede arrancar DESPUÉS que la página (primer uso real: el mundo ya estaba abierto y
@@ -61,8 +61,8 @@ export function crearPuente(tituloMundo) {
   const alAgentes = [];
 
   async function conectar() {
-    if (!window.MIRADOR_PUENTE) await releerScript("puente-config.js");
-    const config = window.MIRADOR_PUENTE;
+    if (!window.INFINITAS_PUENTE) await releerScript("puente-config.js");
+    const config = window.INFINITAS_PUENTE;
     if (!config) return setTimeout(conectar, REINTENTO_MS);
     const nuevo = new WebSocket(`ws://127.0.0.1:${config.puerto}/?token=${config.token}`);
     nuevo.addEventListener("open", () => {
@@ -85,7 +85,7 @@ export function crearPuente(tituloMundo) {
       if (ws === nuevo) ws = null;
       for (const r of esperando.values()) r({ ok: false, error: "puente desconectado" });
       esperando.clear();
-      window.MIRADOR_PUENTE = undefined; // por si cambió: se relee en el siguiente intento
+      window.INFINITAS_PUENTE = undefined; // por si cambió: se relee en el siguiente intento
       setTimeout(conectar, REINTENTO_MS);
     });
   }
@@ -101,7 +101,7 @@ export function crearPuente(tituloMundo) {
 
   return {
     get conectado() { return ws !== null && ws.readyState === WebSocket.OPEN; },
-    get atajo() { return window.MIRADOR_PUENTE?.atajo ?? null; }, // el atajo global de salir, si consiguió uno
+    get atajo() { return window.INFINITAS_PUENTE?.atajo ?? null; }, // el atajo global de salir, si consiguió uno
     async titulo(hwnd) {
       const r = await pedir({ op: "titulo", hwnd });
       return r.ok ? r.titulo : null;

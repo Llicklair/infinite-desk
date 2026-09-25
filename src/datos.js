@@ -1,4 +1,4 @@
-﻿// De `gb graph --json` al grafo que pinta mirador. Puro: sin Three.js (ARCHITECTURE 1).
+﻿// De `gb graph --json` al grafo que pinta infinitas. Puro: sin Three.js (ARCHITECTURE 1).
 
 /**
  * @typedef {{id: string, grupo: string, fanIn: number, fanOut: number, enCiclo: boolean}} Nodo

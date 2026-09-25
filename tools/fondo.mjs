@@ -1,4 +1,4 @@
-// Pone el mundo como fondo de escritorio en Lively (ADR 0001) y añade "Entrar en mirador" al
+// Pone el mundo como fondo de escritorio en Lively (ADR 0001) y añade "Entrar en infinitas" al
 // clic derecho del escritorio.
 //
 // `Lively setwp` solo acepta fondos de su biblioteca, y importar COPIA la carpeta: cada build
@@ -15,9 +15,9 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 const LIVELY = join(process.env.ProgramFiles ?? "C:\\Program Files", "Lively Wallpaper", "Lively.exe");
 const EDGE = join(process.env["ProgramFiles(x86)"] ?? "C:\\Program Files (x86)", "Microsoft", "Edge", "Application", "msedge.exe");
-const MENU = "HKCU\\Software\\Classes\\DesktopBackground\\Shell\\mirador";
+const MENU = "HKCU\\Software\\Classes\\DesktopBackground\\Shell\\infinitas";
 const carpeta = join(dirname(fileURLToPath(import.meta.url)), "..", "wallpaper");
-const biblioteca = join(process.env.LOCALAPPDATA ?? "", "Lively Wallpaper", "Library", "wallpapers", "mirador");
+const biblioteca = join(process.env.LOCALAPPDATA ?? "", "Lively Wallpaper", "Library", "wallpapers", "infinitas");
 
 const reg = (/** @type {string[]} */ ...args) => execFileSync("reg", args, { stdio: "ignore" });
 
@@ -46,15 +46,15 @@ execFileSync(LIVELY, ["setwp", "--file", biblioteca]);
 // --- clic derecho: entrar -----------------------------------------------------------------
 // Perfil propio: --start-fullscreen solo se respeta al arrancar un proceso de Edge nuevo, y
 // así el permiso de abrir vscode:// se recuerda aparte del navegador de siempre.
-const perfil = join(process.env.LOCALAPPDATA ?? "", "mirador", "edge");
+const perfil = join(process.env.LOCALAPPDATA ?? "", "infinitas", "edge");
 const url = pathToFileURL(join(carpeta, "index.html")).href + "?vista=dentro";
 // Pasa por tools/entrar.ps1: antes de abrir, restaura las ventanas minimizadas (Edge no las
 // puede capturar, y para llegar al escritorio se minimiza todo).
 const entrar = join(dirname(fileURLToPath(import.meta.url)), "entrar.ps1");
 const orden = `powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "${entrar}" -Edge "${EDGE}" -Perfil "${perfil}" -Url "${url}"`;
-reg("add", MENU, "/ve", "/d", "Entrar en mirador", "/f");
+reg("add", MENU, "/ve", "/d", "Entrar en infinitas", "/f");
 reg("add", MENU, "/v", "Icon", "/d", `"${EDGE}",0`, "/f");
 reg("add", `${MENU}\\command`, "/ve", "/d", orden, "/f");
 
 console.log(`fondo: ${pagina}\n  (si Lively no estaba abierto y no cambia, repite npm run fondo)`);
-console.log("clic derecho en el escritorio -> Entrar en mirador (Esc dos veces para volver)");
+console.log("clic derecho en el escritorio -> Entrar en infinitas (Esc dos veces para volver)");

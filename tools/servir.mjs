@@ -27,6 +27,6 @@ createServer(async (req, res) => {
   }
 }).listen(puerto, "127.0.0.1", () => {
   const url = `http://localhost:${puerto}/`;
-  console.log(`mirador en ${url} (Ctrl+C para parar)`);
+  console.log(`infinitas en ${url} (Ctrl+C para parar)`);
   exec(process.platform === "win32" ? `start "" "${url}"` : `xdg-open "${url}"`);
 });

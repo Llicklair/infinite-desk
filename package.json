@@ -1,10 +1,10 @@
 {
-  "name": "mirador",
+  "name": "infinitas",
   "version": "1.0.0",
   "description": "El grafo de galaxy-brain como fondo de escritorio 3D navegable (Lively Wallpaper)",
   "scripts": {
     "grafo": "node tools/exportar.mjs",
-    "build": "esbuild src/main.js --bundle --format=iife --minify --target=chrome110 --outfile=wallpaper/mirador.js",
+    "build": "esbuild src/main.js --bundle --format=iife --minify --target=chrome110 --outfile=wallpaper/infinitas.js",
     "mundo": "node tools/servir.mjs",
     "test": "node --test \"tests/*.test.js\"",
     "tipos": "tsc -p .",

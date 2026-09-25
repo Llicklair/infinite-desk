@@ -466,7 +466,7 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
   // En el fondo (Lively) no hay teclado que dar: ni se intenta.
   // Título único: por él encuentra el puente la ventana del mundo (no hay otra forma de que una
   // página sepa su HWND). Nadie lo ve: el mundo va a pantalla completa.
-  if (!fondo) document.title = `mirador · ${Math.random().toString(36).slice(2, 10)}`;
+  if (!fondo) document.title = `infinitas · ${Math.random().toString(36).slice(2, 10)}`;
   const puente = fondo ? null : crearPuente(document.title);
   puente?.alSalir(() => dejarDeEscribir(false));
 

@@ -4,8 +4,8 @@
   <PropertyGroup>
     <TargetFramework>net10.0-windows</TargetFramework>
     <OutputType>Exe</OutputType>
-    <AssemblyName>mirador-puente</AssemblyName>
-    <RootNamespace>Mirador.Puente</RootNamespace>
+    <AssemblyName>infinitas-puente</AssemblyName>
+    <RootNamespace>Infinitas.Puente</RootNamespace>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>

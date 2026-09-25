@@ -4,7 +4,7 @@
 // primer uso real ("si levanto un grafo dentro, ¿se añade una isla?").
 using System.Diagnostics;
 
-namespace Mirador.Puente;
+namespace Infinitas.Puente;
 
 sealed class Regenerador(string raiz, Func<object, Task> difundir, Action alTerminar)
 {

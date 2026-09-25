@@ -59,7 +59,7 @@ Cada medición real: qué se probó, qué salió, qué cambió por ello.
 
 - Primer uso real del fondo: se ve, pero no se puede entrar. Detrás de los iconos no llega el
   teclado ni el pointer lock, así que no hay "modo" que cambiar en el propio fondo.
-- Montaje: `npm run fondo` añade "Entrar en mirador" al clic derecho del escritorio (HKCU,
+- Montaje: `npm run fondo` añade "Entrar en infinitas" al clic derecho del escritorio (HKCU,
   `DesktopBackground\Shell`): Edge `--app` a pantalla completa con `index.html?vista=dentro`.
   Esc suelta el ratón; otro Esc cierra y vuelve el fondo. Adelanta a pelo la parte "clic
   derecho" de la fase 2, sin app nativa. Quitar: `npm run fondo -- --quitar`.
@@ -81,14 +81,14 @@ Cada medición real: qué se probó, qué salió, qué cambió por ello.
 ## 2026-09-24 · agentes de gb, islas solas y alternar vistas — FUNCIONA sin manos
 
 - Montaje: repo desechable `dev/zz-agentes` (a.py -> b.py, un commit); puente con log; mundo en
-  Edge headless por CDP. Después, `gb graph .` en mirador.
+  Edge headless por CDP. Después, `gb graph .` en infinitas.
 - El puente regenera al arrancar: a los 58 s "Isla nueva: zz-agentes". b.py modificado sin
   commitear (un agente para `gb who`): a los 42 s el mundo avisa "🤖 zz-agentes trabajando en
   zz-agentes". De paso salió un agente REAL: Automatiza-Core tiene cambios sin commitear.
 - "Levanta el grafo aquí": gb no dice el repo en `~/.galaxy-brain/usos.jsonl`, pero sí el
   `graph`. `gb graph .` a las 22:29:02 -> "regenerando grafos: se levantó un grafo con gb" a
   las 22:29:05. Margen de 2 min: los hooks de gb también lanzan `graph`.
-- mirador ya tiene isla (el exportador lo excluía por ser él mismo): 23 módulos.
+- infinitas ya tiene isla (el exportador lo excluía por ser él mismo): 23 módulos.
 - Sin probar con manos: nodos encendidos de cerca, ficha al hacer clic, T, V, Esc en el fondo
   (Lively solo pasa el ratón por defecto: Esc no llega; doble clic en el vacío, sí).
 
@@ -134,7 +134,7 @@ Cada medición real: qué se probó, qué salió, qué cambió por ello.
 
 ## 2026-09-24 · escribir dentro de una pantalla, con manos — FUNCIONA
 
-- Montaje: clic derecho del escritorio -> Entrar en mirador; N sobre VS Code; Enter sobre la
+- Montaje: clic derecho del escritorio -> Entrar en infinitas; N sobre VS Code; Enter sobre la
   pantalla, sin mover la cámara.
 - Resultado: "ahora sí funciona, 10". Se escribe y se hace clic en la VS Code real desde el mundo.
 - Sigue por medir: arrastre con selección, menús desplegables, IME, GPU con 3–4 pantallas.
@@ -153,14 +153,14 @@ Cada medición real: qué se probó, qué salió, qué cambió por ello.
 - La página del mundo ya estaba abierta antes que el puente, y solo buscaba el puente al cargar;
   además `puente-config.js` tenía el token de una prueba anterior. Sin puente, Enter sobre una
   pantalla caía en lo de la fase 1: `vscode://`, que abrió otra ventana.
-- Arreglo: token persistente (`%LOCALAPPDATA%\mirador\puente-token`), la página reintenta cada
+- Arreglo: token persistente (`%LOCALAPPDATA%\infinitas\puente-token`), la página reintenta cada
   3 s releyendo la config, y Enter sobre una pantalla real nunca abre otra ventana: sin puente, avisa.
 - Probado por CDP: página abierta sin puente, puente arrancado 6 s después -> se conecta sola y
   la captura trae el título real.
 
 ## 2026-09-24 · el puente (ADR 0002) de extremo a extremo — FUNCIONA sin manos; falta con manos
 
-- Montaje: `mirador-puente.exe` + VS Code desechable (`espiga2/prueba.txt`, "uno
+- Montaje: `infinitas-puente.exe` + VS Code desechable (`espiga2/prueba.txt`, "uno
 dos") + una
   consola haciendo de mundo; cliente WebSocket desde PowerShell. Página: Edge por CDP.
 - Seguridad: sin token o con `Origin: https://ejemplo.com` no conecta; con token, sí.
@@ -182,7 +182,7 @@ dos") + una
 - **Negativo:** WM_CHAR / WM_KEYDOWN posteados a VS Code inactivo — nada, ni a la ventana
   principal ni al hijo `Chrome_RenderWidgetHostHWND` (captura: editor vacío).
 - Teclas reales (`keybd_event`) con VS Code ACTIVO y aparcado a la derecha del escritorio
-  virtual (x=2760 con el monitor acabando en 2560): llegan, y Ctrl+S guarda ("hola mirador").
+  virtual (x=2760 con el monitor acabando en 2560): llegan, y Ctrl+S guarda ("hola infinitas").
 - Captura de Edge de esa ventana aparcada: en directo (el fotograma 2 muestra lo tecleado
   después del 1). Etiqueta de la pista: `window:96799178:0`, el HWND.
 - Clics posteados (WM_MOUSEMOVE/LBUTTONDOWN/UP, coordenadas de cliente en píxeles físicos):

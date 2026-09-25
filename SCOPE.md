@@ -1,4 +1,4 @@
-# mirador — alcance
+# infinitas — alcance
 
 ## En una frase
 

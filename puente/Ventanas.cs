@@ -7,7 +7,7 @@
 using System.Runtime.InteropServices;
 using System.Text;
 
-namespace Mirador.Puente;
+namespace Infinitas.Puente;
 
 static class Ventanas
 {

@@ -5,7 +5,7 @@
 // los fijos: la página no puede pedir que se ejecute una ruta cualquiera.
 using System.Diagnostics;
 
-namespace Mirador.Puente;
+namespace Infinitas.Puente;
 
 static class Escritorio
 {

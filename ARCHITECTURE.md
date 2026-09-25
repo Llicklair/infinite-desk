@@ -1,4 +1,4 @@
-# mirador — la ley de diseño
+# infinitas — la ley de diseño
 
 Reglas **numeradas**, y lo de numeradas no es cosmético: una regla con número se cita
 en una revisión ("esto viola la 3") y una cita decide.
@@ -6,7 +6,7 @@ en una revisión ("esto viola la 3") y una cita decide.
 1. **El núcleo no conoce Three.js.** `src/datos.js`, `src/disposicion.js`, `src/islas.js` y
    `src/vinculo.js` son funciones puras: entran JSON y texto, salen números y nombres. Así se
    prueban con `node --test` sin navegador. Gateado en `.gb-boundaries`.
-2. **Las dependencias vienen de gb, nunca se calculan aquí.** mirador no parsea código ni
+2. **Las dependencias vienen de gb, nunca se calculan aquí.** infinitas no parsea código ni
    infiere imports: consume `gb graph --json`. Si falta un dato, se pide a gb. Sin gb (o si gb
    no ve módulos), la isla es el árbol de carpetas, que es estructura, no dependencias, y lo
    dice ([ADR 0003](docs/adr/0003-sin-gb-arbol-de-carpetas.md)).
