@@ -1,84 +1,83 @@
-# infinitas
+# infinite-desk
 
-**Trabajas en un portátil y te faltan pantallas.** El editor en una, la documentación en otra,
-el navegador con la app corriendo en una tercera, el chat del equipo en una cuarta… y solo tienes
-una de 14 pulgadas. Alternas ventanas sin parar.
+**You work on a laptop and you're out of screens.** The editor on one, the docs on another, the
+browser running your app on a third, the team chat on a fourth… and all you have is 14 inches.
+You spend the day switching windows.
 
-**infinitas convierte tu portátil en un puesto con todas las pantallas que quieras.** Entras en
-un espacio 3D y cada ventana de tu escritorio se vuelve una pantalla flotante que colocas donde
-quieras: una delante, otra a la izquierda, otra arriba. Giras la cabeza para mirar otra. Y no son
-fotos: son las ventanas de verdad, en directo, y **puedes escribir y hacer clic en ellas**.
+**infinite-desk turns your laptop into a workstation with as many screens as you want.** Step
+into a 3D space and every window on your desktop becomes a floating screen you can place
+anywhere: one in front, one to the left, one up high. Turn your head to look at another. And
+they're not screenshots: they're your real windows, live, and **you can type and click in them**.
 
-## Qué puedes hacer
+## What you can do
 
-- **Tantas pantallas como ventanas.** VS Code, el navegador, Discord, un vídeo, el explorador de
-  archivos: cada una es una pantalla que mueves, acercas y agrandas. Los vídeos siguen
-  reproduciéndose.
-- **Trabajar dentro.** Apuntas a una pantalla, pulsas Enter y el teclado y el ratón van a esa
-  ventana real. Clic fuera y vuelves a moverte por el espacio.
-- **Abrir cosas sin salir.** F abre tu escritorio (ficheros, carpetas, programas, webs) y lo que
-  abras aparece como pantalla nueva.
-- **Ver tus proyectos.** Cada repositorio de tu carpeta de trabajo es una isla con su mapa de
-  código: módulos y dependencias si tienes [galaxy-brain](https://github.com/Llicklair/galaxy-brain), o su
-  árbol de carpetas si no. Con galaxy-brain, además, ves a los agentes trabajando: los módulos que
-  tocan se encienden en directo.
-- **Como fondo de escritorio.** El mismo espacio, girando despacio detrás de tus iconos; clic
-  derecho en el escritorio → *Entrar en infinitas* para meterte.
+- **As many screens as windows.** VS Code, the browser, Discord, a video, File Explorer: each
+  one is a screen you move, bring closer and resize. Videos keep playing.
+- **Work inside them.** Aim at a screen, press Enter, and your keyboard and mouse go to that real
+  window. Click outside it and you're moving around the space again.
+- **Open things without leaving.** F opens your desktop (files, folders, apps, web links) and
+  whatever you open shows up as a new screen.
+- **See your projects.** Every repository in your work folder is an island with its code map:
+  modules and dependencies if you have [galaxy-brain](https://github.com/Llicklair/galaxy-brain),
+  or its folder tree if you don't. With galaxy-brain you also see agents at work: the modules they
+  touch light up live.
+- **As your wallpaper.** The same space, slowly turning behind your desktop icons; right-click the
+  desktop → *Enter infinite-desk* to step in.
 
-## Requisitos
+## Requirements
 
-- Windows 10 u 11, con Microsoft Edge (viene con Windows).
-- [Node.js](https://nodejs.org) 20 o superior.
-- [.NET 10 SDK](https://dotnet.microsoft.com/download) para escribir dentro de las pantallas.
-- Opcional: [Lively Wallpaper](https://github.com/rocksdanister/lively) para tenerlo de fondo
-  (`winget install rocksdanister.LivelyWallpaper`), y galaxy-brain (`gb`) para los mapas de código.
+- Windows 10 or 11, with Microsoft Edge (it ships with Windows).
+- [Node.js](https://nodejs.org) 20 or newer.
+- [.NET 10 SDK](https://dotnet.microsoft.com/download) to work inside the screens.
+- Optional: [Lively Wallpaper](https://github.com/rocksdanister/lively) for the wallpaper
+  (`winget install rocksdanister.LivelyWallpaper`), and galaxy-brain (`gb`) for code maps.
 
-## Empezar
+## Getting started
 
-Clona el repo **dentro de tu carpeta de proyectos** (sus carpetas hermanas serán las islas):
+Clone the repo **inside your projects folder** (its sibling folders become the islands):
 
 ```bash
 npm install
-npm run terminado   # comprueba, genera las islas, construye el espacio y el puente
-npm run fondo       # lo pone de fondo en Lively y añade "Entrar en infinitas" al clic derecho
+npm run terminado   # checks everything, builds the islands, the space and the bridge
+npm run fondo       # sets it as your Lively wallpaper and adds "Enter infinite-desk" to the desktop right-click menu
 ```
 
-Clic derecho en el escritorio → **Entrar en infinitas**. Haz clic para entrar y pulsa **N** para
-traer tu primera ventana.
+Right-click the desktop → **Enter infinite-desk**. Click to step in and press **N** to bring in
+your first window.
 
-Sin Lively también funciona: abre `wallpaper/index.html` en Edge.
+No Lively? It works too: open `wallpaper/index.html` in Edge.
 
-## Controles
+## Controls
 
-| Tecla | Qué hace |
+| Key | What it does |
 |---|---|
-| **WASD** + ratón | moverse y mirar · **Espacio** subir · **C** bajar · **Shift** correr |
-| **N** | traer una ventana como pantalla nueva |
-| **F** | abrir algo del escritorio (y traer su ventana) |
-| **Enter** sobre una pantalla | escribir en ella; clic fuera de la pantalla para volver |
-| mantener **clic** | mover una pantalla · **rueda** tamaño · **X** cerrarla |
-| **G** · **V** | qué mapa lleva una pantalla · quitárselo o ponérselo |
-| **clic** en un nodo | su ficha: qué es, quién lo usa, qué agentes lo tocan |
-| **T** · **R** | mapa de código ↔ árbol de carpetas · regenerar las islas |
-| **H** · **Esc** | ocultar la ayuda · soltar el ratón (dos veces: volver al escritorio) |
+| **WASD** + mouse | move and look · **Space** up · **C** down · **Shift** run |
+| **N** | bring a window in as a new screen |
+| **F** | open something from your desktop (and bring its window in) |
+| **Enter** on a screen | work in it; click outside the screen to come back |
+| hold **click** | move a screen · **wheel** resize · **X** close it |
+| **G** · **V** | which code map a screen shows · hide or show it |
+| **click** a node | its details: what it is, what uses it, which agents are touching it |
+| **T** · **R** | code map ↔ folder tree · regenerate the islands |
+| **H** · **Esc** | hide the help · release the mouse (twice: back to the desktop) |
 
-Como fondo de escritorio: arrastra para girar, rueda para acercar, doble clic en una isla para ir
-a ella y doble clic en el vacío para volver a la vista de arriba.
+As a wallpaper: drag to rotate, wheel to zoom, double-click an island to fly to it and
+double-click empty space to go back up.
 
-## Cómo funciona
+## How it works
 
-El espacio es una página web (Three.js) que abre Edge a pantalla completa. Las ventanas se
-capturan con la API de captura del navegador (la primera vez eliges cuál, con un clic). Un
-programa pequeño en C# (`puente/`), que solo escucha en tu propio equipo y con un token, hace lo
-que una web no puede: pasar el teclado y el ratón a la ventana real, abrir ficheros y regenerar
-las islas. Los detalles y el porqué de cada decisión están en [ARCHITECTURE.md](ARCHITECTURE.md)
-y [docs/adr/](docs/adr/); lo medido, bueno y malo, en [docs/evidencia.md](docs/evidencia.md).
+The space is a web page (Three.js) that Edge opens full screen. Windows are captured with the
+browser's screen-capture API (you pick each one once, with a click). A small C# program
+(`puente/`, "bridge"), which only listens on your own machine and requires a token, does what a
+web page can't: pass your keyboard and mouse to the real window, open files and regenerate the
+islands. The design rules are in [ARCHITECTURE.md](ARCHITECTURE.md) and the reasoning behind each
+decision in [docs/adr/](docs/adr/); everything measured, good and bad, is in
+[docs/evidencia.md](docs/evidencia.md). The internal docs and code comments are in Spanish.
 
-## Límites honestos
+## Honest limits
 
-- **Solo Windows** por ahora: el puente usa la API de ventanas de Windows.
-- **Cada ventana nueva pide un clic** en el selector del navegador: una web no puede capturar
-  ventanas sin que las elijas tú.
-- **Escribir en una pantalla es un modo**: mientras escribes, WASD es de la ventana, no del
-  espacio.
-- Una ventana **minimizada no se puede capturar**; al entrar, infinitas las restaura.
+- **Windows only** for now: the bridge uses the Windows window APIs.
+- **Each new window takes one click** in the browser's picker: a web page can't capture windows
+  without you choosing them.
+- **Working in a screen is a mode**: while you type, WASD belongs to the window, not the space.
+- A **minimized window can't be captured**; infinite-desk restores them when you step in.
