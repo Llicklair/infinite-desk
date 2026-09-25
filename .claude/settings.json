@@ -1,0 +1,12 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          { "type": "command", "command": "gb graph --context", "timeout": 15 }
+        ]
+      }
+    ]
+  }
+}

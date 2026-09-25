@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <title>mirador</title>
+  <link rel="stylesheet" href="estilo.css">
+</head>
+<body>
+  <div id="mira"></div>
+  <div id="info" hidden></div>
+  <div id="aviso" hidden></div>
+  <div id="nodo" hidden></div>
+  <div id="ayuda">
+    <b>WASD</b> moverse · <b>ratón</b> mirar · <b>Espacio</b> subir · <b>C</b> bajar · <b>Shift</b> correr<br>
+    <b>Enter</b> abrir el repo en VS Code (sobre una pantalla: escribir en ella; clic fuera para volver) · <b>N</b> nueva pantalla (captura una ventana) · <b>F</b> abrir algo del escritorio<br>
+    <b>mantener clic</b> mover pantalla · <b>rueda</b> tamaño · <b>G</b> cambiar grafo · <b>V</b> quitar/poner su grafo · <b>X</b> cerrar<br>
+    <b>Q/E</b> girar grafo · <b>clic en un nodo</b> su ficha · <b>T</b> gb / árbol de carpetas · <b>R</b> regenerar grafos · <b>H</b> ocultar ayuda · <b>Esc</b> soltar el ratón
+  </div>
+  <div id="ficheros" hidden></div>
+  <div id="portada"><div><h1>mirador</h1><p>Haz clic para entrar</p></div></div>
+  <!-- Lo escribe mirador-puente al arrancar (ADR 0002); si no existe, el mundo va sin puente. -->
+  <script src="puente-config.js"></script>
+  <script src="grafos.js"></script>
+  <script src="mirador.js"></script>
+</body>
+</html>

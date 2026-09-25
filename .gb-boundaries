@@ -1,0 +1,41 @@
+# ARCHITECTURE 1: el núcleo puro (datos, disposición, islas, vínculo) no conoce el mundo 3D.
+# Límite honesto: gb no deja arista hacia paquetes externos (`three`), así que lo que se
+# gatea es que el núcleo no importe ningún módulo que sí lo usa.
+datos       -/-> grafo3d
+datos       -/-> mundo
+datos       -/-> pantallas
+datos       -/-> rotulo
+disposicion -/-> grafo3d
+disposicion -/-> mundo
+disposicion -/-> pantallas
+disposicion -/-> rotulo
+islas       -/-> grafo3d
+islas       -/-> mundo
+islas       -/-> pantallas
+islas       -/-> rotulo
+vinculo     -/-> grafo3d
+vinculo     -/-> mundo
+vinculo     -/-> pantallas
+vinculo     -/-> rotulo
+datos       -/-> puente
+disposicion -/-> puente
+islas       -/-> puente
+vinculo     -/-> puente
+datos       -/-> ficheros
+disposicion -/-> ficheros
+islas       -/-> ficheros
+vinculo     -/-> ficheros
+datos       -/-> nodo
+disposicion -/-> nodo
+islas       -/-> nodo
+vinculo     -/-> nodo
+
+# Las herramientas de Node (exportar, comprobar, servir) corren sin navegador.
+tools -/-> grafo3d
+tools -/-> mundo
+tools -/-> pantallas
+tools -/-> rotulo
+tools -/-> main
+tools -/-> ficheros
+tools -/-> puente
+tools -/-> nodo

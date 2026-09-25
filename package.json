@@ -1,0 +1,28 @@
+{
+  "name": "mirador",
+  "version": "1.0.0",
+  "description": "El grafo de galaxy-brain como fondo de escritorio 3D navegable (Lively Wallpaper)",
+  "scripts": {
+    "grafo": "node tools/exportar.mjs",
+    "build": "esbuild src/main.js --bundle --format=iife --minify --target=chrome110 --outfile=wallpaper/mirador.js",
+    "mundo": "node tools/servir.mjs",
+    "test": "node --test \"tests/*.test.js\"",
+    "tipos": "tsc -p .",
+    "terminado": "npm run tipos && npm test && npm run grafo && npm run build && npm run puente && node tools/comprobar.mjs",
+    "fondo": "node tools/fondo.mjs",
+    "puente": "dotnet build puente -c Release --nologo -v q"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "dependencies": {
+    "three": "^0.186.1"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.2",
+    "@types/three": "^0.186.0",
+    "esbuild": "^0.28.2",
+    "typescript": "^7.0.2"
+  }
+}

@@ -1,0 +1,24 @@
+<!doctype html>
+<!-- El mundo como fondo de escritorio (Lively, ADR 0001): solo ratón. Mismo bundle que index.html. -->
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <title>mirador — fondo</title>
+  <link rel="stylesheet" href="estilo.css">
+</head>
+<body data-vista="fondo">
+  <div id="mira"></div>
+  <div id="info" hidden></div>
+  <div id="aviso" hidden></div>
+  <div id="nodo" hidden></div>
+  <div id="ayuda">
+    <b>WASD</b> moverse · <b>ratón</b> mirar · <b>Espacio/C</b> subir/bajar · <b>Shift</b> correr<br>
+    <b>Enter</b> abrir el repo en VS Code (sobre una pantalla: ir a escribir en ella) · <b>N</b> nueva pantalla (captura una ventana)<br>
+    <b>mantener clic</b> mover pantalla · <b>rueda</b> tamaño · <b>G</b> cambiar grafo · <b>X</b> cerrar<br>
+    <b>Q/E</b> girar grafo · <b>H</b> ocultar ayuda · <b>Esc</b> soltar el ratón
+  </div>
+  <div id="portada"><div><h1>mirador</h1><p>Haz clic para entrar</p></div></div>
+  <script src="grafos.js"></script>
+  <script src="mirador.js"></script>
+</body>
+</html>

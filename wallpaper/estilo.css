@@ -1,0 +1,35 @@
+html, body { margin: 0; height: 100%; overflow: hidden; background: #070912; font: 14px/1.4 "Segoe UI", system-ui, sans-serif; color: #dfe4ff; }
+canvas { display: block; }
+#mira { position: fixed; left: 50%; top: 50%; width: 6px; height: 6px; margin: -3px 0 0 -3px; border-radius: 50%; background: #fff; box-shadow: 0 0 6px #000; pointer-events: none; opacity: 0.8; }
+#info { position: fixed; left: 50%; bottom: 40px; transform: translateX(-50%); max-width: 80vw; padding: 6px 12px; background: rgba(12, 16, 40, 0.8); border: 1px solid #3a4480; border-radius: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
+#aviso { position: fixed; left: 50%; top: 24px; transform: translateX(-50%); max-width: 80vw; padding: 8px 14px; background: rgba(40, 50, 120, 0.9); border-radius: 6px; pointer-events: none; }
+#ayuda { position: fixed; left: 20px; bottom: 20px; padding: 10px 14px; background: rgba(12, 16, 40, 0.75); border-radius: 6px; font-size: 12px; color: #aab2e0; pointer-events: none; }
+#ayuda b { color: #fff; font-weight: 600; }
+#portada { position: fixed; inset: 0; display: grid; place-items: center; background: rgba(7, 9, 18, 0.55); cursor: pointer; }
+#portada div { text-align: center; padding: 24px 32px; background: rgba(12, 16, 40, 0.9); border: 1px solid #3a4480; border-radius: 10px; }
+#portada h1 { margin: 0 0 6px; font-size: 22px; font-weight: 600; }
+#portada p { margin: 0; color: #8d96c8; }
+[hidden] { display: none !important; }
+/* Fondo (Lively): se apunta con el cursor, no hay mira. */
+body[data-vista="fondo"] #mira { display: none; }
+/* Escribiendo dentro de una pantalla (ADR 0002): el cursor es el ratón de la ventana. */
+body[data-escribiendo] #mira { display: none; }
+/* Panel del escritorio (F): por encima de todo, se usa con el ratón suelto. */
+#ficheros { position: fixed; inset: 8vh 12vw; z-index: 10; display: flex; flex-direction: column; padding: 18px 22px; background: rgba(12, 16, 40, 0.94); border: 1px solid #3a4480; border-radius: 10px; }
+#ficheros h2 { margin: 0 0 12px; font-size: 18px; font-weight: 600; }
+#ficheros p { margin: 12px 0 0; color: #8d96c8; font-size: 12px; }
+#ficheros .cosas { flex: 1; overflow: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; align-content: start; }
+#ficheros button { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 10px 6px; background: rgba(40, 50, 120, 0.35); border: 1px solid transparent; border-radius: 8px; color: #dfe4ff; font: inherit; cursor: pointer; overflow-wrap: anywhere; }
+#ficheros button:hover { border-color: #5a6cff; background: rgba(60, 75, 170, 0.5); }
+#ficheros .icono { font-size: 28px; }
+/* Ficha de un nodo (clic): a la derecha, como el panel de galaxy-brain. */
+#nodo { position: fixed; top: 70px; right: 20px; width: min(380px, 34vw); max-height: calc(100vh - 140px); overflow: auto; padding: 14px 16px; background: rgba(12, 16, 40, 0.92); border: 1px solid #3a4480; border-radius: 8px; pointer-events: none; font-size: 13px; }
+#nodo h2 { margin: 0 0 4px; font-size: 16px; font-weight: 600; overflow-wrap: anywhere; }
+#nodo h3 { margin: 12px 0 4px; font-size: 12px; font-weight: 600; color: #aab2e0; text-transform: uppercase; letter-spacing: .04em; }
+#nodo .sub { margin: 0; color: #8d96c8; }
+#nodo .ciclo { margin: 8px 0 0; color: #ff4d5e; font-weight: 600; }
+#nodo ul { margin: 0; padding-left: 18px; }
+#nodo li { overflow-wrap: anywhere; }
+#nodo li.mas { list-style: none; color: #8d96c8; }
+#nodo .agentes li { color: #fff; }
+#nodo .pie { margin: 12px 0 0; color: #6f78a8; font-size: 11px; }

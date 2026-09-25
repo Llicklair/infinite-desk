@@ -1,0 +1,14 @@
+{
+  "AppVersion": "1.0.0.0",
+  "Title": "mirador",
+  "Thumbnail": null,
+  "Preview": null,
+  "Desc": "Los repos de dev/ como islas con su grafo de galaxy-brain: arrastra para girar, rueda para acercar, doble clic para ir a una isla.",
+  "Author": "Llicklair",
+  "License": null,
+  "Contact": null,
+  "Type": 1,
+  "FileName": "fondo.html",
+  "Arguments": null,
+  "IsAbsolutePath": false
+}

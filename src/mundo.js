@@ -1,0 +1,797 @@
+// El mundo: primera persona, una isla por repo, pantallas flotantes con su grafo detrás.
+import * as THREE from "three";
+import { PointerLockControls } from "three/examples/jsm/controls/PointerLockControls.js";
+import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+import { colocarIslas, firmaGrafos, islasNuevas } from "./islas.js";
+import { crearGrafo3D } from "./grafo3d.js";
+import { rotulo } from "./rotulo.js";
+import { capturaDeDemostracion, capturarVentana, crearPantalla, puedeCapturar } from "./pantallas.js";
+import { encendidosPorAgentes, repoDeTitulo, siguienteRepo, tonoDeAgente } from "./vinculo.js";
+import { mostrarNodo } from "./nodo.js";
+import { crearPuente, releerScript } from "./puente.js";
+import { crearPanelFicheros } from "./ficheros.js";
+
+const VELOCIDAD = 9; // metros por segundo; Shift la triplica
+const ALTURA_OJOS = 1.7;
+const RECIENTE_MS = 120000; // lo abierto con Enter hace menos de esto es el candidato de la próxima captura
+const REPOSO_MS = 30000; // en el fondo, sin tocarlo este rato vuelve a girar solo
+const RELEER_FONDO_MS = 120000; // el fondo (sin puente) relee grafos.js cada tanto
+
+/**
+ * @typedef {import("./grafo3d.js").GrafoExportado} GrafoExportado
+ * @typedef {import("./grafo3d.js").Grafo3D} Grafo3D
+ * @typedef {import("./pantallas.js").Pantalla} Pantalla
+ * @typedef {{portada: HTMLElement, info: HTMLElement, aviso: HTMLElement, ayuda: HTMLElement, ficheros: HTMLElement | null, nodo: HTMLElement | null}} Interfaz
+ */
+
+/**
+ * @param {HTMLElement} contenedor
+ * @param {GrafoExportado[]} grafos
+ * @param {Interfaz} ui
+ * @param {{vista?: string | null}} [opciones] vista "aerea": cámara alta y sin portada (capturas);
+ *   "fondo": solo ratón y sin pointer lock, para Lively (ADR 0001); "dentro": Esc sale al escritorio
+ */
+export function montarMundo(contenedor, grafos, ui, opciones = {}) {
+  // Mutables: al regenerar los grafos (R, o solos) se rellenan de nuevo, sin recargar la página.
+  /** @type {Map<string, GrafoExportado>} */
+  const porNombre = new Map();
+  /** @type {string[]} */
+  const nombres = [];
+
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  contenedor.appendChild(renderer.domElement);
+
+  const escena = new THREE.Scene();
+  escena.background = new THREE.Color("#070912");
+  escena.fog = new THREE.FogExp2("#070912", 0.0065);
+
+  const camara = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.05, 2000);
+  camara.position.set(0, ALTURA_OJOS, 0);
+  escena.add(camara);
+
+  escena.add(new THREE.HemisphereLight("#c8d0ff", "#2a1d40", 1.4));
+  const sol = new THREE.DirectionalLight("#ffffff", 1.8);
+  sol.position.set(20, 40, 10);
+  escena.add(sol);
+
+  // Suelo: una rejilla oscura que se pierde en la niebla, estilo holodeck.
+  const suelo = new THREE.Mesh(
+    new THREE.PlaneGeometry(1200, 1200),
+    new THREE.MeshStandardMaterial({ color: "#0a0d1a", roughness: 1 }),
+  );
+  suelo.rotation.x = -Math.PI / 2;
+  escena.add(suelo);
+  const rejilla = new THREE.GridHelper(1200, 300, "#26306a", "#141a3a");
+  rejilla.position.y = 0.01;
+  escena.add(rejilla);
+
+  const estrellas = new Float32Array(4000 * 3);
+  for (let i = 0; i < estrellas.length; i += 3) {
+    const v = new THREE.Vector3().randomDirection();
+    v.y = Math.abs(v.y) + 0.05; // solo cielo, nada bajo el suelo
+    v.normalize().multiplyScalar(500 + Math.random() * 300);
+    estrellas.set([v.x, v.y, v.z], i);
+  }
+  const geoEstrellas = new THREE.BufferGeometry();
+  geoEstrellas.setAttribute("position", new THREE.BufferAttribute(estrellas, 3));
+  escena.add(new THREE.Points(geoEstrellas, new THREE.PointsMaterial({
+    color: "#9aa4d8", size: 1.5, sizeAttenuation: false, fog: false,
+  })));
+
+  // Islas: pedestal, anillo de color, el grafo flotando y el cartel del repo.
+  /** @type {{g3d: Grafo3D, base: THREE.Group, grafo: GrafoExportado}[]} */
+  const islas = [];
+  let firma = "";
+  // T: cada isla con gb puede verse también como su árbol de carpetas (`alt`, ADR 0003).
+  let verCarpetas = false;
+  /** @type {GrafoExportado[]} */
+  let actuales = [];
+  /** @param {GrafoExportado} g */
+  const vista = (g) => (verCarpetas && g.alt ? { ...g, ...g.alt } : g);
+  /** El grafo de un repo tal y como se está viendo ahora. @param {string} nombre */
+  const grafoDe = (nombre) => {
+    const g = porNombre.get(nombre);
+    return g ? vista(g) : null;
+  };
+
+  /**
+   * Pone las islas de estos grafos, quitando las que hubiera: al arrancar y al regenerar.
+   * @param {GrafoExportado[]} nuevos
+   */
+  function ponerIslas(nuevos) {
+    for (const { base } of islas) {
+      escena.remove(base);
+      base.traverse((o) => {
+        const m = /** @type {THREE.Mesh | THREE.Sprite} */ (o);
+        // Compartidas, no se tocan: la esfera de los nodos (grafo3d) y el cuadrado de los sprites (three).
+        if (o instanceof THREE.InstancedMesh) o.dispose();
+        else if (m.geometry && !(o instanceof THREE.Sprite)) m.geometry.dispose();
+        for (const mat of [m.material].flat()) {
+          if (!mat) continue;
+          /** @type {any} */ (mat).map?.dispose();
+          mat.dispose();
+        }
+      });
+    }
+    islas.length = 0;
+    porNombre.clear();
+    nombres.length = 0;
+    for (const g of nuevos) {
+      porNombre.set(g.nombre, g);
+      nombres.push(g.nombre);
+    }
+    firma = firmaGrafos(nuevos);
+    actuales = nuevos;
+    colocarIslas(nuevos.length).forEach(({ x, z, angulo }, i) => ponerIsla(vista(nuevos[i]), i, nuevos.length, x, z, angulo));
+  }
+
+  /**
+   * @param {GrafoExportado} grafo @param {number} i @param {number} total
+   * @param {number} x @param {number} z @param {number} angulo
+   */
+  function ponerIsla(grafo, i, total, x, z, angulo) {
+    const color = new THREE.Color().setHSL(i / total, 0.7, 0.6);
+    const base = new THREE.Group();
+    base.position.set(x, 0, z);
+    base.rotation.y = angulo;
+
+    const pedestal = new THREE.Mesh(
+      new THREE.CylinderGeometry(6.5, 7, 0.5, 48),
+      new THREE.MeshStandardMaterial({ color: "#111633", roughness: 0.6 }),
+    );
+    pedestal.position.y = 0.25;
+    const anillo = new THREE.Mesh(new THREE.TorusGeometry(6.8, 0.07, 8, 96), new THREE.MeshBasicMaterial({ color }));
+    anillo.rotation.x = -Math.PI / 2;
+    anillo.position.y = 0.52;
+
+    const g3d = crearGrafo3D(grafo, 5);
+    g3d.objeto.position.y = 7.5;
+    const ciclos = grafo.ciclos ? ` · ${grafo.ciclos} ciclo${grafo.ciclos === 1 ? "" : "s"}` : "";
+    const cartel = rotulo(
+      [grafo.nombre, grafo.fuente === "carpetas"
+        ? `${grafo.nodos.length} carpetas y ficheros · sin gb` // ADR 0003: estructura, no dependencias
+        : `${grafo.nodos.length} módulos · ${grafo.aristas.length} aristas${ciclos}`],
+      { alto: 1.2, color: `#${color.getHexString()}` },
+    );
+    cartel.position.y = 14.8;
+
+    base.add(pedestal, anillo, g3d.objeto, cartel);
+    escena.add(base);
+    islas.push({ g3d, base, grafo });
+  }
+  ponerIslas(grafos);
+
+  /** @type {Pantalla[]} */
+  const pantallas = [];
+  const vivos = () => [
+    ...islas.map((i) => i.g3d),
+    ...pantallas.flatMap((p) => (p.grafo3d ? [p.grafo3d] : [])),
+  ];
+
+  // --- controles de primera persona ---------------------------------------------------------
+  const mirar = new PointerLockControls(camara, renderer.domElement);
+  mirar.addEventListener("lock", () => (ui.portada.hidden = true));
+  // Al entrar a escribir en una pantalla se suelta el ratón, pero no es para salir del mundo.
+  mirar.addEventListener("unlock", () => (ui.portada.hidden = escribiendo !== null || Boolean(panel?.abierto)));
+  ui.portada.addEventListener("click", () => mirar.lock());
+  // "dentro": el mundo a pantalla completa, abierto desde el clic derecho del escritorio
+  // (npm run fondo). Con el ratón ya suelto, Esc cierra la ventana y vuelve a verse el fondo.
+  if (opciones.vista === "dentro") {
+    const pie = ui.portada.querySelector("p");
+    if (pie) pie.textContent = "Clic para entrar · Esc: volver al escritorio";
+    document.addEventListener("keydown", (e) => {
+      if (e.code === "Escape" && !mirar.isLocked && !escribiendo && !panel?.abierto) window.close();
+    });
+  }
+  if (opciones.vista === "aerea") {
+    ui.portada.hidden = true;
+    camara.position.set(0, 60, 95);
+    camara.lookAt(0, 0, -5);
+  }
+
+  // --- modo fondo: Lively reenvía el ratón al escritorio, pero ni pointer lock ni teclado ----
+  // Se orbita en vez de caminar: arrastrar gira, la rueda acerca, doble clic vuela a la isla
+  // bajo el cursor, y en reposo la vista gira sola. Se apunta con el cursor, no con la mira.
+  const fondo = opciones.vista === "fondo";
+  /** @type {OrbitControls | null} */
+  let orbita = null;
+  const puntero = new THREE.Vector2(0, 0); // en primera persona es la mira, el centro
+  let hayPuntero = !fondo;
+  let ultimoToque = 0;
+  /** @type {{objetivo: THREE.Vector3, posicion: THREE.Vector3, aerea?: boolean} | null} */
+  let vuelo = null;
+  /** @type {(() => void) | null} */
+  let volverAerea = null;
+  if (fondo) {
+    ui.portada.hidden = true;
+    ui.ayuda.innerHTML = "<b>arrastrar</b> girar · <b>rueda</b> acercar · <b>clic</b> en un nodo: su ficha · <b>doble clic</b> ir a la isla (en el vacío o <b>Esc</b>: volver arriba)";
+    camara.position.set(0, 45, 95);
+    const o = new OrbitControls(camara, renderer.domElement);
+    o.target.set(0, 6, 0);
+    o.enableDamping = true;
+    o.enablePan = false; // el botón derecho es del menú del escritorio
+    o.autoRotate = true;
+    o.autoRotateSpeed = 0.25;
+    o.minDistance = 4;
+    o.maxDistance = 260;
+    o.maxPolarAngle = Math.PI / 2 - 0.08; // nunca bajo el suelo
+    o.addEventListener("start", () => {
+      vuelo = null;
+      o.autoRotate = false;
+      ultimoToque = performance.now();
+    });
+    o.addEventListener("end", () => (ultimoToque = performance.now()));
+    orbita = o;
+    const aerea = { posicion: camara.position.clone(), objetivo: o.target.clone() };
+    // Esc (si Lively pasa el teclado), doble clic en el vacío o un rato quieto: de vuelta a la
+    // vista aérea que gira sola, la de arrancar.
+    volverAerea = () => {
+      vuelo = { objetivo: aerea.objetivo.clone(), posicion: aerea.posicion.clone(), aerea: true };
+      o.autoRotate = false;
+    };
+    document.addEventListener("keydown", (e) => { if (e.code === "Escape") volverAerea?.(); });
+    const lienzo = renderer.domElement;
+    lienzo.addEventListener("pointermove", (e) => {
+      puntero.set((e.clientX / window.innerWidth) * 2 - 1, -(e.clientY / window.innerHeight) * 2 + 1);
+      hayPuntero = true;
+    });
+    lienzo.addEventListener("pointerleave", () => (hayPuntero = false));
+    lienzo.addEventListener("dblclick", () => {
+      const a = apuntado;
+      const isla = a?.tipo === "isla" ? a.isla
+        : a?.tipo === "nodo" ? islas.find((i) => i.g3d === a.g3d) : undefined;
+      if (!isla) {
+        volverAerea?.();
+        return;
+      }
+      const objetivo = isla.g3d.objeto.getWorldPosition(new THREE.Vector3());
+      const desde = camara.position.clone().sub(objetivo).setY(0).normalize();
+      vuelo = { objetivo, posicion: objetivo.clone().addScaledVector(desde, 24).setY(objetivo.y + 6) };
+      o.autoRotate = false;
+      ultimoToque = performance.now();
+    });
+  }
+
+  /** @type {Set<string>} */
+  const teclas = new Set();
+  document.addEventListener("keydown", (e) => {
+    if (!mirar.isLocked) return;
+    if (e.code === "Space") e.preventDefault();
+    if (!e.repeat) accion(e.code);
+    teclas.add(e.code);
+  });
+  document.addEventListener("keyup", (e) => teclas.delete(e.code));
+  window.addEventListener("blur", () => teclas.clear());
+
+  // --- a qué apunta la mira -----------------------------------------------------------------
+  /**
+   * @typedef {{tipo: "nodo", g3d: Grafo3D, i: number}
+   *   | {tipo: "pantalla", pantalla: Pantalla}
+   *   | {tipo: "isla", isla: typeof islas[number]}
+   *   | null} Apuntado
+   */
+  /** @type {Apuntado} */
+  let apuntado = null;
+  /** @type {{g3d: Grafo3D, i: number} | null} el nodo con las aristas encendidas */
+  let encendido = null;
+  const rayo = new THREE.Raycaster();
+  rayo.far = fondo ? 400 : 120; // desde el fondo se mira de lejos
+  const esfera = new THREE.Sphere();
+
+  /** @returns {Apuntado} */
+  function apuntar() {
+    rayo.setFromCamera(puntero, camara);
+    let mejor = Infinity;
+    /** @type {Apuntado} */
+    let res = null;
+
+    const golpeP = rayo
+      .intersectObjects(pantallas.map((p) => p.objeto), true)
+      .find((h) => h.object.userData.pantalla);
+    if (golpeP) {
+      const pantalla = pantallas.find((p) => golpeP.object.parent === p.objeto);
+      if (pantalla) {
+        mejor = golpeP.distance;
+        res = { tipo: "pantalla", pantalla };
+      }
+    }
+
+    // Nodos: primero la esfera envolvente de cada grafo, que es barata; el detalle solo
+    // en los grafos que el rayo atraviesa.
+    for (const g3d of vivos()) {
+      const bs = g3d.esferas.boundingSphere;
+      if (!bs) continue;
+      esfera.copy(bs).applyMatrix4(g3d.esferas.matrixWorld);
+      if (!rayo.ray.intersectsSphere(esfera)) continue;
+      const h = rayo.intersectObject(g3d.esferas, false)[0];
+      if (h && h.instanceId !== undefined && h.distance < mejor) {
+        mejor = h.distance;
+        res = { tipo: "nodo", g3d, i: h.instanceId };
+      }
+    }
+    if (res) return res;
+
+    // Sin nada exacto bajo la mira: la isla hacia la que miras, si está cerca y centrada.
+    const dir = rayo.ray.direction;
+    let mejorIsla = null;
+    let mejorCos = 0.93;
+    for (const isla of islas) {
+      const hacia = isla.g3d.objeto.getWorldPosition(new THREE.Vector3()).sub(camara.position);
+      const d = hacia.length();
+      const cos = hacia.normalize().dot(dir);
+      if (d < rayo.far / 2 && cos > mejorCos) {
+        mejorCos = cos;
+        mejorIsla = isla;
+      }
+    }
+    return mejorIsla ? { tipo: "isla", isla: mejorIsla } : null;
+  }
+
+  /** El grafo al que afectan Q/E y la rueda según lo apuntado. */
+  function grafoApuntado() {
+    if (!apuntado) return null;
+    if (apuntado.tipo === "nodo") return apuntado.g3d;
+    if (apuntado.tipo === "isla") return apuntado.isla.g3d;
+    return apuntado.pantalla.grafo3d;
+  }
+  /** El repo de lo apuntado, para abrirlo en VS Code. */
+  function repoApuntado() {
+    const g = grafoApuntado();
+    return g ? g.grafo : null;
+  }
+
+  function describir() {
+    if (!apuntado) return "";
+    if (apuntado.tipo === "nodo") {
+      const { g3d, i } = apuntado;
+      const n = g3d.grafo.nodos[i];
+      if (g3d.grafo.fuente === "carpetas") return `${g3d.grafo.nombre} · ${n.id}${n.fanOut ? ` · contiene ${n.fanOut}` : ""}`;
+      return `${g3d.grafo.nombre} · ${n.id} · lo importan ${n.fanIn} · importa ${n.fanOut}` +
+        (n.enCiclo ? " · EN CICLO" : "");
+    }
+    if (apuntado.tipo === "isla") {
+      return fondo
+        ? `${apuntado.isla.grafo.nombre} — doble clic: ir`
+        : `${apuntado.isla.grafo.nombre} — Enter: abrir en VS Code · Q/E: girar · rueda: tamaño`;
+    }
+    const p = apuntado.pantalla;
+    const enter = p.hwnd === null ? "Enter: ir a VS Code" : puente?.conectado ? "Enter: escribir en ella" : "sin puente";
+    return `${p.repo ?? "sin repo"} · ${p.titulo} — ${enter} · mantén clic: mover · rueda: tamaño · G: grafo · X: cerrar`;
+  }
+
+  // --- acciones -----------------------------------------------------------------------------
+  /** @type {ReturnType<typeof setTimeout> | undefined} */
+  let temporizadorAviso;
+  /** @param {string} texto */
+  function avisar(texto) {
+    ui.aviso.textContent = texto;
+    ui.aviso.hidden = false;
+    clearTimeout(temporizadorAviso);
+    temporizadorAviso = setTimeout(() => (ui.aviso.hidden = true), 6000);
+  }
+
+  /** @type {{repo: string, cuando: number} | null} */
+  let ultimoAbierto = null;
+
+  /** @param {GrafoExportado} grafo */
+  function abrirEnVSCode(grafo) {
+    const enlace = document.createElement("a");
+    enlace.href = "vscode://file/" + grafo.raiz.replace(/\\/g, "/");
+    enlace.click();
+    ultimoAbierto = { repo: grafo.nombre, cuando: Date.now() };
+    // Si ya está abierto, VS Code solo trae esa ventana al frente: es la forma de escribir en
+    // una pantalla, porque el navegador no puede reenviarle teclado ni ratón (SCOPE, fase 2).
+    const yaCapturado = pantallas.some((p) => p.repo === grafo.nombre);
+    avisar(yaCapturado ? `Yendo a VS Code (${grafo.nombre})… Alt+Tab para volver al mundo.` : `Abriendo ${grafo.nombre} en VS Code…`);
+    // VS Code se abre en el escritorio, encima del mundo: el aviso útil es al volver aquí.
+    if (!yaCapturado) window.addEventListener("focus", () => avisar(
+      `Pulsa N y elige la ventana de VS Code de ${grafo.nombre}: se queda dentro del mundo, detrás de él en el escritorio.`,
+    ), { once: true });
+  }
+
+  /** @param {string} [recienAbierto] lo que se acaba de abrir desde el panel: su ventana aún puede tardar */
+  async function nuevaPantalla(recienAbierto) {
+    if (!puedeCapturar()) {
+      avisar("Aquí el navegador no deja capturar ventanas. Abre el mundo con `npm run mundo`.");
+      return;
+    }
+    mirar.unlock(); // el selector del sistema necesita el ratón
+    if (recienAbierto) avisar(`Abriendo ${recienAbierto}: elige su ventana en el selector cuando aparezca (pestaña Ventana).`);
+    let captura;
+    try {
+      captura = await capturarVentana();
+      // Edge no da el título de la ventana, sino su HWND: el título se lo pide al puente.
+      if (puente?.conectado && captura.hwnd !== null) captura.titulo = (await puente.titulo(captura.hwnd)) ?? captura.titulo;
+    } catch (e) {
+      // NotAllowedError es cerrar el selector; cualquier otro es un fallo y se enseña tal cual.
+      const err = /** @type {Error} */ (e);
+      avisar(err.name === "NotAllowedError" ? "Captura cancelada." : `No se pudo capturar: ${err.name}: ${err.message}`);
+      return;
+    }
+    colocarPantalla(captura);
+  }
+
+  /** @param {Parameters<typeof crearPantalla>[0]} captura */
+  function colocarPantalla(captura) {
+    const p = crearPantalla(captura);
+    const dir = camara.getWorldDirection(new THREE.Vector3());
+    p.objeto.position.copy(camara.position).addScaledVector(dir, 5);
+    p.objeto.lookAt(camara.position);
+
+    let repo = repoDeTitulo(captura.titulo, nombres);
+    let porque = "por el título";
+    if (!repo && ultimoAbierto && Date.now() - ultimoAbierto.cuando < RECIENTE_MS) {
+      repo = ultimoAbierto.repo;
+      porque = "porque es lo último que abriste";
+    }
+    p.enganchar(repo ? grafoDe(repo) : null);
+    escena.add(p.objeto);
+    pantallas.push(p);
+    p.alTerminar(() => quitar(p));
+    avisar(repo
+      ? `Pantalla con el grafo de ${repo} (${porque}). Si no es, apunta y pulsa G. Clic para volver a entrar.`
+      : `No reconozco el repo en «${captura.titulo}»: apunta a la pantalla y pulsa G. Clic para volver a entrar.`);
+    return p;
+  }
+
+  if (opciones.vista === "demo") {
+    // Una pantalla de VS Code "abierta" en galaxy-brain (o el primer repo), vista de lado
+    // para que se vea el grafo detrás y encima.
+    ui.portada.hidden = true;
+    const repo = porNombre.has("galaxy-brain") ? "galaxy-brain" : nombres[0];
+    capturaDeDemostracion(`cli.py - ${repo} - Visual Studio Code`).then((c) => {
+      colocarPantalla(c);
+      camara.position.set(3.2, 2.6, 2.2);
+      camara.lookAt(0, 3.2, -5.5);
+    });
+  }
+
+  /** @param {Pantalla} p */
+  function quitar(p) {
+    const i = pantallas.indexOf(p);
+    if (i === -1) return;
+    if (escribiendo === p) dejarDeEscribir();
+    pantallas.splice(i, 1);
+    if (agarrada?.pantalla === p) agarrada = null;
+    if (encendido?.g3d === p.grafo3d) encendido = null;
+    p.cerrar();
+  }
+
+  // --- escribir dentro de una pantalla (fase 2, ADR 0002) -----------------------------------
+  // Con el puente, Enter sobre una pantalla aparca la ventana real fuera de la vista y le da
+  // el teclado de verdad; el ratón sobre la pantalla se traduce a su imagen y se le envía. El
+  // teclado ya no es del mundo: se vuelve con clic fuera de la pantalla o el atajo del puente.
+  // En el fondo (Lively) no hay teclado que dar: ni se intenta.
+  // Título único: por él encuentra el puente la ventana del mundo (no hay otra forma de que una
+  // página sepa su HWND). Nadie lo ve: el mundo va a pantalla completa.
+  if (!fondo) document.title = `mirador · ${Math.random().toString(36).slice(2, 10)}`;
+  const puente = fondo ? null : crearPuente(document.title);
+  puente?.alSalir(() => dejarDeEscribir(false));
+
+  // F: el panel del escritorio. Lo que se abre desde él sale en el selector de ventanas justo
+  // después (el clic en el panel es el gesto que el navegador exige para capturar).
+  const panel = ui.ficheros && !fondo
+    ? crearPanelFicheros(ui.ficheros, () => puente, (nombre) => nuevaPantalla(nombre), avisar, () => {
+      if (!mirar.isLocked && !escribiendo) ui.portada.hidden = false;
+    })
+    : null;
+  document.addEventListener("keydown", (e) => {
+    // Con el ratón aún bloqueado es la misma F que acaba de abrirlo: no se cierra.
+    if (panel?.abierto && !mirar.isLocked && (e.code === "Escape" || e.code === "KeyF")) panel.cerrar();
+  });
+  /** @type {Pantalla | null} */
+  let escribiendo = null;
+  const rayoRaton = new THREE.Raycaster();
+  const ndc = new THREE.Vector2();
+
+  /** @param {Pantalla} p */
+  async function escribirEn(p) {
+    if (!puente?.conectado || p.hwnd === null) return;
+    escribiendo = p;
+    document.body.dataset.escribiendo = "";
+    mirar.unlock();
+    const error = await puente.entrar(p.hwnd);
+    if (error) {
+      dejarDeEscribir(false);
+      avisar(`No se pudo entrar en la pantalla: ${error}`);
+      return;
+    }
+    const atajo = puente.atajo ? ` o ${puente.atajo}` : "";
+    avisar(`Escribiendo en ${p.repo ?? p.titulo}. Clic fuera de la pantalla${atajo} para volver.`);
+  }
+
+  function dejarDeEscribir(avisarAlPuente = true) {
+    if (!escribiendo) return;
+    escribiendo = null;
+    delete document.body.dataset.escribiendo;
+    if (avisarAlPuente) puente?.salir();
+    ui.portada.hidden = false; // clic para volver a moverse
+  }
+
+  /** Dónde cae el ratón sobre la imagen de la pantalla, 0..1 desde arriba a la izquierda. @param {MouseEvent} e */
+  function uvBajo(e) {
+    if (!escribiendo) return null;
+    ndc.set((e.clientX / window.innerWidth) * 2 - 1, -(e.clientY / window.innerHeight) * 2 + 1);
+    rayoRaton.setFromCamera(ndc, camara);
+    const h = rayoRaton.intersectObject(escribiendo.lienzo, false)[0];
+    return h?.uv ? { u: h.uv.x, v: 1 - h.uv.y } : null;
+  }
+
+  /**
+   * @param {MouseEvent} e
+   * @param {"mover" | "bajar" | "doble" | "subir" | "rueda"} tipo
+   * @param {number} [delta]
+   */
+  function reenviar(e, tipo, delta) {
+    const uv = uvBajo(e);
+    if (uv && puente && escribiendo?.hwnd != null) puente.raton(escribiendo.hwnd, tipo, uv.u, uv.v, e, delta);
+    return uv;
+  }
+
+  const superficie = renderer.domElement;
+  superficie.addEventListener("mousemove", (e) => reenviar(e, "mover"));
+  superficie.addEventListener("mousedown", (e) => {
+    if (!escribiendo) return;
+    // Fuera de la pantalla: se vuelve al mundo.
+    if (!reenviar(e, e.detail === 2 ? "doble" : "bajar")) dejarDeEscribir();
+  });
+  superficie.addEventListener("mouseup", (e) => reenviar(e, "subir"));
+  superficie.addEventListener("wheel", (e) => reenviar(e, "rueda", -Math.sign(e.deltaY) * 120));
+  superficie.addEventListener("contextmenu", (e) => { if (escribiendo) e.preventDefault(); });
+
+  // --- regenerar los grafos sin salir (R, o solos) --------------------------------------------
+  // El puente corre `npm run grafo` (con R, al entrar y cuando aparece un repo en dev/) y avisa;
+  // el fondo, que no tiene puente, relee grafos.js cada tanto. Las islas se rehacen en el sitio:
+  // las pantallas capturadas no sobrevivirían a recargar la página.
+  async function releerGrafos() {
+    const antes = [...nombres];
+    await releerScript("grafos.js");
+    const nuevos = window.GB_GRAFOS;
+    if (!nuevos?.length || firmaGrafos(nuevos) === firma) return false;
+    apuntado = null;
+    encendido = null;
+    ponerIslas(nuevos);
+    // Cada pantalla vuelve a enganchar su repo con los datos nuevos (o se queda sin él si ya no hay isla).
+    for (const p of pantallas) if (p.repo) p.enganchar(grafoDe(p.repo));
+    aplicarAgentes();
+    const recien = islasNuevas(antes, nombres);
+    avisar(recien.length
+      ? `Isla${recien.length === 1 ? "" : "s"} nueva${recien.length === 1 ? "" : "s"}: ${recien.join(", ")}`
+      : `Islas al día: ${nombres.length} repos`);
+    return true;
+  }
+  let esperandoR = false;
+  puente?.alGrafos(async (r) => {
+    if (!r.ok) {
+      avisar(`No se pudieron regenerar los grafos: ${r.resumen}`);
+    } else if (!(await releerGrafos()) && esperandoR) {
+      avisar("Grafos regenerados: nada nuevo");
+    }
+    esperandoR = false;
+  });
+  if (fondo) setInterval(releerGrafos, RELEER_FONDO_MS);
+
+  async function regenerar() {
+    if (!puente?.conectado) {
+      avisar("Sin puente no se pueden regenerar los grafos: `npm run grafo` y vuelve a entrar.");
+      return;
+    }
+    esperandoR = true;
+    const empezado = await puente.regenerar();
+    avisar(empezado ? "Regenerando grafos… (alrededor de un minuto; puedes seguir)" : "Ya se estaban regenerando: se repite al acabar.");
+  }
+
+  // --- agentes de gb sobre los nodos --------------------------------------------------------
+  // El puente pregunta `gb who --json` cuando cambia algo en un repo y avisa: los módulos que
+  // toca cada agente se encienden con su color y laten; encima, su nombre. Solo en la vista gb:
+  // en el árbol de carpetas los nodos no son módulos.
+  /** @type {Map<string, import("./puente.js").EstadoAgentes>} */
+  const agentesDe = new Map();
+  /** @type {WeakMap<Grafo3D, THREE.Sprite[]>} */
+  const carteles = new WeakMap();
+  const colorAgente = (/** @type {string} */ nombre) => new THREE.Color().setHSL(tonoDeAgente(nombre), 0.95, 0.62);
+
+  /** @param {Grafo3D} g3d */
+  function encenderGrafo(g3d) {
+    for (const c of carteles.get(g3d) ?? []) {
+      g3d.objeto.remove(c);
+      c.material.map?.dispose();
+      c.material.dispose();
+    }
+    carteles.delete(g3d);
+    const estado = agentesDe.get(g3d.grafo.nombre);
+    if (!estado?.agentes.length || g3d.grafo.fuente !== "gb") {
+      g3d.iluminar(new Map());
+      return;
+    }
+    const enc = encendidosPorAgentes(g3d.grafo.nodos.map((n) => n.id), estado.agentes);
+    g3d.iluminar(new Map([...enc].map(([i, e]) => [i,
+      e.cruce ? new THREE.Color("#ffffff") : colorAgente(e.agentes[0]).multiplyScalar(e.commit ? 0.55 : 1)])));
+    // Un cartel por agente, encima de su primer módulo encendido.
+    /** @type {THREE.Sprite[]} */
+    const lista = [];
+    for (const a of estado.agentes) {
+      const i = [...enc].find(([, e]) => e.agentes.includes(a.nombre))?.[0];
+      if (i === undefined) continue;
+      const c = rotulo([`🤖 ${a.nombre}`, `${(a.nodos ?? []).length} módulos tocando`], { alto: 0.55, color: `#${colorAgente(a.nombre).getHexString()}` });
+      c.position.copy(g3d.posicion(i)).add(new THREE.Vector3(0, 0.9, 0));
+      g3d.objeto.add(c);
+      lista.push(c);
+    }
+    carteles.set(g3d, lista);
+  }
+  function aplicarAgentes() {
+    for (const g3d of vivos()) encenderGrafo(g3d);
+  }
+  puente?.alAgentes((m) => {
+    const antes = agentesDe.get(m.repo)?.agentes.length ?? 0;
+    agentesDe.set(m.repo, m);
+    aplicarAgentes();
+    if (!antes && m.agentes.length) avisar(`🤖 ${m.agentes.map((a) => a.nombre).join(", ")} trabajando en ${m.repo}`);
+  });
+
+  // --- ficha de un nodo (clic) ------------------------------------------------------------
+  /** @param {Grafo3D} g3d @param {number} i */
+  function fichaDe(g3d, i) {
+    if (!ui.nodo) return;
+    mostrarNodo(ui.nodo, g3d.grafo, i, agentesDe.get(g3d.grafo.nombre)?.agentes ?? []);
+    encendido?.g3d.resaltar(null);
+    g3d.resaltar(i);
+    encendido = { g3d, i };
+  }
+  function cerrarFicha() {
+    if (ui.nodo) ui.nodo.hidden = true;
+  }
+  if (fondo) {
+    // En el fondo, un clic (sin arrastrar: arrastrar es girar) sobre un nodo abre su ficha.
+    let desde = { x: 0, y: 0 };
+    renderer.domElement.addEventListener("pointerdown", (e) => (desde = { x: e.clientX, y: e.clientY }));
+    renderer.domElement.addEventListener("pointerup", (e) => {
+      if (Math.hypot(e.clientX - desde.x, e.clientY - desde.y) > 5 || e.button !== 0) return;
+      if (apuntado?.tipo === "nodo") fichaDe(apuntado.g3d, apuntado.i);
+      else cerrarFicha();
+    });
+  }
+
+  /** @param {string} codigo */
+  function accion(codigo) {
+    if (codigo === "KeyN") nuevaPantalla();
+    else if (codigo === "KeyF" && panel) {
+      panel.abrir();
+      mirar.unlock();
+    }
+    else if (codigo === "KeyR") regenerar();
+    else if (codigo === "KeyT") {
+      verCarpetas = !verCarpetas;
+      apuntado = null;
+      encendido = null;
+      cerrarFicha();
+      ponerIslas(actuales);
+      for (const p of pantallas) if (p.repo) p.enganchar(grafoDe(p.repo));
+      aplicarAgentes();
+      avisar(verCarpetas ? "Vista: árbol de carpetas (T para volver a galaxy-brain)" : "Vista: galaxy-brain (dependencias)");
+    }
+    else if (codigo === "KeyH") ui.ayuda.hidden = !ui.ayuda.hidden;
+    else if (codigo === "Enter" && apuntado?.tipo === "pantalla" && apuntado.pantalla.hwnd !== null) {
+      // Una ventana real: se escribe EN ella, nunca se abre otra (primer uso real: Enter abría un
+      // VS Code nuevo porque la página no tenía puente).
+      if (puente?.conectado) escribirEn(apuntado.pantalla);
+      else avisar("Sin puente no se puede escribir en la pantalla. Sal (Esc dos veces) y vuelve a entrar desde el clic derecho del escritorio.");
+    } else if (codigo === "Enter") {
+      const g = repoApuntado();
+      if (g) abrirEnVSCode(g);
+      else avisar("Mira hacia una isla (o su grafo) para abrir ese repo.");
+    } else if (apuntado?.tipo === "pantalla") {
+      const p = apuntado.pantalla;
+      if (codigo === "KeyX") quitar(p);
+      if (codigo === "KeyV") avisar(p.alternarGrafo() ? "Grafo encima de la ventana" : "Grafo quitado (V para ponerlo)");
+      if (codigo === "KeyG") {
+        if (encendido?.g3d === p.grafo3d) encendido = null;
+        const repo = siguienteRepo(p.repo, nombres);
+        p.enganchar(repo ? grafoDe(repo) : null);
+        avisar(repo ? `Grafo de ${repo}` : "Pantalla sin grafo");
+      }
+    }
+  }
+
+  /** @type {{pantalla: Pantalla, distancia: number} | null} */
+  let agarrada = null;
+  document.addEventListener("mousedown", (e) => {
+    if (!mirar.isLocked || e.button !== 0) return;
+    // Clic con la mira en un nodo: su ficha. En el vacío: se cierra.
+    if (apuntado?.tipo === "nodo") return fichaDe(apuntado.g3d, apuntado.i);
+    if (apuntado?.tipo !== "pantalla") return cerrarFicha();
+    const d = apuntado.pantalla.objeto.position.distanceTo(camara.position);
+    agarrada = { pantalla: apuntado.pantalla, distancia: d };
+  });
+  document.addEventListener("mouseup", () => (agarrada = null));
+  document.addEventListener("wheel", (e) => {
+    if (!mirar.isLocked) return; // en el fondo la rueda es de la órbita
+    const f = e.deltaY < 0 ? 1.1 : 1 / 1.1;
+    if (agarrada) {
+      // Con una pantalla en la mano, la rueda la acerca o la aleja.
+      agarrada.distancia = THREE.MathUtils.clamp(agarrada.distancia * f, 1.5, 60);
+    } else if (apuntado?.tipo === "pantalla") {
+      const s = THREE.MathUtils.clamp(apuntado.pantalla.objeto.scale.x * f, 0.3, 8);
+      apuntado.pantalla.objeto.scale.setScalar(s);
+    } else {
+      const g = grafoApuntado();
+      if (g) g.objeto.scale.setScalar(THREE.MathUtils.clamp(g.objeto.scale.x * f, 0.3, 4));
+    }
+  });
+
+  window.addEventListener("resize", () => {
+    camara.aspect = window.innerWidth / window.innerHeight;
+    camara.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
+
+  // --- bucle --------------------------------------------------------------------------------
+  const reloj = new THREE.Clock();
+  const dir = new THREE.Vector3();
+  let fotograma = 0;
+  renderer.setAnimationLoop(() => {
+    const dt = Math.min(reloj.getDelta(), 0.1);
+    if (document.hidden) return;
+
+    if (mirar.isLocked) {
+      const correr = teclas.has("ShiftLeft") || teclas.has("ShiftRight") ? 3 : 1;
+      const v = VELOCIDAD * correr * dt;
+      if (teclas.has("KeyW")) mirar.moveForward(v);
+      if (teclas.has("KeyS")) mirar.moveForward(-v);
+      if (teclas.has("KeyD")) mirar.moveRight(v);
+      if (teclas.has("KeyA")) mirar.moveRight(-v);
+      if (teclas.has("Space")) camara.position.y += v;
+      if (teclas.has("KeyC")) camara.position.y = Math.max(0.6, camara.position.y - v);
+    }
+
+    if (orbita) {
+      if (vuelo) {
+        const k = 1 - Math.exp(-dt * 2.5);
+        orbita.target.lerp(vuelo.objetivo, k);
+        camara.position.lerp(vuelo.posicion, k);
+        if (camara.position.distanceTo(vuelo.posicion) < 0.2) {
+          if (vuelo.aerea) orbita.autoRotate = true;
+          vuelo = null;
+        }
+      } else if (!orbita.autoRotate && performance.now() - ultimoToque > REPOSO_MS) {
+        // Quieto un rato: si estabas cerca de una isla, de vuelta a la vista aérea; si no, gira.
+        if (volverAerea && orbita.getDistance() < 60) volverAerea();
+        else orbita.autoRotate = true;
+      }
+      orbita.update(dt);
+    }
+
+    for (const { g3d } of islas) g3d.objeto.rotation.y += dt * 0.08;
+    const t = reloj.elapsedTime;
+    for (const g3d of vivos()) g3d.latir(t);
+    const giro = (teclas.has("KeyE") ? 1 : 0) - (teclas.has("KeyQ") ? 1 : 0);
+    if (giro) {
+      const g = grafoApuntado();
+      if (g) g.objeto.rotation.y += giro * dt * 1.6;
+    }
+
+    if (agarrada) {
+      camara.getWorldDirection(dir);
+      agarrada.pantalla.objeto.position.copy(camara.position).addScaledVector(dir, agarrada.distancia);
+      agarrada.pantalla.objeto.lookAt(camara.position);
+    }
+
+    // Apuntar cuesta rayos contra cientos de esferas: uno de cada dos fotogramas sobra.
+    if (fotograma++ % 2 === 0) {
+      apuntado = agarrada ? { tipo: "pantalla", pantalla: agarrada.pantalla } : hayPuntero ? apuntar() : null;
+      const nuevo = apuntado?.tipo === "nodo" ? apuntado : null;
+      if (nuevo?.g3d !== encendido?.g3d || nuevo?.i !== encendido?.i) {
+        encendido?.g3d.resaltar(null);
+        nuevo?.g3d.resaltar(nuevo.i);
+        encendido = nuevo ? { g3d: nuevo.g3d, i: nuevo.i } : null;
+      }
+      ui.info.textContent = describir();
+      ui.info.hidden = !apuntado;
+    }
+
+    renderer.render(escena, camara);
+  });
+}
