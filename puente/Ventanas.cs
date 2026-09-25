@@ -72,7 +72,10 @@ static class Ventanas
             if (mundo == IntPtr.Zero || !IsWindow(mundo)) return "the space hasn't connected to the bridge yet: wait a moment";
             if (mundo == h) return "that window is already in front: go back to the space and press Enter";
             if (IsIconic(h)) ShowWindow(h, SW_SHOWNOACTIVATE); // minimizada no se captura ni se pinta
-            Mostrar(h, minimizar: false); // si estaba escondida, vuelve a ser una ventana normal
+            // Si estaba escondida (se minimizó con el mundo abierto) se QUEDA escondida: el teclado le
+            // llega igual por estar activa, y los clics sobre la pantalla 3D van por mensajes.
+            // Devolverla hacía que "cada vez que interactúo con una pantalla, la abre" (uso real).
+            // Se minimiza de verdad al cerrar el mundo, como antes.
 
             SetWindowPos(mundo, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
             PonerNoActivable(mundo, true);
@@ -224,6 +227,26 @@ static class Ventanas
         }
     }
 
+    /// <summary>
+    /// Una ventana nueva aparece mientras se escribe en una pantalla. Si es del mismo programa
+    /// (un diálogo, un menú, un desplegable), se pone por encima del mundo: si no, se abría detrás,
+    /// invisible, y el programa se quedaba esperando (uso real: "Open Folder no me deja abrir
+    /// ninguna carpeta" en VS Code; ADR 0002 ya lo dejaba por medir).
+    /// </summary>
+    public static void AlMostrarse(IntPtr h)
+    {
+        lock (cerrojo)
+        {
+            if (objetivo == IntPtr.Zero || h == objetivo || h == mundo || !IsWindow(h)) return;
+            if (GetAncestor(h, 2 /*GA_ROOT*/) != h) return; // solo ventanas de primer nivel
+            GetWindowThreadProcessId(h, out uint suyo);
+            GetWindowThreadProcessId(objetivo, out uint deLaPantalla);
+            if (suyo != deLaPantalla) return;
+            SetWindowPos(h, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+            Registro.Anotar($"ventana nueva de la pantalla {objetivo}: {h} \"{Titulo(h)}\" puesta por encima del mundo");
+        }
+    }
+
     /// <summary>Al volver al mundo, las pantallas minimizadas con el mundo cerrado u oculto se esconden vivas.</summary>
     public static void AlActivar(IntPtr h)
     {
@@ -343,6 +366,8 @@ static class Ventanas
     [StructLayout(LayoutKind.Sequential)] struct POINT { public int X, Y; }
 
     [DllImport("user32.dll")] static extern bool IsWindow(IntPtr h);
+    [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
+    [DllImport("user32.dll")] static extern IntPtr GetAncestor(IntPtr h, uint f);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetClassName(IntPtr h, StringBuilder s, int n);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern IntPtr FindWindow(string? clase, string titulo);
     [DllImport("user32.dll")] static extern bool SetLayeredWindowAttributes(IntPtr h, uint clave, byte alfa, uint f);

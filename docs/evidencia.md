@@ -10,6 +10,23 @@ Cada medición real: qué se probó, qué salió, qué cambió por ello.
 
 ---
 
+## 2026-09-25 · VS Code dentro del mundo: ventanas nuevas, minimizadas y menús — FUNCIONA a medias
+
+- **Negativo:** F → Visual Studio Code "no abría" ventana nueva. Medido: `Code.exe --new-window`
+  arranca otro VS Code entero que luego se lo pasa al abierto, y la ventana tardaba más de 6 s;
+  `bin\code.cmd --new-window`, al momento (2 → 3 ventanas en menos de 6 s). Ahora, para VS Code,
+  el puente usa `code.cmd` (panel F y Enter sobre una isla).
+- **Negativo:** Enter sobre una pantalla minimizada (escondida) la devolvía al escritorio: "cada vez
+  que interactúo con una pantalla, la abre". Ya no: sigue escondida (el teclado le llega por estar
+  activa, los clics van por mensajes) y se minimiza de verdad al cerrar el mundo.
+- **Negativo:** "Open Folder" no dejaba abrir nada: el diálogo y los menús son ventanas aparte y
+  se abrían detrás del mundo. El puente sube por encima del mundo las ventanas nuevas del mismo
+  programa mientras se escribe (en el registro salieron varias sin título al abrir menús), pero
+  aparecen donde está la ventana real, no sobre la pantalla 3D. Lo robusto es que VS Code lo pinte
+  dentro: `"window.menuStyle": "custom"` en la configuración del usuario (elegido: solo menús;
+  `files.simpleDialog.enable` y `window.dialogStyle` se descartaron por cambiar su VS Code de siempre).
+- **Sin probar:** los menús con `menuStyle: custom` desde el mundo (hace falta recargar VS Code).
+
 ## 2026-09-25 · Enter: "no está conectado al bridge" y la ventana "a full" delante — ARREGLADO a medias
 
 - **Negativo:** con el puente ya en marcha, la página se presentaba nada más conectar y Edge aún no

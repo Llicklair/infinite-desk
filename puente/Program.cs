@@ -86,6 +86,7 @@ new Thread(() =>
     // Y los minimizados: fuera de contexto, el evento también llega por la cola de este hilo.
     Win.SetWinEventHook(0x0016 /*EVENT_SYSTEM_MINIMIZESTART*/, 0x0016, IntPtr.Zero, Win.alMinimizar, 0, 0, 0);
     Win.SetWinEventHook(0x0003 /*EVENT_SYSTEM_FOREGROUND*/, 0x0003, IntPtr.Zero, Win.alActivar, 0, 0, 0);
+    Win.SetWinEventHook(0x8002 /*EVENT_OBJECT_SHOW*/, 0x8002, IntPtr.Zero, Win.alMostrarse, 0, 0, 0);
     listo.Set();
     while (Win.GetMessage(out var m, IntPtr.Zero, 0, 0) > 0)
         if (m.message == 0x0312) { Ventanas.Salir(); _ = Difundir(new { evento = "salir" }); }
@@ -214,5 +215,6 @@ static class Win
     // Referencia viva: si el GC se lleva el delegado, Windows llama a la nada.
     public static readonly WinEvento alMinimizar = (_, _, h, objeto, _, _, _) => { if (objeto == 0) Ventanas.AlMinimizar(h); };
     public static readonly WinEvento alActivar = (_, _, h, objeto, _, _, _) => { if (objeto == 0) Ventanas.AlActivar(h); };
+    public static readonly WinEvento alMostrarse = (_, _, h, objeto, hijo, _, _) => { if (objeto == 0 && hijo == 0) Ventanas.AlMostrarse(h); };
     [DllImport("user32.dll")] public static extern IntPtr SetWinEventHook(uint min, uint max, IntPtr mod, WinEvento f, uint pid, uint hilo, uint flags);
 }

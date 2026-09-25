@@ -52,7 +52,9 @@ static class Escritorio
             // la ventana que ya hay (que suele ser ya una pantalla). Con --new-window, una nueva.
             if (completa.EndsWith(".lnk", StringComparison.OrdinalIgnoreCase) && DestinoDe(completa) is { } destino
                 && UnaInstancia.Contains(Path.GetFileName(destino).ToLowerInvariant()))
-                return Lanzar(destino, "--new-window");
+                return Path.GetFileName(destino).Equals("code.exe", StringComparison.OrdinalIgnoreCase)
+                    ? NuevaVentanaDeVSCode(destino, null)
+                    : Lanzar(destino, "--new-window");
             return Lanzar(completa, null);
         }
         catch (Exception e) { return e.Message; }
@@ -80,13 +82,25 @@ static class Escritorio
             var code = new[] { Path.Combine(local, @"Programs\Microsoft VS Code\Code.exe"), Path.Combine(pf, @"Microsoft VS Code\Code.exe") }
                 .FirstOrDefault(File.Exists);
             if (code == null) return "VS Code not found";
-            var psi = new ProcessStartInfo(code) { UseShellExecute = false };
-            psi.ArgumentList.Add("--new-window");
-            psi.ArgumentList.Add(completa);
-            Process.Start(psi);
-            return null;
+            return NuevaVentanaDeVSCode(code, completa);
         }
         catch (Exception e) { return e.Message; }
+    }
+
+    /// <summary>
+    /// Una ventana NUEVA de VS Code (con una carpeta, o vacía). Por su lanzador `bin\code.cmd`, que
+    /// le pasa el encargo a la instancia abierta al momento: `Code.exe --new-window` arranca otro
+    /// VS Code entero que luego se lo pasa, y la ventana tardaba más de 6 s (medido), así que
+    /// parecía que no se abría (uso real: "sigue sin dejarme abrir nuevas instancias desde la F").
+    /// </summary>
+    static string? NuevaVentanaDeVSCode(string codeExe, string? carpeta)
+    {
+        var cli = Path.Combine(Path.GetDirectoryName(codeExe)!, "bin", "code.cmd");
+        var psi = new ProcessStartInfo(File.Exists(cli) ? cli : codeExe) { UseShellExecute = false, CreateNoWindow = true };
+        psi.ArgumentList.Add("--new-window");
+        if (carpeta != null) psi.ArgumentList.Add(carpeta);
+        Process.Start(psi);
+        return null;
     }
 
     /// <summary>A qué apunta un .lnk (con WScript.Shell, que viene con Windows), o null.</summary>
