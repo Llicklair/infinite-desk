@@ -20,9 +20,13 @@ Win.SetProcessDpiAwarenessContext(-4 /*DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V
 
 // Otro oficio del mismo ejecutable: el mundo como fondo animado (ADR 0004). No abre el servidor.
 if (args.Contains("--fondo"))
+{
+    // El fondo lleva su propio registro (fondo.log): con el mismo fichero, el puente se lo borraba.
+    if (!args.Contains("--parar")) Registro.Empezar("fondo.log");
     return args.Contains("--parar") ? Fondo.Parar() : Fondo.Correr(args.FirstOrDefault(a => !a.StartsWith("--")) ?? BuscarMundo(),
         // Diagnóstico: --solo-ventanas (nuestras ventanas en la WorkerW, sin WebView2) o --solo-webview (al revés).
         args.Contains("--solo-ventanas") ? "ventanas" : args.Contains("--solo-webview") ? "webview" : "");
+}
 
 string mundo = args.Length > 0 ? args[0] : BuscarMundo();
 Registro.Empezar();
@@ -40,6 +44,10 @@ if (token.Length < 32)
 string config = Path.Combine(mundo, "puente-config.js");
 
 var sockets = new ConcurrentDictionary<WebSocket, byte>();
+// El título del mundo de cada conexión: con dos mundos abiertos (el clic derecho abrió otro), al
+// cerrarse el que se estaba usando se vuelve al que queda, en vez de quedarse sin mundo (uso real:
+// "the space hasn't connected to the bridge yet" con el mundo de siempre aún abierto).
+var mundosPorConexion = new ConcurrentDictionary<WebSocket, string>();
 var agentes = new Agentes(mundo, Difundir);
 var repo = Path.GetDirectoryName(Path.TrimEndingDirectorySeparator(Path.GetFullPath(mundo)))!;
 var regenerador = new Regenerador(repo, Difundir, agentes.Releer);
@@ -66,10 +74,13 @@ app.Map("/", async (HttpContext ctx) =>
     finally
     {
         sockets.TryRemove(ws, out _);
+        mundosPorConexion.TryRemove(ws, out _);
         // El mundo se cerró o recargó a mitad: que la ventana no se quede aparcada fuera, y lo
-        // escondido al minimizarlo se minimiza de verdad.
+        // escondido al minimizarlo se minimiza de verdad. Si queda otro mundo conectado, ese.
         Ventanas.Salir();
         if (sockets.IsEmpty) Ventanas.MundoCerrado();
+        else if (mundosPorConexion.Values.LastOrDefault() is { } otro && Ventanas.Presentar(otro))
+            Registro.Anotar($"se cerró un mundo; sigue el otro, \"{otro}\"");
     }
 });
 
@@ -115,13 +126,13 @@ async Task Atender(WebSocket ws)
         if (r.MessageType == WebSocketMessageType.Close) break;
         if (!r.EndOfMessage) continue; // los mensajes del mundo son pequeños
         object? respuesta;
-        try { respuesta = Responder(JsonDocument.Parse(buffer.AsMemory(0, r.Count)).RootElement); }
+        try { respuesta = Responder(JsonDocument.Parse(buffer.AsMemory(0, r.Count)).RootElement, ws); }
         catch (Exception e) { respuesta = new { ok = false, error = e.Message }; }
         if (respuesta != null) await Enviar(ws, respuesta);
     }
 }
 
-object? Responder(JsonElement m)
+object? Responder(JsonElement m, WebSocket ws)
 {
     int id = m.TryGetProperty("id", out var i) ? i.GetInt32() : 0;
     string op = m.GetProperty("op").GetString() ?? "";
@@ -143,6 +154,7 @@ object? Responder(JsonElement m)
         case "mundo":
             // La página se presenta por su título (único): su ventana pasa a ser en capas.
             var tituloMundo = m.GetProperty("titulo").GetString() ?? "";
+            mundosPorConexion[ws] = tituloMundo;
             var presentado = Ventanas.Presentar(tituloMundo);
             Registro.Anotar($"mundo \"{tituloMundo}\": {(presentado ? "ok" : "aún no está: se reintenta")}");
             // La página se presenta nada más conectar, y Edge puede tardar en poner el título en

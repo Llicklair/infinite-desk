@@ -9,9 +9,10 @@
     "mundo": "node tools/servir.mjs",
     "test": "node --test \"tests/*.test.js\"",
     "tipos": "tsc -p .",
-    "terminado": "npm run tipos && npm test && npm run grafo && npm run build && npm run puente && node tools/comprobar.mjs",
+    "terminado": "npm run tipos && npm test && npm run grafo && npm run build && npm run puente && node tools/comprobar.mjs && node tools/humo.mjs",
     "fondo": "node tools/fondo.mjs",
     "parar": "node tools/parar.mjs",
+    "diagnostico": "node tools/diagnostico.mjs",
     "puente": "dotnet build puente -c Release --nologo -v q"
   },
   "keywords": [],

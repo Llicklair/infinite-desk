@@ -10,6 +10,26 @@ Cada medición real: qué se probó, qué salió, qué cambió por ello.
 
 ---
 
+## 2026-09-25 · N no lista una ventana nueva de Chrome — CAUSA: Windows, no el puente
+
+Montaje: un selector de Edge de prueba leído por UI Automation, más IVirtualDesktopManager
+sobre cada ventana. Resultado:
+
+- El selector lista "9GAG - Google Chrome" y no "Google - Google Chrome". Descartados el orden
+  de apilado, lo tapada que esté, el estilo en capas, que no responda, el cloaking y la display
+  affinity.
+- La diferencia: la ventana que no sale no tiene escritorio virtual (GUID 0000…). Las que salen
+  están en el actual. El selector de Edge/Chrome filtra por escritorio actual.
+- Desde que el Explorador se reinició (11:37), NINGUNA ventana nueva recibe escritorio: ni un
+  Chrome abierto sin el puente, ni un WinForms propio, y tampoco el propio mundo ni las apps UWP.
+  Ocultar y mostrar, minimizar y restaurar o activar no lo cambian.
+
+Consecuencia: el puente no puede arreglarlo, porque MoveWindowToDesktop solo vale para
+ventanas propias y ni esas reciben escritorio. `npm run diagnostico` tiene ahora una sección
+"escritorios virtuales" que lo detecta. Reiniciar el Explorador (14:59) lo arregla: las ventanas
+nuevas reciben escritorio, y los Chrome que no lo tenían, también. Queda
+por confirmar si el bloqueo de la barra y esto son el mismo fallo del Explorador.
+
 ## 2026-09-25 · el mundo en otra máquina y en el día a día — MONTADO, a medias con manos
 
 - **Carpeta de proyectos por máquina:** "en una máquina limpia la ruta puede ser distinta".

@@ -82,6 +82,10 @@ decision in [docs/adr/](docs/adr/); everything measured, good and bad, is in
 
 ## If something gets stuck
 
+If the taskbar or Windows search stop responding, first run `npm run diagnostico`: it saves a
+snapshot (who has focus, what covers the taskbar, what the bridge did last) to
+`%LOCALAPPDATA%\infinite-desk` that helps find the cause. Then:
+
 `npm run parar` stops everything (the space, the bridge, the animated wallpaper) and gives back any
 window it had hidden. If the taskbar or Windows search stopped responding, add `-- --explorador`
 to restart File Explorer too. It uninstalls nothing: the wallpaper comes back at next sign-in.

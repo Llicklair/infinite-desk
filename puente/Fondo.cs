@@ -117,19 +117,6 @@ static class Fondo
         {
             oyente = new Oyente(e => { foreach (var p in pantallas) p.Raton(e); });
             reloj.Tick += (_, _) => Vigilar();
-            // Cada 5 s, qué le pasa al ratón en cada monitor (uso real: "en el principal no va").
-            var recuento = new System.Windows.Forms.Timer { Interval = 5000 };
-            recuento.Tick += (_, _) =>
-            {
-                for (int i = 0; i < pantallas.Count; i++)
-                {
-                    var q = pantallas[i];
-                    if (q.Fuera + q.Tapados + q.Enviados == 0) continue;
-                    Registro.Anotar($"fondo: ratón en monitor {i}: {q.Enviados} enviados, {q.Tapados} sobre otra ventana ({q.UltimaTapadora}), {q.Fuera} fuera");
-                    q.Fuera = q.Tapados = q.Enviados = 0;
-                }
-            };
-            recuento.Start();
             reloj.Start();
             _ = Rehacer();
         }
@@ -229,10 +216,7 @@ static class Fondo
         uint ultimoClic;
         POINT ultimoSitio;
         bool dentro;
-        /// <summary>Recuento para el registro: fuera del monitor, sobre otra ventana (y cuál), enviados.</summary>
-        public int Fuera, Tapados, Enviados;
         long ultimoMovimiento;
-        public string UltimaTapadora = "";
 
         public async Task Montar(CoreWebView2Environment entorno, IDCompositionDevice composicion, IntPtr anfitriona, string url, double escala)
         {
@@ -276,11 +260,7 @@ static class Fondo
             if (botones == 0 && Environment.TickCount64 - ultimoMovimiento < 16) return;
             if (botones == 0) ultimoMovimiento = Environment.TickCount64;
             GetCursorPos(out var p);
-            bool enMonitor = p.X >= monitor.Left && p.X < monitor.Right && p.Y >= monitor.Top && p.Y < monitor.Bottom;
-            bool aqui = enMonitor && SobreElEscritorio(p);
-            if (!enMonitor) Fuera++;
-            else if (!aqui) { Tapados++; UltimaTapadora = ClaseEn(p); }
-            else Enviados++;
+            bool aqui = p.X >= monitor.Left && p.X < monitor.Right && p.Y >= monitor.Top && p.Y < monitor.Bottom && SobreElEscritorio(p);
             // A la página como MENSAJES, nunca como entrada (SendMouseInput): con entrada de verdad el
             // navegador capturaba el ratón en su ventana invisible y Windows dejaba de responder a
             // los clics (barra de tareas, iconos) hasta cerrar el fondo (uso real).
@@ -382,16 +362,6 @@ static class Fondo
         }
     }
 
-    static string ClaseEn(POINT p)
-    {
-        var c = new StringBuilder(64);
-        var t = new StringBuilder(64);
-        var h = GetAncestor(WindowFromPoint(p), 2 /*GA_ROOT*/);
-        GetClassName(h, c, c.Capacity);
-        GetWindowText(h, t, t.Capacity);
-        return $"{c} '{t}'";
-    }
-
     /// <summary>
     /// El cursor está sobre el escritorio (los iconos o el fondo), no sobre otra ventana. No vale
     /// WindowFromPoint: no se salta las ventanas que el ratón de verdad atraviesa, y WebView2 crea
@@ -418,16 +388,31 @@ static class Fondo
         return escritorio;
     }
 
-    /// <summary>¿Tapa la ventana activa toda esta área de trabajo (el mundo, algo maximizado)? Entonces no se ve.</summary>
+    /// <summary>
+    /// ¿Hay alguna ventana visible y opaca que cubra toda esta área de trabajo (el mundo a
+    /// pantalla completa, algo maximizado)? Entonces el fondo no se ve y pintarlo solo gasta. No
+    /// basta mirar la ACTIVA: escribiendo en una pantalla la activa es esa ventana, y el fondo
+    /// seguía pintando detrás del mundo (medido: 49 % de CPU sin que nadie lo viera). Se saltan las
+    /// minimizadas, las ocultas por el sistema, las que atraviesa el ratón y las de opacidad 0.
+    /// </summary>
     static bool Tapado(RECT w)
     {
-        var h = GetForegroundWindow();
-        if (h == IntPtr.Zero || IsIconic(h) || !IsWindowVisible(h)) return false;
-        var c = new StringBuilder(32);
-        GetClassName(h, c, c.Capacity);
-        if (c.ToString() is "Progman" or "WorkerW" or "Shell_TrayWnd" or "Shell_SecondaryTrayWnd") return false;
-        GetWindowRect(h, out RECT r);
-        return r.Left <= w.Left && r.Top <= w.Top && r.Right >= w.Right && r.Bottom >= w.Bottom;
+        bool tapado = false;
+        EnumWindows((h, _) =>
+        {
+            if (!IsWindowVisible(h) || IsIconic(h) || !GetWindowRect(h, out RECT r)) return true;
+            if (r.Left > w.Left || r.Top > w.Top || r.Right < w.Right || r.Bottom < w.Bottom) return true;
+            var c = new StringBuilder(32);
+            GetClassName(h, c, c.Capacity);
+            if (c.ToString() is "Progman" or "WorkerW" or "Shell_TrayWnd" or "Shell_SecondaryTrayWnd") return true;
+            long ex = GetWindowLongPtr(h, -20).ToInt64();
+            if ((ex & 0x20 /*WS_EX_TRANSPARENT*/) != 0) return true;
+            if ((ex & 0x80000) != 0 && GetLayeredWindowAttributes(h, out uint _, out byte alfa, out uint banderas) && (banderas & 2) != 0 && alfa == 0) return true;
+            if (DwmGetWindowAttribute(h, 14 /*DWMWA_CLOAKED*/, out int oculta, 4) == 0 && oculta != 0) return true;
+            tapado = true;
+            return false;
+        }, IntPtr.Zero);
+        return tapado;
     }
 
     /// <summary>Los monitores, el principal primero, en píxeles físicos (el puente es PerMonitorV2).</summary>

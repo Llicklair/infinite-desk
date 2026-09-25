@@ -40,7 +40,9 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
   /** @type {string[]} */
   const nombres = [];
 
-  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  // Sin antialiasing en pantallas de alta densidad (≥150 %): los píxeles ya son pequeños y suavizar
+  // bordes costaba mucho (medido: el mundo a casi 2 núcleos de CPU en un 200 %).
+  const renderer = new THREE.WebGLRenderer({ antialias: window.devicePixelRatio < 1.5 });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.setSize(window.innerWidth, window.innerHeight);
   contenedor.appendChild(renderer.domElement);
@@ -906,7 +908,15 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
   const reloj = new THREE.Clock();
   const dir = new THREE.Vector3();
   let fotograma = 0;
-  renderer.setAnimationLoop(() => {
+  let ultimoPintado = 0;
+  renderer.setAnimationLoop((instante) => {
+    // Como mucho 60 fotogramas por segundo: las capturas no dan más, y en un monitor de más Hz se
+    // pintaba de sobra.
+    // El fondo, en reposo, a 30: gira despacio y es decoración (medido: ~50 % de CPU a 60 en un
+    // monitor a la vista). Mientras se arrastra, se acerca o vuela a una isla, a 60.
+    const enReposo = fondo && !vuelo && performance.now() - ultimoToque > 2000;
+    if (instante - ultimoPintado < 1000 / (enReposo ? 31 : 61)) return;
+    ultimoPintado = instante;
     const dt = Math.min(reloj.getDelta(), 0.1);
     if (document.hidden) return;
     // El fondo, con algo a pantalla completa o maximizado delante, no se ve: no se pinta.
