@@ -74,13 +74,17 @@ app.Map("/", async (HttpContext ctx) =>
     finally
     {
         sockets.TryRemove(ws, out _);
-        mundosPorConexion.TryRemove(ws, out _);
         // El mundo se cerró o recargó a mitad: que la ventana no se quede aparcada fuera, y lo
         // escondido al minimizarlo se minimiza de verdad. Si queda otro mundo conectado, ese.
-        Ventanas.Salir();
-        if (sockets.IsEmpty) Ventanas.MundoCerrado();
-        else if (mundosPorConexion.Values.LastOrDefault() is { } otro && Ventanas.Presentar(otro))
-            Registro.Anotar($"se cerró un mundo; sigue el otro, \"{otro}\"");
+        // Solo si la conexión que se cierra ERA un mundo: cualquier otra (una prueba, una
+        // herramienta) sacaba de la pantalla en la que se estaba escribiendo (medido).
+        if (mundosPorConexion.TryRemove(ws, out _))
+        {
+            Ventanas.Salir();
+            if (mundosPorConexion.IsEmpty) Ventanas.MundoCerrado();
+            else if (mundosPorConexion.Values.LastOrDefault() is { } otro && Ventanas.Presentar(otro))
+                Registro.Anotar($"se cerró un mundo; sigue el otro, \"{otro}\"");
+        }
     }
 });
 
@@ -212,7 +216,11 @@ object? Responder(JsonElement m, WebSocket ws)
             return new { id, ok = true, empezado = regenerador.Pedir("R") };
         case "antesDeCapturar":
             // N: que el selector pueda ofrecer también lo minimizado (no ofrece minimizadas).
-            return new { id, ok = true, restauradas = Ventanas.RestaurarParaCapturar() };
+            // Y lo que no saldrá en él por no tener escritorio virtual, para avisar.
+            var restauradas = Ventanas.RestaurarParaCapturar();
+            var sinEscritorio = Ventanas.SinEscritorio();
+            if (sinEscritorio.Count > 0) Registro.Anotar($"N: sin escritorio virtual (no salen en el selector): {string.Join(" · ", sinEscritorio)}");
+            return new { id, ok = true, restauradas, sinEscritorio };
         case "alEscritorio":
             Ventanas.AlEscritorio();
             return new { id, ok = true };

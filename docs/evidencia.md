@@ -10,6 +10,30 @@ Cada medición real: qué se probó, qué salió, qué cambió por ello.
 
 ---
 
+## 2026-09-25 · afinado con el puente de verdad: rueda, esconder, Esc y N — FUNCIONA sin manos
+
+Montaje: `npm run probar-puente`. Una página larga en una ventana de Edge aparte hace de
+pantalla, y el puente se maneja como lo haría el mundo. Resultado: 10 de 10. Por el camino
+salieron cuatro fallos:
+
+- **La rueda no llegaba a una pantalla escondida** ("el scroll vuelve a fallar": VS Code se
+  minimiza solo, así que sus pantallas acaban escondidas). Chromium manda la rueda a la ventana
+  que hay bajo el punto, y una ventana en capas con alfa 0 no está bajo ningún punto. Probé a
+  quitarle el atraviesa-clics y a subirle el alfa a 1 durante el envío, con esperas de 20 a 100
+  ms: en el mejor caso funcionó 1 de 3 veces. Arreglo: mientras se escribe en ella, vuelve a
+  la normalidad detrás del mundo, y al salir se esconde otra vez. Resultado: 300 -> 600.
+- **Al esconderla otra vez, perdía el siempre-encima.** Se escondía cuando aún era la ventana
+  activa, y al perder el foco Chromium se lo quita. Ahora se esconde después de activar el mundo.
+- **Cualquier conexión al puente que se cerraba sacaba de la pantalla** en la que se escribía,
+  aunque no fuera un mundo (una prueba, una herramienta). Ahora solo lo hace si era un mundo.
+- **Tras Esc y Entrar, lo escondido volvía visible** detrás del mundo: entrar.ps1 restaura lo
+  minimizado antes de volver al mundo, y al siguiente Esc aparecía en el escritorio. Ahora el
+  puente recuerda qué estaba escondido al salir y lo vuelve a esconder.
+
+N avisa ahora de las ventanas sin escritorio virtual. La comprobación no da falsos avisos, y
+una ventana a la que se le quita el escritorio a propósito sale en el aviso. El vigilante de
+escritorios (una ventana nueva cada 15 s) no ha visto el fallo desde las 17:19.
+
 ## 2026-09-25 · N no lista una ventana nueva de Chrome — CAUSA: Windows, no el puente
 
 Montaje: un selector de Edge de prueba leído por UI Automation, más IVirtualDesktopManager

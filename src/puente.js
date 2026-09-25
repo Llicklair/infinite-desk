@@ -18,7 +18,7 @@ const REINTENTO_MS = 3000;
  *   soltar(hwnd: number): void,
  *   vscode(ruta: string): Promise<string | null>,
  *   carpeta(): Promise<Carpeta | null>,
- *   antesDeCapturar(): Promise<number>,
+ *   antesDeCapturar(): Promise<string[]>,
  *   carpetaEnVSCode(): Promise<string | null>,
  *   elegirCarpeta(): Promise<Carpeta | string>,
  *   raton(hwnd: number, tipo: "mover" | "bajar" | "doble" | "subir" | "rueda",
@@ -134,9 +134,10 @@ export function crearPuente(tituloMundo) {
       return Boolean(r.ok);
     },
     /** Antes del selector de N: el puente restaura lo minimizado (el selector no lo ofrece). */
+    /** Restaura lo minimizado para el selector; devuelve lo que NO saldrá en él (sin escritorio virtual). */
     async antesDeCapturar() {
       const r = await pedir({ op: "antesDeCapturar" });
-      return r.ok ? r.restauradas : 0;
+      return r.ok ? r.sinEscritorio ?? [] : [];
     },
     /** El selector de carpetas del puente y, la elegida, en una ventana nueva de VS Code; el error, o null. */
     async carpetaEnVSCode() {

@@ -13,6 +13,7 @@
     "fondo": "node tools/fondo.mjs",
     "parar": "node tools/parar.mjs",
     "diagnostico": "node tools/diagnostico.mjs",
+    "probar-puente": "node tools/probar-puente.mjs",
     "puente": "dotnet build puente -c Release --nologo -v q"
   },
   "keywords": [],

@@ -8,6 +8,8 @@ static partial class Ventanas
 {
     static Timer? vigia;
     static int recolocadas;
+    /// <summary>La pantalla estaba escondida antes de entrar en ella: al salir se vuelve a esconder.</summary>
+    static IntPtr reesconder;
 
     /// <summary>
     /// Entrar en una pantalla: el mundo deja de poder activarse con clics (los clics sobre él son
@@ -28,9 +30,12 @@ static partial class Ventanas
             if (mundo == h) return "that window is already in front: go back to the space and press Enter";
             if (IsIconic(h)) ShowWindow(h, SW_SHOWNOACTIVATE); // minimizada no se pinta
             Limpiar(h);
-            // Si estaba escondida se QUEDA escondida: el teclado le llega igual por estar activa, y
-            // los clics van por mensajes. Devolverla hacía que "cada vez que interactúo con una
-            // pantalla, la abre" (uso real).
+            // Si estaba escondida, mientras se escribe vuelve a la normalidad DETRÁS del mundo, y al
+            // salir se esconde otra vez (no se queda abierta: "cada vez que interactúo con una
+            // pantalla, la abre", uso real). Escondida, la rueda no le llegaba: Chromium manda la
+            // rueda a la ventana bajo el punto, y una ventana en capas con alfa 0 no está bajo
+            // ningún punto (medido: ni quitándole el atraviesa-clics ni con alfa 1 era fiable).
+            if (escondidas.Contains(h)) { Mostrar(h, minimizar: false); reesconder = h; }
 
             PonerNoActivable(mundo, true);
             objetivo = h;
@@ -53,11 +58,21 @@ static partial class Ventanas
     {
         if (objetivo == IntPtr.Zero) return;
         if (recolocadas > 1) Registro.Anotar($"la ventana {objetivo} se puso delante del mundo {recolocadas} veces mientras se escribía");
+        var h = objetivo;
+        bool volverAEsconder = reesconder == h && IsWindow(h);
+        reesconder = IntPtr.Zero;
         objetivo = IntPtr.Zero;
         vigia?.Change(Timeout.Infinite, Timeout.Infinite);
-        if (!IsWindow(mundo)) return;
-        PonerNoActivable(mundo, false);
-        Activar(mundo);
+        if (IsWindow(mundo))
+        {
+            PonerNoActivable(mundo, false);
+            Activar(mundo);
+        }
+        // Se vuelve a esconder DESPUÉS de activar el mundo: escondida mientras aún estaba activa,
+        // al perder el foco Chromium le quitaba el siempre-encima (medido).
+        if (!volverAEsconder) return;
+        if (capturadas.Contains(h) && MundoAbierto()) Esconder(h);
+        else ShowWindow(h, SW_SHOWMINNOACTIVE); // sin mundo, como la dejó quien la minimizó
     }
 
     /// <summary>

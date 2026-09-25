@@ -20,6 +20,7 @@ npm run puente              # dotnet build del puente nativo (ADR 0002): escribi
 npm run fondo               # fondo animado (puente --fondo, Windows) + "Entrar": clic derecho en Windows, app en macOS (ADR 0004)
 npm run parar [-- --explorador] # lo para todo y devuelve las ventanas escondidas; con --explorador, reinicia el Explorador
 npm run diagnostico         # foto de Windows e infinite-desk (barra de tareas, foco, qué la tapa) ANTES de reiniciar nada
+npm run probar-puente       # pruebas de extremo a extremo con el puente y el mundo abiertos (rueda, esconder, Esc, N)
 ```
 
 Vistas para comprobar sin manos: `index.html?vista=aerea` (todas las islas),

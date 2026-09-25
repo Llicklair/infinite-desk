@@ -488,7 +488,12 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
     let captura;
     try {
       // Lo minimizado no sale en el selector: el puente lo restaura (detrás del mundo) antes.
-      if (puente?.conectado) await puente.antesDeCapturar();
+      if (puente?.conectado) {
+        // Windows a veces deja de dar escritorio virtual a las ventanas nuevas y el selector no
+        // las ofrece: mejor decirlo que dejar que falten sin más (docs/evidencia.md, 2026-09-25).
+        const faltan = await puente.antesDeCapturar();
+        if (faltan.length) avisar(`⚠ Windows didn't put ${faltan.length === 1 ? `"${faltan[0]}"` : `${faltan.length} windows`} on a virtual desktop, so the picker won't show ${faltan.length === 1 ? "it" : "them"}. Fix: restart Explorer (npm run parar -- --explorador)`);
+      }
       captura = await capturarVentana();
       // Edge no da el título de la ventana, sino su HWND: el título se lo pide al puente.
       if (puente?.conectado && captura.hwnd !== null) captura.titulo = (await puente.titulo(captura.hwnd)) ?? captura.titulo;

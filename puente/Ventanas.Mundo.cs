@@ -38,6 +38,8 @@ static partial class Ventanas
             SalirSinCerrojo();
             if (!IsWindow(mundo)) return;
             ShowWindow(mundo, SW_MINIMIZE);
+            minimizadasPorEsc.Clear();
+            minimizadasPorEsc.UnionWith(escondidas);
             foreach (var h in escondidas.ToArray()) Mostrar(h, minimizar: true);
             Registro.Anotar("mundo minimizado (Esc): sigue abierto, con sus pantallas");
         }
@@ -53,25 +55,33 @@ static partial class Ventanas
         lock (cerrojo)
         {
             mundo = IntPtr.Zero;
+            minimizadasPorEsc.Clear();
             foreach (var h in escondidas.ToArray()) Mostrar(h, minimizar: true);
         }
     }
 
     /// <summary>
     /// Se activa una ventana. Si es el mundo que vuelve (restaurado tras Esc), las pantallas
-    /// minimizadas mientras tanto se esconden vivas otra vez (regla 4).
+    /// minimizadas mientras tanto se esconden vivas otra vez (regla 4). Y también las que estaban
+    /// escondidas al salir con Esc aunque ya no estén minimizadas: entrar.ps1 restaura todo lo
+    /// minimizado ANTES de volver al mundo, y se quedaban abiertas detrás (medido); al siguiente Esc
+    /// aparecían en el escritorio.
     /// </summary>
+    static readonly HashSet<IntPtr> minimizadasPorEsc = [];
+
     public static void AlActivar(IntPtr h)
     {
         lock (cerrojo)
         {
             if (h != mundo || !MundoAbierto()) return;
             capturadas.RemoveWhere(c => !IsWindow(c));
-            foreach (var c in capturadas.Where(IsIconic))
+            foreach (var c in capturadas.Where(c => IsIconic(c) || minimizadasPorEsc.Contains(c)).ToArray())
             {
+                if (escondidas.Contains(c)) continue;
                 Esconder(c);
                 Registro.Anotar($"de vuelta al mundo: {c} \"{Titulo(c)}\" estaba minimizada, escondida viva");
             }
+            minimizadasPorEsc.Clear(); // solo al volver: después, si se abre una a mano, se respeta
         }
     }
 }

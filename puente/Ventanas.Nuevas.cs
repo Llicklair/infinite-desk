@@ -45,6 +45,46 @@ static partial class Ventanas
     }
 
     /// <summary>
+    /// Las ventanas de aplicación sin escritorio virtual. El selector de N solo ofrece las del
+    /// escritorio actual, y Windows a veces deja de asignar escritorio a TODA ventana nueva (medido
+    /// dos veces el 2026-09-25: ni un Chrome abierto a mano ni una ventana propia lo tenían; se
+    /// arregla reiniciando el Explorador). Se mira al pulsar N para avisar, en vez de que falten
+    /// sin más ("la segunda instancia de Chrome sigue sin aparecer", uso real).
+    /// </summary>
+    public static List<string> SinEscritorio()
+    {
+        var r = new List<string>();
+        IVirtualDesktopManager m;
+        try { m = (IVirtualDesktopManager)new VirtualDesktopManager(); }
+        catch (COMException) { return r; }
+        lock (cerrojo)
+        {
+            uint delMundo = IsWindow(mundo) ? Proceso(mundo) : 0;
+            EnumWindows((h, _) =>
+            {
+                if (!IsWindowVisible(h) || GetWindowTextLength(h) == 0 || GetWindow(h, 4 /*GW_OWNER*/) != IntPtr.Zero) return true;
+                if ((GetWindowLongPtr(h, GWL_EXSTYLE).ToInt64() & WS_EX_TOOLWINDOW) != 0) return true;
+                // Lo escondido no está en ningún escritorio a propósito (ITaskbarList.DeleteTab se
+                // lo quita, medido), y ya es una pantalla. Las apps de la tienda suspendidas están
+                // ocultas por DWM y tampoco tienen.
+                if (escondidas.Contains(h) || Proceso(h) == delMundo) return true;
+                if (DwmGetWindowAttribute(h, 14 /*DWMWA_CLOAKED*/, out int oculta, sizeof(int)) == 0 && oculta != 0) return true;
+                if (m.GetWindowDesktopId(h, out var id) == 0 && id == Guid.Empty) r.Add(Titulo(h));
+                return true;
+            }, IntPtr.Zero);
+        }
+        return r;
+    }
+
+    [ComImport, Guid("a5cd92ff-29be-454c-8d04-d82879fb3f1b"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    interface IVirtualDesktopManager
+    {
+        [PreserveSig] int IsWindowOnCurrentVirtualDesktop(IntPtr h, out int en);
+        [PreserveSig] int GetWindowDesktopId(IntPtr h, out Guid id);
+    }
+    [ComImport, Guid("aa509086-5ca9-4c25-8f95-589d3c07b48a")] class VirtualDesktopManager { }
+
+    /// <summary>
     /// Durante 10 s tras abrir algo, toda ventana nueva de otro proceso que no sea el del mundo (el
     /// selector de N también es una ventana de Edge) se restaura si nace o se vuelve minimizada, se
     /// coloca detrás del mundo (si no, tapaba el selector: "aparece superpuesta al mundo") y el
