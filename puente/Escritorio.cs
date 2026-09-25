@@ -77,14 +77,35 @@ static class Escritorio
             if (!string.Equals(Path.GetDirectoryName(completa), Path.TrimEndingDirectorySeparator(dev), StringComparison.OrdinalIgnoreCase))
                 return "only repos in your projects folder can be opened";
             if (!Directory.Exists(completa)) return "that repo is no longer there";
-            string local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-            string pf = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
-            var code = new[] { Path.Combine(local, @"Programs\Microsoft VS Code\Code.exe"), Path.Combine(pf, @"Microsoft VS Code\Code.exe") }
-                .FirstOrDefault(File.Exists);
-            if (code == null) return "VS Code not found";
-            return NuevaVentanaDeVSCode(code, completa);
+            return CodeExe() is { } code ? NuevaVentanaDeVSCode(code, completa) : "VS Code not found";
         }
         catch (Exception e) { return e.Message; }
+    }
+
+    /// <summary>
+    /// Una carpeta cualquiera en una ventana nueva de VS Code, elegida con el selector de carpetas
+    /// del puente (F → "Open a folder in VS Code…"). El "Open Folder" de VS Code abre su diálogo
+    /// donde está su ventana, detrás del mundo o fuera de la captura, y no hubo forma fiable de
+    /// usarlo desde dentro (uso real, varias vueltas). La carpeta la elige el usuario en el selector
+    /// del sistema: la página no decide qué se abre.
+    /// </summary>
+    public static string? AbrirCarpetaEnVSCode(string inicial)
+    {
+        try
+        {
+            var carpeta = Proyectos.ElegirCarpeta(inicial, "Folder to open in VS Code");
+            if (carpeta == null) return "cancelled";
+            return CodeExe() is { } code ? NuevaVentanaDeVSCode(code, carpeta) : "VS Code not found";
+        }
+        catch (Exception e) { return e.Message; }
+    }
+
+    static string? CodeExe()
+    {
+        string local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        string pf = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
+        return new[] { Path.Combine(local, @"Programs\Microsoft VS Code\Code.exe"), Path.Combine(pf, @"Microsoft VS Code\Code.exe") }
+            .FirstOrDefault(File.Exists);
     }
 
     /// <summary>

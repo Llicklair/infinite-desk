@@ -11,12 +11,14 @@ Lo de esta sección se EJECUTA, así que no puede pudrirse en silencio: si mient
 ```bash
 npm test                    # node --test, núcleo puro (datos, disposición, islas, vínculo)
 npm run tipos               # tsc --checkJs estricto sobre src/ y tools/
-npm run grafo [-- repo ...] # gb graph --json por repo -> wallpaper/grafos.js (por defecto: hermanos en dev/)
+npm run carpeta [-- ruta]   # la carpeta de proyectos de esta máquina (selector del sistema) -> infinite-desk.local.json
+npm run grafo [-- repo ...] # gb graph --json por repo -> wallpaper/grafos.js (por defecto: los repos de la carpeta de proyectos)
 npm run build               # esbuild -> wallpaper/infinite-desk.js (script clásico, sin módulos)
 npm run terminado           # todo lo anterior + tools/comprobar.mjs: el criterio de la fase 1
 npm run mundo               # servidor en localhost (solo si el navegador no captura desde file://)
 npm run puente              # dotnet build del puente nativo (ADR 0002): escribir dentro de las pantallas
 npm run fondo               # fondo animado (puente --fondo, Windows) + "Entrar": clic derecho en Windows, app en macOS (ADR 0004)
+npm run parar [-- --explorador] # lo para todo y devuelve las ventanas escondidas; con --explorador, reinicia el Explorador
 ```
 
 Vistas para comprobar sin manos: `index.html?vista=aerea` (todas las islas),

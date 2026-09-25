@@ -42,7 +42,6 @@ string config = Path.Combine(mundo, "puente-config.js");
 var sockets = new ConcurrentDictionary<WebSocket, byte>();
 var agentes = new Agentes(mundo, Difundir);
 var repo = Path.GetDirectoryName(Path.TrimEndingDirectorySeparator(Path.GetFullPath(mundo)))!;
-var dev = Path.GetDirectoryName(repo)!; // la carpeta de proyectos: sus hijas son las islas
 var regenerador = new Regenerador(repo, Difundir, agentes.Releer);
 
 var builder = WebApplication.CreateSlimBuilder();
@@ -164,17 +163,47 @@ object? Responder(JsonElement m)
         case "escritorio":
             return new { id, ok = true, cosas = Escritorio.Listar() };
         case "vscode":
-            var sinAbrir = Escritorio.AbrirRepo(Texto(m, "ruta"), dev);
+            // La carpeta de proyectos se lee cada vez: se puede cambiar con la P sin reiniciar.
+            var antesDeCode = Ventanas.DePrimerNivel();
+            var sinAbrir = Escritorio.AbrirRepo(Texto(m, "ruta"), Proyectos.Carpeta(repo));
+            if (sinAbrir == null) Ventanas.QueNoNazcanMinimizadas(antesDeCode, t => _ = Difundir(new { evento = "lista", titulo = t }));
             Registro.Anotar($"vscode {Texto(m, "ruta")}: {sinAbrir ?? "ok"}");
             return new { id, ok = sinAbrir == null, error = sinAbrir };
+        case "carpetaEnVSCode":
+            var antesDeCarpeta = Ventanas.DePrimerNivel();
+            var sinCarpeta = Escritorio.AbrirCarpetaEnVSCode(Proyectos.Carpeta(repo));
+            Registro.Anotar($"carpeta en VS Code: {sinCarpeta ?? "ok"}");
+            if (sinCarpeta == null) Ventanas.QueNoNazcanMinimizadas(antesDeCarpeta, t => _ = Difundir(new { evento = "lista", titulo = t }));
+            return new { id, ok = sinCarpeta == null, error = sinCarpeta };
+        case "carpeta":
+            var actual = Proyectos.Carpeta(repo);
+            return new { id, ok = true, ruta = actual, repos = Proyectos.Repos(actual) };
+        case "elegirCarpeta":
+            // El selector del sistema; al elegir, las islas se rehacen solas y se vigila la nueva.
+            var elegida = Proyectos.Elegir(Proyectos.Carpeta(repo));
+            if (elegida == null) return new { id, ok = false, error = "cancelled" };
+            Proyectos.Guardar(repo, elegida);
+            Registro.Anotar($"carpeta de proyectos: {elegida} ({Proyectos.Repos(elegida)} repos)");
+            regenerador.Revigilar();
+            agentes.Revigilar();
+            regenerador.Pedir("carpeta de proyectos nueva");
+            return new { id, ok = true, ruta = elegida, repos = Proyectos.Repos(elegida) };
         case "abrir":
+            var antes = Ventanas.DePrimerNivel();
             var fallo = Escritorio.Abrir(Texto(m, "ruta"), Texto(m, "especial"));
+            if (fallo == null) Ventanas.QueNoNazcanMinimizadas(antes, t => _ = Difundir(new { evento = "lista", titulo = t }));
             Registro.Anotar($"abrir {Texto(m, "ruta") ?? Texto(m, "especial")}: {fallo ?? "ok"}");
             return new { id, ok = fallo == null, error = fallo };
         case "agentes":
             return new { id, ok = true, repos = agentes.Foto() };
         case "regenerar":
             return new { id, ok = true, empezado = regenerador.Pedir("R") };
+        case "antesDeCapturar":
+            // N: que el selector pueda ofrecer también lo minimizado (no ofrece minimizadas).
+            return new { id, ok = true, restauradas = Ventanas.RestaurarParaCapturar() };
+        case "alEscritorio":
+            Ventanas.AlEscritorio();
+            return new { id, ok = true };
         case "salir":
             Ventanas.Salir();
             return new { id, ok = true };

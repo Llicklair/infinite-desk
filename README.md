@@ -35,10 +35,12 @@ No other apps to install: the wallpaper and the launcher use what ships with the
 
 ## Getting started
 
-Clone the repo **inside your projects folder** (its sibling folders become the islands):
+Clone the repo anywhere. Every repo inside your **projects folder** becomes an island; by default
+that is the folder you cloned infinite-desk into. If your projects live somewhere else, pick it:
 
 ```bash
 npm install
+npm run carpeta     # opens a folder picker; or: npm run carpeta -- D:/code
 npm run terminado   # checks everything, builds the islands, the space and the bridge
 npm run fondo       # the animated wallpaper (Windows) plus "Enter infinite-desk": desktop right-click on Windows, an app in ~/Applications on macOS
 ```
@@ -61,7 +63,9 @@ the wallpaper and the menu entry: `npm run fondo -- --quitar`.
 | **G** · **V** | which code map a screen shows · hide or show it |
 | **click** a node | its details: what it is, what uses it, which agents are touching it |
 | **T** · **R** | code map ↔ folder tree · regenerate the islands |
-| **H** · **Esc** | hide the help · release the mouse (twice: back to the desktop) |
+| **P** | settings: which folder your islands come from (each repo inside is one) |
+| **H** · **Esc** | hide the help · release the mouse (twice: back to the desktop; the space stays open with your screens, and right-click → Enter brings it back) |
+| **Shift+Esc** | close the space for good |
 
 As a wallpaper: drag on empty desktop to rotate, wheel to zoom, double-click an island to fly to
 it and double-click empty space to go back up.
@@ -75,6 +79,12 @@ web page can't: pass your keyboard and mouse to the real window, open files and 
 islands. The design rules are in [ARCHITECTURE.md](ARCHITECTURE.md) and the reasoning behind each
 decision in [docs/adr/](docs/adr/); everything measured, good and bad, is in
 [docs/evidencia.md](docs/evidencia.md). The internal docs and code comments are in Spanish.
+
+## If something gets stuck
+
+`npm run parar` stops everything (the space, the bridge, the animated wallpaper) and gives back any
+window it had hidden. If the taskbar or Windows search stopped responding, add `-- --explorador`
+to restart File Explorer too. It uninstalls nothing: the wallpaper comes back at next sign-in.
 
 ## Honest limits
 

@@ -14,8 +14,13 @@ const REINTENTO_MS = 3000;
  *   titulo(hwnd: number): Promise<string | null>,
  *   entrar(hwnd: number): Promise<string | null>,
  *   salir(): void,
+ *   alEscritorio(): Promise<boolean>,
  *   soltar(hwnd: number): void,
  *   vscode(ruta: string): Promise<string | null>,
+ *   carpeta(): Promise<Carpeta | null>,
+ *   antesDeCapturar(): Promise<number>,
+ *   carpetaEnVSCode(): Promise<string | null>,
+ *   elegirCarpeta(): Promise<Carpeta | string>,
  *   raton(hwnd: number, tipo: "mover" | "bajar" | "doble" | "subir" | "rueda",
  *     u: number, v: number, e: {button?: number, buttons?: number}, delta?: number): void,
  *   alSalir(f: () => void): void,
@@ -25,7 +30,9 @@ const REINTENTO_MS = 3000;
  *   escritorio(): Promise<import("./ficheros.js").Cosa[]>,
  *   abrir(que: {ruta?: string, especial?: "explorador" | "navegador"}): Promise<string | null>,
  *   alAgentes(f: (m: EstadoAgentes) => void): void,
+ *   alLista(f: (titulo: string) => void): void,
  * }} Puente
+ * @typedef {{ruta: string, repos: number}} Carpeta la carpeta de proyectos y cuántos repos (islas) tiene
  * @typedef {{repo: string, agentes: import("./vinculo.js").Agente[], cruces: string[]}} EstadoAgentes
  *   quién toca qué en un repo, según `gb who --json` (lo pregunta el puente al ver cambios)
  */
@@ -64,6 +71,8 @@ export function crearPuente(tituloMundo) {
   const alAgentes = [];
   /** @type {(() => void)[]} */
   const alConectar = [];
+  /** @type {((titulo: string) => void)[]} */
+  const alLista = [];
 
   async function conectar() {
     if (!window.INFINITE_DESK_PUENTE) await releerScript("puente-config.js");
@@ -85,6 +94,7 @@ export function crearPuente(tituloMundo) {
       if (m.evento === "salir") for (const f of alSalir) f();
       if (m.evento === "grafos") for (const f of alGrafos) f(m);
       if (m.evento === "agentes") for (const f of alAgentes) f(m);
+      if (m.evento === "lista") for (const f of alLista) f(m.titulo);
       esperando.get(m.id)?.(m);
       esperando.delete(m.id);
     });
@@ -118,6 +128,30 @@ export function crearPuente(tituloMundo) {
       return r.ok ? null : r.error ?? "unknown error";
     },
     salir() { pedir({ op: "salir" }); },
+    /** Minimiza el mundo sin cerrarlo (sus pantallas siguen); false si no hay puente. */
+    async alEscritorio() {
+      const r = await pedir({ op: "alEscritorio" });
+      return Boolean(r.ok);
+    },
+    /** Antes del selector de N: el puente restaura lo minimizado (el selector no lo ofrece). */
+    async antesDeCapturar() {
+      const r = await pedir({ op: "antesDeCapturar" });
+      return r.ok ? r.restauradas : 0;
+    },
+    /** El selector de carpetas del puente y, la elegida, en una ventana nueva de VS Code; el error, o null. */
+    async carpetaEnVSCode() {
+      const r = await pedir({ op: "carpetaEnVSCode" });
+      return r.ok ? null : r.error ?? "unknown error";
+    },
+    async carpeta() {
+      const r = await pedir({ op: "carpeta" });
+      return r.ok ? { ruta: r.ruta, repos: r.repos } : null;
+    },
+    /** Abre el selector de carpetas del sistema; el texto del error si no se eligió ninguna. */
+    async elegirCarpeta() {
+      const r = await pedir({ op: "elegirCarpeta" });
+      return r.ok ? { ruta: r.ruta, repos: r.repos } : r.error ?? "unknown error";
+    },
     async vscode(ruta) {
       const r = await pedir({ op: "vscode", ruta });
       return r.ok ? null : r.error ?? "unknown error";
@@ -140,6 +174,7 @@ export function crearPuente(tituloMundo) {
       return r.ok ? r.cosas : [];
     },
     alAgentes(f) { alAgentes.push(f); },
+    alLista(f) { alLista.push(f); },
     async abrir(que) {
       const r = await pedir({ op: "abrir", ...que });
       return r.ok ? null : r.error ?? "unknown error";

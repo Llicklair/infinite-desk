@@ -9,7 +9,7 @@ const ICONO = { carpeta: "📁", programa: "🚀", web: "🌐", fichero: "📄" 
 /**
  * @param {HTMLElement} panel
  * @param {() => import("./puente.js").Puente | null} puente
- * @param {(que: string) => void} alAbrir se abrió algo: toca capturar su ventana (con el gesto del clic)
+ * @param {(que: string) => void} alAbrir se abrió algo (su ventana llegará en un momento: se trae con N)
  * @param {(texto: string) => void} avisar
  * @param {() => void} alCerrar
  */
@@ -19,7 +19,7 @@ export function crearPanelFicheros(panel, puente, alAbrir, avisar, alCerrar) {
   const cabecera = document.createElement("h2");
   cabecera.textContent = "Desktop";
   const pie = document.createElement("p");
-  pie.textContent = "Click: it opens in its app and you pick its window in the picker · Esc or F: close";
+  pie.textContent = "Click: it opens in its app; when it's ready, N brings its window in · Esc or F: close";
   panel.replaceChildren(cabecera, lista, pie);
 
   /** @param {string} icono @param {string} nombre @param {() => Promise<string | null>} abrir */
@@ -32,6 +32,7 @@ export function crearPanelFicheros(panel, puente, alAbrir, avisar, alCerrar) {
     b.addEventListener("click", async () => {
       cerrar();
       const error = await abrir();
+      if (error === "cancelled") return; // se cerró el selector de carpetas sin elegir: nada que decir
       if (error) avisar(`Couldn't open ${nombre}: ${error}`);
       else alAbrir(nombre);
     });
@@ -51,6 +52,9 @@ export function crearPanelFicheros(panel, puente, alAbrir, avisar, alCerrar) {
     lista.replaceChildren(
       boton("🗂️", "File Explorer", () => p.abrir({ especial: "explorador" })),
       boton("🧭", "Browser", () => p.abrir({ especial: "navegador" })),
+      // El "Open Folder" de VS Code no se puede usar desde dentro (su diálogo sale fuera de la
+      // captura): el puente abre su selector por encima del mundo y la carpeta en un VS Code nuevo.
+      boton("📂", "Open a folder in VS Code…", () => p.carpetaEnVSCode()),
       ...cosas.map((c) => boton(ICONO[c.tipo] ?? "📄", c.nombre, () => p.abrir({ ruta: c.ruta }))),
     );
   }

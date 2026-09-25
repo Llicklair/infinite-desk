@@ -49,4 +49,19 @@ if ((Test-Path $puente) -and -not (Escucha)) {
     if (Escucha) { break } else { Start-Sleep -Milliseconds 100 }
   }
 }
+# Si ya hay un mundo abierto (Esc lo deja minimizado, con sus pantallas), se vuelve a ESE: abrir
+# otro lo empezaría vacío (uso real: "perdí lo que tenía abierto dentro del mundo").
+Add-Type -Namespace Entrar -Name Mundo -MemberDefinition @'
+[DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int c);
+[DllImport("user32.dll")] public static extern bool IsIconic(IntPtr h);
+[DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
+'@
+$abierto = Get-Process msedge, chrome -ErrorAction SilentlyContinue |
+  Where-Object { $_.MainWindowTitle -like 'infinite-desk *' -and $_.MainWindowTitle -notlike '*fondo*' } | Select-Object -First 1
+if ($abierto) {
+  $h = $abierto.MainWindowHandle
+  if ([Entrar.Mundo]::IsIconic($h)) { [void][Entrar.Mundo]::ShowWindow($h, 9) } # SW_RESTORE
+  [void][Entrar.Mundo]::SetForegroundWindow($h)
+  exit
+}
 Start-Process $Navegador -ArgumentList "--user-data-dir=`"$Perfil`"", '--no-first-run', '--start-fullscreen', "--app=$Url"

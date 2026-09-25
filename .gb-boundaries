@@ -33,6 +33,10 @@ datos       -/-> consola3d
 disposicion -/-> consola3d
 islas       -/-> consola3d
 vinculo     -/-> consola3d
+datos       -/-> ajustes
+disposicion -/-> ajustes
+islas       -/-> ajustes
+vinculo     -/-> ajustes
 
 # Las herramientas de Node (exportar, comprobar, servir) corren sin navegador.
 tools -/-> grafo3d
@@ -44,3 +48,4 @@ tools -/-> ficheros
 tools -/-> puente
 tools -/-> nodo
 tools -/-> consola3d
+tools -/-> ajustes

@@ -35,6 +35,12 @@ export async function capturarVentana() {
     audio: false,
     controller: controlador,
     selfBrowserSurface: "exclude", // el propio mundo no se ofrece: sería un espejo infinito
+    // El selector es el de Edge y no se puede restilar; al menos, solo lo que sirve aquí: sin
+    // "pantalla completa", sin audio del sistema y sin el botón de cambiar lo compartido a
+    // media captura (uso real: "algo un poquito más estético").
+    monitorTypeSurfaces: "exclude",
+    systemAudio: "exclude",
+    surfaceSwitching: "exclude",
   }));
   if (!enfocado) {
     try { controlador?.setFocusBehavior("no-focus-change"); } catch { /* sin soporte: enfoca */ }

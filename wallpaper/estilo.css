@@ -22,6 +22,15 @@ body[data-escribiendo] #mira { display: none; }
 #ficheros button { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 10px 6px; background: rgba(40, 50, 120, 0.35); border: 1px solid transparent; border-radius: 8px; color: #dfe4ff; font: inherit; cursor: pointer; overflow-wrap: anywhere; }
 #ficheros button:hover { border-color: #5a6cff; background: rgba(60, 75, 170, 0.5); }
 #ficheros .icono { font-size: 28px; }
+/* Ajustes (P): la carpeta de proyectos. */
+#ajustes { position: fixed; top: 20vh; left: 50%; transform: translateX(-50%); width: min(640px, 90vw); z-index: 10; padding: 18px 22px; background: rgba(12, 16, 40, 0.94); border: 1px solid #3a4480; border-radius: 10px; }
+#ajustes h2 { margin: 0 0 14px; font-size: 18px; font-weight: 600; }
+#ajustes h3 { margin: 0 0 6px; font-size: 14px; font-weight: 600; color: #b6bff0; }
+#ajustes code { display: block; padding: 8px 10px; background: rgba(40, 50, 120, 0.35); border-radius: 6px; overflow-wrap: anywhere; }
+#ajustes p { margin: 8px 0; color: #8d96c8; font-size: 13px; }
+#ajustes p.pie { margin-top: 14px; font-size: 12px; }
+#ajustes button { padding: 8px 14px; background: rgba(60, 75, 170, 0.5); border: 1px solid #5a6cff; border-radius: 8px; color: #dfe4ff; font: inherit; cursor: pointer; }
+#ajustes button:disabled { opacity: 0.6; cursor: default; }
 /* Ficha de un nodo (clic): a la derecha, como el panel de galaxy-brain. */
 #nodo { position: fixed; top: 70px; right: 20px; width: min(380px, 34vw); max-height: calc(100vh - 140px); overflow: auto; padding: 14px 16px; background: rgba(12, 16, 40, 0.92); border: 1px solid #3a4480; border-radius: 8px; pointer-events: none; font-size: 13px; }
 #nodo h2 { margin: 0 0 4px; font-size: 16px; font-weight: 600; overflow-wrap: anywhere; }

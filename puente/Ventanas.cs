@@ -85,6 +85,8 @@ static class Ventanas
                 SalirSinCerrojo();
                 return "Windows wouldn't let the window be activated";
             }
+            if (!escondidas.Contains(h)) DebajoDelMundo(h);
+            recolocadas = 0;
             vigia ??= new Timer(_ => MantenerEncima(), null, Timeout.Infinite, Timeout.Infinite);
             vigia.Change(0, 200);
             return null;
@@ -92,26 +94,144 @@ static class Ventanas
     }
 
     static Timer? vigia;
+    static int recolocadas;
 
     /// <summary>
-    /// Mientras se escribe en una pantalla, el mundo tiene que seguir siempre-encima. Chromium le
-    /// quita el siempre-encima a su ventana a pantalla completa cuando pierde la activación, y
-    /// si eso llega DESPUÉS de ponérselo, la ventana real sale delante del mundo (uso real: "a
-    /// veces me abre la ventana a full en el PC; tengo que salir y volver a darle Enter"). Se
-    /// comprueba cada 200 ms y se le devuelve.
+    /// Mientras se escribe en una pantalla, la ventana real tiene que quedar DEBAJO del mundo.
+    /// Primero se intentó que el mundo fuese siempre-encima, pero Edge se lo quita sin parar
+    /// mientras no es la ventana activa (medido: "perdido… devuelto" cada 200 ms, y la ventana
+    /// real salía delante a pantalla completa). La activa no tiene por qué ser la de arriba: se
+    /// deja activa (el teclado va a ella) y se coloca justo detrás del mundo, y esto se vigila.
     /// </summary>
     static void MantenerEncima()
     {
         lock (cerrojo)
         {
-            if (objetivo == IntPtr.Zero || !IsWindow(mundo)) { vigia?.Change(Timeout.Infinite, Timeout.Infinite); return; }
-            if ((GetWindowLongPtr(mundo, GWL_EXSTYLE).ToInt64() & WS_EX_TOPMOST) != 0) return;
-            SetWindowPos(mundo, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
-            Registro.Anotar("el mundo había perdido el siempre-encima mientras se escribía: devuelto");
+            if (objetivo == IntPtr.Zero || !IsWindow(mundo) || !IsWindow(objetivo)) { vigia?.Change(Timeout.Infinite, Timeout.Infinite); return; }
+            if (escondidas.Contains(objetivo) || !EncimaDe(objetivo, mundo)) return; // escondida: invisible, da igual
+            if (TieneDialogo(objetivo)) return; // con un diálogo abierto no se mueve: se lo llevaría detrás
+            DebajoDelMundo(objetivo);
+            if (recolocadas++ == 0) Registro.Anotar($"la ventana {objetivo} se había puesto delante del mundo: devuelta detrás");
         }
     }
 
+    /// <summary>
+    /// ¿Tiene la ventana un diálogo (una ventana suya, visible) abierto? Windows mueve las ventanas
+    /// propiedad con su dueña: devolver VS Code detrás del mundo se llevaba detrás el "Open Folder",
+    /// que se abría pero nadie veía (medido: el diálogo existió; "no sale nada", uso real).
+    /// </summary>
+    static bool TieneDialogo(IntPtr dueña)
+    {
+        bool hay = false;
+        EnumWindows((h, _) =>
+        {
+            if (h == dueña || !IsWindowVisible(h) || GetWindow(h, 4 /*GW_OWNER*/) != dueña) return true;
+            hay = true;
+            return false;
+        }, IntPtr.Zero);
+        return hay;
+    }
+
+    static void DebajoDelMundo(IntPtr h) =>
+        SetWindowPos(h, mundo, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | 0x200 /*SWP_NOOWNERZORDER*/);
+
+    /// <summary>¿Está <paramref name="a"/> por encima de <paramref name="b"/> en el apilado?</summary>
+    static bool EncimaDe(IntPtr a, IntPtr b)
+    {
+        for (var w = GetWindow(a, 2 /*GW_HWNDNEXT*/); w != IntPtr.Zero; w = GetWindow(w, 2))
+            if (w == b) return true;
+        return false;
+    }
+
     public static void Salir() { lock (cerrojo) SalirSinCerrojo(); }
+
+    /// <summary>
+    /// Al pulsar N, justo antes del selector: las ventanas de aplicación minimizadas (de un tamaño
+    /// que valga la pena, 300×200 o más: Discord restauraba a 314×50) se restauran sin activarlas,
+    /// detrás del mundo, porque el selector no ofrece minimizadas. VS Code minimiza sus ventanas
+    /// nuevas por su cuenta y a destiempo (medido: más de 10 s después): vigilar tras abrirlas no
+    /// bastaba ("vuelve a no detectarla el menú de N", uso real). Es lo que entrar.ps1 hace al entrar.
+    /// </summary>
+    public static int RestaurarParaCapturar()
+    {
+        int n = 0;
+        lock (cerrojo)
+        {
+            if (!MundoAbierto()) return 0;
+            GetWindowThreadProcessId(mundo, out uint delMundo);
+            EnumWindows((h, _) =>
+            {
+                if (!IsWindowVisible(h) || !IsIconic(h) || GetWindowTextLength(h) == 0 || GetWindow(h, 4 /*GW_OWNER*/) != IntPtr.Zero) return true;
+                if ((GetWindowLongPtr(h, GWL_EXSTYLE).ToInt64() & 0x80 /*WS_EX_TOOLWINDOW*/) != 0) return true;
+                GetWindowThreadProcessId(h, out uint suyo);
+                if (suyo == delMundo || escondidas.Contains(h)) return true;
+                var p = new WINDOWPLACEMENT { length = Marshal.SizeOf<WINDOWPLACEMENT>() };
+                if (!GetWindowPlacement(h, ref p) || p.normal.Right - p.normal.Left < 300 || p.normal.Bottom - p.normal.Top < 200) return true;
+                ShowWindow(h, SW_SHOWNOACTIVATE);
+                SetWindowPos(h, mundo, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+                Registro.Anotar($"N: {h} \"{Titulo(h)}\" estaba minimizada: restaurada detrás del mundo para el selector");
+                n++;
+                return true;
+            }, IntPtr.Zero);
+        }
+        return n;
+    }
+
+    /// <summary>Las ventanas de primer nivel que hay ahora (para ver cuáles son nuevas después).</summary>
+    public static HashSet<IntPtr> DePrimerNivel()
+    {
+        var r = new HashSet<IntPtr>();
+        EnumWindows((h, _) => { r.Add(h); return true; }, IntPtr.Zero);
+        return r;
+    }
+
+    /// <summary>
+    /// Lo que se acaba de abrir (F, Enter en una isla) tiene que poder capturarse con N enseguida.
+    /// Dos usos reales: VS Code abría la ventana nueva MINIMIZADA (recuerda el estado de la última
+    /// que se cerró), y el selector no ofrece minimizadas; y si nacía normal, salía DELANTE del mundo
+    /// y tapaba el selector de N, que es de la ventana del mundo ("no aparece para invocarla con
+    /// N"; "aparece superpuesta al mundo"). Durante 10 s, toda ventana nueva de otro proceso que no
+    /// sea el del mundo (el selector también es una ventana de Edge) se restaura si nació
+    /// minimizada, se coloca detrás del mundo, y el mundo recupera el foco.
+    /// </summary>
+    public static void QueNoNazcanMinimizadas(HashSet<IntPtr> antes, Action<string> lista) => _ = Task.Run(async () =>
+    {
+        var vistas = new HashSet<IntPtr>(antes);
+        var nuevas = new HashSet<IntPtr>();
+        for (int n = 0; n < 40; n++)
+        {
+            await Task.Delay(250);
+            // Las ya vistas se siguen mirando: VS Code crea la ventana normal y la MINIMIZA él mismo
+            // un momento después (imita a la última que se cerró; medido: WS_MINIMIZE tras 1 s).
+            foreach (var h in nuevas)
+                if (IsWindow(h) && IsIconic(h))
+                    lock (cerrojo)
+                    {
+                        ShowWindow(h, SW_SHOWNOACTIVATE);
+                        if (MundoAbierto()) SetWindowPos(h, mundo, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+                        Registro.Anotar($"ventana nueva {h} \"{Titulo(h)}\" se minimizó sola: restaurada, detrás del mundo");
+                    }
+            foreach (var h in DePrimerNivel())
+            {
+                if (!vistas.Add(h)) continue;
+                if (!IsWindowVisible(h) || GetWindowTextLength(h) == 0) { vistas.Remove(h); continue; } // aún naciendo: otra vuelta
+                lock (cerrojo)
+                {
+                    if (!MundoAbierto()) continue;
+                    GetWindowThreadProcessId(h, out uint suyo);
+                    GetWindowThreadProcessId(mundo, out uint delMundo);
+                    if (suyo == delMundo) continue; // el selector de N, o cualquier cosa del propio mundo
+                    bool minimizada = IsIconic(h);
+                    if (minimizada) ShowWindow(h, SW_SHOWNOACTIVATE);
+                    SetWindowPos(h, mundo, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+                    if (GetForegroundWindow() == h) Activar(mundo);
+                    nuevas.Add(h);
+                    lista(Titulo(h)); // al mundo: ya se puede traer con N
+                    Registro.Anotar($"ventana nueva {h} \"{Titulo(h)}\"{(minimizada ? " (nació minimizada)" : "")}: detrás del mundo, lista para N");
+                }
+            }
+        }
+    });
 
     public static void Capturada(IntPtr h, bool si)
     {
@@ -216,6 +336,25 @@ static class Ventanas
     }
 
     /// <summary>El mundo se cerró: lo escondido se minimiza de verdad, que es lo que se pidió.</summary>
+    /// <summary>
+    /// Esc dos veces: de vuelta al escritorio SIN cerrar el mundo (uso real: "sin querer le di a
+    /// Escape dos veces y perdí lo que tenía abierto"). Se minimiza el mundo, y DESPUÉS las
+    /// escondidas se minimizan de verdad (así están en la barra de tareas); en ese orden, o el
+    /// vigilante de minimizados las volvería a esconder. Al volver al mundo (AlActivar), se esconden
+    /// otra vez. Entrar desde el clic derecho restaura este mismo mundo (entrar.ps1).
+    /// </summary>
+    public static void AlEscritorio()
+    {
+        lock (cerrojo)
+        {
+            SalirSinCerrojo();
+            if (!IsWindow(mundo)) return;
+            ShowWindow(mundo, 6 /*SW_MINIMIZE*/);
+            foreach (var h in escondidas.ToArray()) Mostrar(h, minimizar: true);
+            Registro.Anotar("mundo minimizado (Esc): sigue abierto, con sus pantallas");
+        }
+    }
+
     public static void MundoCerrado()
     {
         lock (cerrojo)
@@ -241,9 +380,20 @@ static class Ventanas
             if (GetAncestor(h, 2 /*GA_ROOT*/) != h) return; // solo ventanas de primer nivel
             GetWindowThreadProcessId(h, out uint suyo);
             GetWindowThreadProcessId(objetivo, out uint deLaPantalla);
-            if (suyo != deLaPantalla) return;
+            var clase = new StringBuilder(64);
+            GetClassName(h, clase, clase.Capacity);
+            if (suyo != deLaPantalla)
+            {
+                // Diagnóstico: ¿aparece el diálogo en otro proceso? (uso real: "Open Folder no responde").
+                Registro.Anotar($"ventana nueva de OTRO proceso ({suyo}) mientras se escribe: {h} {clase} \"{Titulo(h)}\"");
+                return;
+            }
             SetWindowPos(h, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
-            Registro.Anotar($"ventana nueva de la pantalla {objetivo}: {h} \"{Titulo(h)}\" puesta por encima del mundo");
+            // Un diálogo de verdad (#32770: "Open Folder", guardar, avisos) se activa también: que
+            // se vea delante y el teclado y el ratón vayan a él. Los menús y desplegables, no.
+            bool dialogo = clase.ToString() == "#32770";
+            if (dialogo) Activar(h);
+            Registro.Anotar($"ventana nueva de la pantalla {objetivo}: {h} {clase} \"{Titulo(h)}\" puesta por encima del mundo{(dialogo ? " y activada" : "")}");
         }
     }
 
@@ -293,6 +443,7 @@ static class Ventanas
     static void SalirSinCerrojo()
     {
         if (objetivo == IntPtr.Zero) return;
+        if (recolocadas > 1) Registro.Anotar($"la ventana {objetivo} se puso delante del mundo {recolocadas} veces mientras se escribía");
         objetivo = IntPtr.Zero;
         if (!IsWindow(mundo)) return;
         PonerNoActivable(mundo, false);
@@ -329,7 +480,10 @@ static class Ventanas
         }
         // Un clic sobre el mundo puede reactivarlo aun siendo no activable (Chromium hace su
         // propio SetFocus): si pasa, el teclado vuelve a la ventana.
-        if (tipo is "bajar" or "doble" && objetivo == h && GetForegroundWindow() != h) Activar(h);
+        // Y activarla la sube arriba del todo: se devuelve detrás del mundo en el acto (uso real:
+        // "pulso Enter y después clic izquierdo, y la ventana se pone por encima a pantalla completa").
+        if (tipo is "bajar" or "doble" && objetivo == h && GetForegroundWindow() != h && Activar(h))
+            lock (cerrojo) if (!escondidas.Contains(h) && MundoAbierto() && !TieneDialogo(h)) DebajoDelMundo(h);
     }
 
     /// <summary>MouseEvent.buttons (1 izq, 2 der, 4 medio) -> MK_LBUTTON/MK_RBUTTON/MK_MBUTTON.</summary>
@@ -363,9 +517,16 @@ static class Ventanas
 
     // --- Win32 ------------------------------------------------------------------------------
     [StructLayout(LayoutKind.Sequential)] struct RECT { public int Left, Top, Right, Bottom; }
+    [StructLayout(LayoutKind.Sequential)] struct WINDOWPLACEMENT { public int length, flags, showCmd; public POINT min, max; public RECT normal; }
     [StructLayout(LayoutKind.Sequential)] struct POINT { public int X, Y; }
 
     [DllImport("user32.dll")] static extern bool IsWindow(IntPtr h);
+    [DllImport("user32.dll")] static extern bool GetWindowPlacement(IntPtr h, ref WINDOWPLACEMENT p);
+    [DllImport("user32.dll")] static extern bool EnumWindows(Visitar v, IntPtr l);
+    [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr h);
+    [DllImport("user32.dll")] static extern int GetWindowTextLength(IntPtr h);
+    delegate bool Visitar(IntPtr h, IntPtr l);
+    [DllImport("user32.dll")] static extern IntPtr GetWindow(IntPtr h, uint c);
     [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
     [DllImport("user32.dll")] static extern IntPtr GetAncestor(IntPtr h, uint f);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetClassName(IntPtr h, StringBuilder s, int n);

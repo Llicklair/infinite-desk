@@ -11,6 +11,7 @@ import { crearConsola } from "./consola3d.js";
 import { mostrarNodo } from "./nodo.js";
 import { crearPuente, releerScript } from "./puente.js";
 import { crearPanelFicheros } from "./ficheros.js";
+import { crearPanelAjustes } from "./ajustes.js";
 
 const VELOCIDAD = 9; // metros por segundo; Shift la triplica
 const ALTURA_OJOS = 1.7;
@@ -22,7 +23,7 @@ const RELEER_FONDO_MS = 120000; // el fondo (sin puente) relee grafos.js cada ta
  * @typedef {import("./grafo3d.js").GrafoExportado} GrafoExportado
  * @typedef {import("./grafo3d.js").Grafo3D} Grafo3D
  * @typedef {import("./pantallas.js").Pantalla} Pantalla
- * @typedef {{portada: HTMLElement, info: HTMLElement, aviso: HTMLElement, ayuda: HTMLElement, ficheros: HTMLElement | null, nodo: HTMLElement | null}} Interfaz
+ * @typedef {{portada: HTMLElement, info: HTMLElement, aviso: HTMLElement, ayuda: HTMLElement, ficheros: HTMLElement | null, nodo: HTMLElement | null, ajustes?: HTMLElement | null}} Interfaz
  */
 
 /**
@@ -175,15 +176,21 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
   const mirar = new PointerLockControls(camara, renderer.domElement);
   mirar.addEventListener("lock", () => (ui.portada.hidden = true));
   // Al entrar a escribir en una pantalla se suelta el ratón, pero no es para salir del mundo.
-  mirar.addEventListener("unlock", () => (ui.portada.hidden = escribiendo !== null || Boolean(panel?.abierto)));
+  mirar.addEventListener("unlock", () => (ui.portada.hidden = escribiendo !== null || Boolean(panel?.abierto) || Boolean(ajustes?.abierto)));
   ui.portada.addEventListener("click", () => mirar.lock());
   // "dentro": el mundo a pantalla completa, abierto desde el clic derecho del escritorio
   // (npm run fondo). Con el ratón ya suelto, Esc cierra la ventana y vuelve a verse el fondo.
+  // Esc con el ratón suelto: al escritorio, pero el mundo sigue abierto (el puente lo minimiza) y
+  // el clic derecho → Enter vuelve a él con sus pantallas. Cerrarlo del todo: Shift+Esc. Uso real:
+  // "sin querer le di a Escape dos veces y perdí lo que tenía abierto".
   if (opciones.vista === "dentro") {
     const pie = ui.portada.querySelector("p");
-    if (pie) pie.textContent = "Click to enter · Esc: back to the desktop";
-    document.addEventListener("keydown", (e) => {
-      if (e.code === "Escape" && !mirar.isLocked && !escribiendo && !panel?.abierto) window.close();
+    if (pie) pie.textContent = "Click to enter · Esc: back to the desktop (the space stays open) · Shift+Esc: close it";
+    document.addEventListener("keydown", async (e) => {
+      if (e.code !== "Escape" || mirar.isLocked || escribiendo || panel?.abierto || ajustes?.abierto) return;
+      if (e.shiftKey) return window.close();
+      // Sin puente no hay quien lo minimice: se cierra, como antes.
+      if (!(puente?.conectado && await puente.alEscritorio())) window.close();
     });
   }
   if (opciones.vista === "aerea") {
@@ -478,6 +485,8 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
     if (recienAbierto) avisar(`Opening ${recienAbierto}: pick its window in the picker when it shows up (Window tab).`);
     let captura;
     try {
+      // Lo minimizado no sale en el selector: el puente lo restaura (detrás del mundo) antes.
+      if (puente?.conectado) await puente.antesDeCapturar();
       captura = await capturarVentana();
       // Edge no da el título de la ventana, sino su HWND: el título se lo pide al puente.
       if (puente?.conectado && captura.hwnd !== null) captura.titulo = (await puente.titulo(captura.hwnd)) ?? captura.titulo;
@@ -555,13 +564,22 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
   // F: el panel del escritorio. Lo que se abre desde él sale en el selector de ventanas justo
   // después (el clic en el panel es el gesto que el navegador exige para capturar).
   const panel = ui.ficheros && !fondo
-    ? crearPanelFicheros(ui.ficheros, () => puente, (nombre) => nuevaPantalla(nombre), avisar, () => {
+    // Lo abierto no se captura en el acto: la ventana aún no existe. El puente avisa cuando está
+    // lista y se trae con N (uso real: "el pipeline es: creo la instancia con F y después la invoco con N").
+    ? crearPanelFicheros(ui.ficheros, () => puente, (nombre) => avisar(`Opening ${nombre}…`), avisar, () => {
+      if (!mirar.isLocked && !escribiendo) ui.portada.hidden = false;
+    })
+    : null;
+  // P: los ajustes (la carpeta de proyectos, cuyos repos son las islas).
+  const ajustes = ui.ajustes && !fondo
+    ? crearPanelAjustes(ui.ajustes, () => puente, avisar, () => {
       if (!mirar.isLocked && !escribiendo) ui.portada.hidden = false;
     })
     : null;
   document.addEventListener("keydown", (e) => {
-    // Con el ratón aún bloqueado es la misma F que acaba de abrirlo: no se cierra.
+    // Con el ratón aún bloqueado es la misma F (o P) que acaba de abrirlo: no se cierra.
     if (panel?.abierto && !mirar.isLocked && (e.code === "Escape" || e.code === "KeyF")) panel.cerrar();
+    if (ajustes?.abierto && !mirar.isLocked && (e.code === "Escape" || e.code === "KeyP")) ajustes.cerrar();
   });
   /** @type {Pantalla | null} */
   let escribiendo = null;
@@ -728,6 +746,8 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
   // hace un mes salía anunciado como "working").
   const trabajando = (/** @type {import("./puente.js").EstadoAgentes} */ m) => m.agentes.filter((a) =>
     ((a.nodos ?? []).length || (a.commitados ?? []).length) && vigorOnda(a.hace_seg) > 0);
+  // Lo abierto con F (o Enter en una isla) ya tiene ventana, restaurada y detrás del mundo.
+  puente?.alLista((titulo) => avisar(`${titulo} is ready: press N to bring it in`));
   puente?.alAgentes((m) => {
     const antes = agentesDe.get(m.repo);
     agentesDe.set(m.repo, { estado: m, recibido: performance.now() });
@@ -798,6 +818,10 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
     if (codigo === "KeyN") nuevaPantalla();
     else if (codigo === "KeyF" && panel) {
       panel.abrir();
+      mirar.unlock();
+    }
+    else if (codigo === "KeyP" && ajustes) {
+      ajustes.abrir();
       mirar.unlock();
     }
     else if (codigo === "KeyR") regenerar();

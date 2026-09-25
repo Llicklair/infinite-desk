@@ -37,7 +37,20 @@ sealed class Agentes(string mundo, Func<object, Task> difundir)
     public void Empezar()
     {
         Releer();
-        var dev = Path.GetDirectoryName(Path.GetDirectoryName(Path.TrimEndingDirectorySeparator(Path.GetFullPath(mundo)))!)!;
+        VigilarCarpeta();
+        EmpezarRepaso();
+    }
+
+    /// <summary>Se eligió otra carpeta de proyectos (la P en el mundo): se vigila la nueva.</summary>
+    public void Revigilar()
+    {
+        vigia?.Dispose();
+        VigilarCarpeta();
+    }
+
+    void VigilarCarpeta()
+    {
+        var dev = Proyectos.Carpeta(Path.GetDirectoryName(Path.TrimEndingDirectorySeparator(Path.GetFullPath(mundo)))!);
         vigia = new FileSystemWatcher(dev)
         {
             IncludeSubdirectories = true,
@@ -58,6 +71,10 @@ sealed class Agentes(string mundo, Func<object, Task> difundir)
         vigia.Renamed += (_, e) => Cambio(e.FullPath);
         vigia.Error += (_, _) => { foreach (var n in repos.Keys) Preguntar(n, ESPERA_MS); }; // se desbordó: repaso entero
         vigia.EnableRaisingEvents = true;
+    }
+
+    void EmpezarRepaso()
+    {
         // Los que tienen agentes se repasan solos: un commit o parar de trabajar los apaga.
         // Y cada 30 s, todos: un agente nace en un worktree FUERA del repo (git worktree add), y
         // eso no toca nada que vigile el FileSystemWatcher (uso real: agentes lanzados para probar).

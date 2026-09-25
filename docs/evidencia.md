@@ -10,6 +10,28 @@ Cada medición real: qué se probó, qué salió, qué cambió por ello.
 
 ---
 
+## 2026-09-25 · el mundo en otra máquina y en el día a día — MONTADO, a medias con manos
+
+- **Carpeta de proyectos por máquina:** "en una máquina limpia la ruta puede ser distinta".
+  `npm run carpeta [-- ruta]` y la **P** en el mundo (selector de Windows por encima del mundo)
+  la guardan en `infinite-desk.local.json`; export y puente la leen. Medido: carpeta de prueba
+  (1 repo) y vuelta a dev/ (19). El selector, por el puente: 3 de 3 veces activo y siempre-encima.
+- **Enter: la ventana real a pantalla completa delante del mundo.** Medido: Edge le quita al mundo
+  el siempre-encima cada 200 ms mientras no es la activa ("perdido… devuelto" sin parar). Ahora la
+  ventana real se queda activa pero DETRÁS del mundo (y el clic que la reactiva la devuelve detrás).
+- **N no ofrecía lo recién abierto con F:** VS Code crea la ventana y la MINIMIZA él mismo a
+  destiempo (medido: WS_MINIMIZE tras ~1 s, y otra vez más tarde). Al pulsar N, el puente restaura
+  lo minimizado (300×200 o más) detrás del mundo; y avisa "… is ready: press N" al abrir con F.
+- **"Open Folder" de VS Code no se puede usar dentro:** su diálogo se abrió una vez (registro:
+  `#32770 "Open Folder"`) pero nadie lo vio; otras veces ni se abrió. Se esquiva: F → "Open a
+  folder in VS Code…" (selector del puente + `code.cmd`) y Enter sobre una isla.
+- **Esc dos veces perdía todo** ("sin querer… perdí lo que tenía abierto"): ahora minimiza el
+  mundo (el puente) y el clic derecho → Enter vuelve a ESE mundo; Shift+Esc lo cierra.
+- `npm run parar [-- --explorador]`: lo para todo y devuelve las ventanas escondidas.
+- **Sin identificar:** la barra de tareas se bloqueó a las 11:36 con el mundo cerrado; parar el
+  fondo no la arregló (descartado). La próxima vez, diagnosticar antes de reiniciar el Explorador.
+- **Sin probar con manos:** Esc que minimiza y Enter que vuelve; "Open a folder in VS Code…"; P.
+
 ## 2026-09-25 · VS Code dentro del mundo: ventanas nuevas, minimizadas y menús — FUNCIONA a medias
 
 - **Negativo:** F → Visual Studio Code "no abría" ventana nueva. Medido: `Code.exe --new-window`

@@ -1,5 +1,5 @@
 // Regenerar los grafos (`npm run grafo`) sin salir del mundo: con R, al arrancar el puente (es
-// decir, al entrar) y cuando aparece un repo nuevo en dev/. Uno a la vez: si se pide otro
+// decir, al entrar) y cuando aparece un repo nuevo en la carpeta de proyectos. Uno a la vez: si se pide otro
 // mientras corre, se repite al acabar. SCOPE dejaba fuera el refresco en vivo; lo pidió el
 // primer uso real ("si levanto un grafo dentro, ¿se añade una isla?").
 using System.Diagnostics;
@@ -62,12 +62,20 @@ sealed class Regenerador(string raiz, Func<object, Task> difundir, Action alTerm
     }
 
     /// <summary>
-    /// Un `.git` nuevo justo debajo de dev/ es un repo nuevo (git init, git clone). Se espera un
+    /// Un `.git` nuevo justo debajo de la carpeta de proyectos es un repo nuevo (git init, git clone). Se espera un
     /// poco: un clone sigue escribiendo, y varios eventos seguidos cuentan como uno.
     /// </summary>
+    /// <summary>Se eligió otra carpeta de proyectos (la P en el mundo): se vigila la nueva.</summary>
+    public void Revigilar()
+    {
+        vigia?.Dispose();
+        usos?.Dispose();
+        Vigilar();
+    }
+
     public void Vigilar()
     {
-        var dev = Path.GetDirectoryName(Path.TrimEndingDirectorySeparator(raiz))!;
+        var dev = Proyectos.Carpeta(raiz);
         vigia = new FileSystemWatcher(dev)
         {
             IncludeSubdirectories = true, // el .git está un nivel más abajo

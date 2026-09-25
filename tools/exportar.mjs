@@ -1,5 +1,6 @@
 // Uso: node tools/exportar.mjs [repo ...]
-// Sin argumentos, cada carpeta hermana de infinite-desk con `.git` (tu carpeta dev).
+// Sin argumentos, cada carpeta con `.git` de la carpeta de proyectos (tools/proyectos.mjs:
+// `npm run carpeta` la elige; si no, la que contiene a infinite-desk).
 // Pide el grafo a gb (ARCHITECTURE 2), lo dispone en 3D y lo deja en wallpaper/grafos.js
 // como script clásico (ARCHITECTURE 3). Si gb no está instalado, falla o no ve módulos en un
 // repo, la isla es su árbol de carpetas (ADR 0003): quien no tenga gb también tiene mundo.
@@ -9,19 +10,13 @@ import { resolve, dirname, join, basename, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { desdeCarpetas, desdeGbGraph } from "../src/datos.js";
 import { disponer } from "../src/disposicion.js";
+import { carpetaDeProyectos, reposEn } from "./proyectos.mjs";
 
 const aqui = dirname(fileURLToPath(import.meta.url));
 const proyecto = resolve(aqui, "..");
 const destino = join(proyecto, "wallpaper", "grafos.js");
 
-function hermanos() {
-  const dev = dirname(proyecto);
-  return readdirSync(dev, { withFileTypes: true })
-    .filter((d) => d.isDirectory() && existsSync(join(dev, d.name, ".git")))
-    .map((d) => join(dev, d.name)); // infinite-desk también: es un repo más de dev/ y tiene su isla
-}
-
-const repos = process.argv.length > 2 ? process.argv.slice(2).map((r) => resolve(r)) : hermanos();
+const repos = process.argv.length > 2 ? process.argv.slice(2).map((r) => resolve(r)) : reposEn(carpetaDeProyectos());
 const grafos = [];
 
 /** Carpetas que no son del proyecto aunque estén dentro (cuando no hay git que lo diga). */
