@@ -1,7 +1,7 @@
 {
   "name": "infinite-desk",
   "version": "1.0.0",
-  "description": "El grafo de galaxy-brain como fondo de escritorio 3D navegable (Lively Wallpaper)",
+  "description": "Un mundo 3D con una isla por repo y tus ventanas como pantallas flotantes",
   "scripts": {
     "grafo": "node tools/exportar.mjs",
     "build": "esbuild src/main.js --bundle --format=iife --minify --target=chrome110 --outfile=wallpaper/infinite-desk.js",

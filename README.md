@@ -21,16 +21,18 @@ they're not screenshots: they're your real windows, live, and **you can type and
   modules and dependencies if you have [galaxy-brain](https://github.com/Llicklair/galaxy-brain),
   or its folder tree if you don't. With galaxy-brain you also see agents at work: the modules they
   touch light up live.
-- **As your wallpaper.** The same space, slowly turning behind your desktop icons; right-click the
-  desktop → *Enter infinite-desk* to step in.
+- **As your wallpaper.** The same space, slowly turning behind your desktop icons (Windows);
+  right-click the desktop (Windows) or open *Enter infinite-desk* (macOS) to step in.
 
 ## Requirements
 
-- Windows 10 or 11, with Microsoft Edge (it ships with Windows).
+- Windows 10 or 11 (with Edge, it ships with Windows, and Chrome for the wallpaper), or macOS
+  with Google Chrome.
 - [Node.js](https://nodejs.org) 20 or newer.
 - [.NET 10 SDK](https://dotnet.microsoft.com/download) to work inside the screens.
-- Optional: [Lively Wallpaper](https://github.com/rocksdanister/lively) for the wallpaper
-  (`winget install rocksdanister.LivelyWallpaper`), and galaxy-brain (`gb`) for code maps.
+- Optional: galaxy-brain (`gb`) for code maps.
+
+No other apps to install: the wallpaper and the launcher use what ships with the system.
 
 ## Getting started
 
@@ -39,13 +41,14 @@ Clone the repo **inside your projects folder** (its sibling folders become the i
 ```bash
 npm install
 npm run terminado   # checks everything, builds the islands, the space and the bridge
-npm run fondo       # sets it as your Lively wallpaper and adds "Enter infinite-desk" to the desktop right-click menu
+npm run fondo       # the animated wallpaper (Windows) plus "Enter infinite-desk": desktop right-click on Windows, an app in ~/Applications on macOS
 ```
 
-Right-click the desktop → **Enter infinite-desk**. Click to step in and press **N** to bring in
+Right-click the desktop → **Enter infinite-desk** (on macOS, open the app). Click to step in and press **N** to bring in
 your first window.
 
-No Lively? It works too: open `wallpaper/index.html` in Edge.
+Or just open `wallpaper/index.html` in Edge or Chrome. New repos show up on their own. To remove
+the wallpaper and the menu entry: `npm run fondo -- --quitar`.
 
 ## Controls
 
@@ -61,12 +64,12 @@ No Lively? It works too: open `wallpaper/index.html` in Edge.
 | **T** · **R** | code map ↔ folder tree · regenerate the islands |
 | **H** · **Esc** | hide the help · release the mouse (twice: back to the desktop) |
 
-As a wallpaper: drag to rotate, wheel to zoom, double-click an island to fly to it and
-double-click empty space to go back up.
+As a wallpaper: drag on empty desktop to rotate, wheel to zoom, double-click an island to fly to
+it and double-click empty space to go back up.
 
 ## How it works
 
-The space is a web page (Three.js) that Edge opens full screen. Windows are captured with the
+The space is a web page (Three.js) that Edge (Chrome on macOS) opens full screen. Windows are captured with the
 browser's screen-capture API (you pick each one once, with a click). A small C# program
 (`puente/`, "bridge"), which only listens on your own machine and requires a token, does what a
 web page can't: pass your keyboard and mouse to the real window, open files and regenerate the
@@ -76,8 +79,11 @@ decision in [docs/adr/](docs/adr/); everything measured, good and bad, is in
 
 ## Honest limits
 
-- **Windows only** for now: the bridge uses the Windows window APIs.
+- **Working inside the screens is Windows only** for now: the bridge uses the Windows window
+  APIs. On macOS you can move around, see your islands and bring windows in, but not type in them yet.
 - **Each new window takes one click** in the browser's picker: a web page can't capture windows
   without you choosing them.
 - **Working in a screen is a mode**: while you type, WASD belongs to the window, not the space.
-- A **minimized window can't be captured**; infinite-desk restores them when you step in.
+- **Minimizing a shared window hides it instead** while the space is open: Windows stops painting
+  minimized windows, so a real minimize would freeze its screen. Enter brings it back; leaving
+  the space minimizes it for real.

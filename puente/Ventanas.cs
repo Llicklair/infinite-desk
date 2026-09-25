@@ -12,7 +12,7 @@ namespace InfiniteDesk.Puente;
 static class Ventanas
 {
     const int GWL_EXSTYLE = -20;
-    const long WS_EX_NOACTIVATE = 0x08000000, WS_EX_LAYERED = 0x80000;
+    const long WS_EX_NOACTIVATE = 0x08000000, WS_EX_LAYERED = 0x80000, WS_EX_TRANSPARENT = 0x20;
     const uint SWP_NOSIZE = 0x1, SWP_NOMOVE = 0x2, SWP_NOZORDER = 0x4, SWP_NOACTIVATE = 0x10, SWP_FRAMECHANGED = 0x20;
     static readonly IntPtr HWND_TOPMOST = -1, HWND_NOTOPMOST = -2;
     const int SW_SHOWNOACTIVATE = 4;
@@ -21,6 +21,8 @@ static class Ventanas
     static IntPtr mundo;
     /// <summary>La ventana en la que se está escribiendo.</summary>
     static IntPtr objetivo;
+    /// <summary>Las ventanas que son pantallas del mundo (la página pregunta su título al capturarlas).</summary>
+    static readonly HashSet<IntPtr> capturadas = [];
     static readonly object cerrojo = new();
 
     public static bool Existe(IntPtr h) => IsWindow(h);
@@ -70,6 +72,7 @@ static class Ventanas
             if (mundo == IntPtr.Zero || !IsWindow(mundo)) return "the space hasn't connected to the bridge yet: wait a moment";
             if (mundo == h) return "that window is already in front: go back to the space and press Enter";
             if (IsIconic(h)) ShowWindow(h, SW_SHOWNOACTIVATE); // minimizada no se captura ni se pinta
+            Mostrar(h, minimizar: false); // si estaba escondida, vuelve a ser una ventana normal
 
             SetWindowPos(mundo, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
             PonerNoActivable(mundo, true);
@@ -84,6 +87,110 @@ static class Ventanas
     }
 
     public static void Salir() { lock (cerrojo) SalirSinCerrojo(); }
+
+    public static void Capturada(IntPtr h, bool si)
+    {
+        lock (cerrojo)
+        {
+            capturadas.RemoveWhere(c => !IsWindow(c));
+            if (si) capturadas.Add(h); else capturadas.Remove(h);
+        }
+    }
+
+    /// <summary>
+    /// Una ventana minimizada no se pinta: su pantalla se congela y el vídeo se para (uso real:
+    /// "al minimizar deja de reproducirse el YouTube"). Deshacer el minimizado sin más tampoco
+    /// valía ("no me deja minimizar las pestañas que estoy compartiendo"). Así que, con el mundo
+    /// abierto, minimizar una pantalla la ESCONDE: sigue viva y pintándose, pero invisible,
+    /// atravesable por el ratón, fuera de la barra de tareas y siempre encima (si algo opaco la
+    /// tapara, Chromium la congelaría). Enter sobre ella la devuelve; cerrar el mundo la minimiza.
+    /// </summary>
+    public static void AlMinimizar(IntPtr h)
+    {
+        lock (cerrojo)
+        {
+            if (!capturadas.Contains(h)) return; // no es una pantalla: ni se apunta (se minimizan muchas)
+            if (!MundoAbierto())
+            {
+                Registro.Anotar($"minimizada {h}: se deja, el mundo no está abierto");
+                return;
+            }
+            if (objetivo == h) SalirSinCerrojo(); // se estaba escribiendo en ella: se vuelve al mundo
+            Esconder(h);
+            Registro.Anotar($"minimizada {h} \"{Titulo(h)}\": escondida, sigue viva");
+        }
+    }
+
+    /// <summary>El estilo extendido de cada ventana escondida, para devolvérselo.</summary>
+    static readonly Dictionary<IntPtr, long> escondidas = [];
+
+    static void Esconder(IntPtr h)
+    {
+        if (!escondidas.ContainsKey(h)) escondidas[h] = GetWindowLongPtr(h, GWL_EXSTYLE).ToInt64();
+        ShowWindow(h, SW_SHOWNOACTIVATE);
+        SetWindowLongPtr(h, GWL_EXSTYLE, (IntPtr)(escondidas[h] | WS_EX_LAYERED | WS_EX_TRANSPARENT));
+        SetLayeredWindowAttributes(h, 0, 0, 2 /*LWA_ALPHA*/);
+        SetWindowPos(h, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+        Barra(b => b.DeleteTab(h));
+    }
+
+    /// <summary>La devuelve tal cual estaba. Con <paramref name="minimizar"/>, además la minimiza de verdad.</summary>
+    static void Mostrar(IntPtr h, bool minimizar)
+    {
+        if (!escondidas.Remove(h, out long ex) || !IsWindow(h)) return;
+        SetWindowPos(h, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+        SetWindowLongPtr(h, GWL_EXSTYLE, (IntPtr)ex);
+        if ((ex & WS_EX_LAYERED) != 0) SetLayeredWindowAttributes(h, 0, 255, 2);
+        Barra(b => b.AddTab(h));
+        if (minimizar) ShowWindow(h, 7 /*SW_SHOWMINNOACTIVE*/);
+        Registro.Anotar($"{h} \"{Titulo(h)}\": {(minimizar ? "minimizada de verdad (se cerró el mundo)" : "visible otra vez")}");
+    }
+
+    /// <summary>El mundo se cerró: lo escondido se minimiza de verdad, que es lo que se pidió.</summary>
+    public static void MundoCerrado()
+    {
+        lock (cerrojo)
+        {
+            // El mundo deja de contar como abierto ANTES de minimizar: si no, ese minimizado
+            // volvía a esconder la ventana (uso real: VS Code invisible tras cerrar el mundo).
+            mundo = IntPtr.Zero;
+            foreach (var h in escondidas.Keys.ToArray()) Mostrar(h, minimizar: true);
+        }
+    }
+
+    /// <summary>Al volver al mundo, las pantallas minimizadas con el mundo cerrado u oculto se esconden vivas.</summary>
+    public static void AlActivar(IntPtr h)
+    {
+        lock (cerrojo)
+        {
+            if (h != mundo || !MundoAbierto()) return;
+            capturadas.RemoveWhere(c => !IsWindow(c));
+            foreach (var c in capturadas.Where(IsIconic))
+            {
+                Esconder(c);
+                Registro.Anotar($"de vuelta al mundo: {c} \"{Titulo(c)}\" estaba minimizada, escondida viva");
+            }
+        }
+    }
+
+    static bool MundoAbierto() => mundo != IntPtr.Zero && IsWindow(mundo) && !IsIconic(mundo);
+
+    /// <summary>ITaskbarList (COM, viene con Windows): quitar y poner el botón de una ventana en la barra.</summary>
+    static void Barra(Action<ITaskbarList> que)
+    {
+        try
+        {
+            var b = (ITaskbarList)new TaskbarList();
+            b.HrInit();
+            que(b);
+        }
+        catch (Exception e) { Registro.Anotar($"barra de tareas: {e.Message}"); }
+    }
+
+    [ComImport, Guid("56FDF342-FD6D-11d0-958A-006097C9A090"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    interface ITaskbarList { void HrInit(); void AddTab(IntPtr h); void DeleteTab(IntPtr h); void ActivateTab(IntPtr h); void SetActiveAlt(IntPtr h); }
+    [ComImport, Guid("56FDF344-FD6D-11d0-958A-006097C9A090")] class TaskbarList { }
+
 
     /// <summary>Ventanas del propio Windows que el puente no debe tocar nunca.</summary>
     static bool DeWindows(IntPtr h)

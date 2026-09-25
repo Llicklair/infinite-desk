@@ -16,7 +16,7 @@ npm run build               # esbuild -> wallpaper/infinite-desk.js (script clá
 npm run terminado           # todo lo anterior + tools/comprobar.mjs: el criterio de la fase 1
 npm run mundo               # servidor en localhost (solo si el navegador no captura desde file://)
 npm run puente              # dotnet build del puente nativo (ADR 0002): escribir dentro de las pantallas
-npm run fondo               # fondo en Lively (fondo.html) + "Entrar en infinite-desk" en el clic derecho del escritorio
+npm run fondo               # fondo animado (puente --fondo, Windows) + "Entrar": clic derecho en Windows, app en macOS (ADR 0004)
 ```
 
 Vistas para comprobar sin manos: `index.html?vista=aerea` (todas las islas) y

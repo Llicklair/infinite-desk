@@ -29,7 +29,7 @@ const RELEER_FONDO_MS = 120000; // el fondo (sin puente) relee grafos.js cada ta
  * @param {GrafoExportado[]} grafos
  * @param {Interfaz} ui
  * @param {{vista?: string | null}} [opciones] vista "aerea": cámara alta y sin portada (capturas);
- *   "fondo": solo ratón y sin pointer lock, para Lively (ADR 0001); "dentro": Esc sale al escritorio
+ *   "fondo": solo ratón y sin pointer lock, detrás de los iconos (ADR 0004); "dentro": Esc sale al escritorio
  */
 export function montarMundo(contenedor, grafos, ui, opciones = {}) {
   // Mutables: al regenerar los grafos (R, o solos) se rellenan de nuevo, sin recargar la página.
@@ -191,10 +191,12 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
     camara.lookAt(0, 0, -5);
   }
 
-  // --- modo fondo: Lively reenvía el ratón al escritorio, pero ni pointer lock ni teclado ----
+  // --- modo fondo: el puente reenvía el ratón del escritorio, pero ni pointer lock ni teclado
   // Se orbita en vez de caminar: arrastrar gira, la rueda acerca, doble clic vuela a la isla
   // bajo el cursor, y en reposo la vista gira sola. Se apunta con el cursor, no con la mira.
   const fondo = opciones.vista === "fondo";
+  // El fondo pinta un Chrome por monitor (ADR 0004): cada uno sabe cuál es por ?monitor=N.
+  const monitor = Number(new URLSearchParams(location.search).get("monitor") ?? 0);
   /** @type {OrbitControls | null} */
   let orbita = null;
   const puntero = new THREE.Vector2(0, 0); // en primera persona es la mira, el centro
@@ -225,7 +227,7 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
     o.addEventListener("end", () => (ultimoToque = performance.now()));
     orbita = o;
     const aerea = { posicion: camara.position.clone(), objetivo: o.target.clone() };
-    // Esc (si Lively pasa el teclado), doble clic en el vacío o un rato quieto: de vuelta a la
+    // Esc (si llega el teclado), doble clic en el vacío o un rato quieto: de vuelta a la
     // vista aérea que gira sola, la de arrancar.
     volverAerea = () => {
       vuelo = { objetivo: aerea.objetivo.clone(), posicion: aerea.posicion.clone(), aerea: true };
@@ -377,9 +379,14 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
 
   /** @param {GrafoExportado} grafo */
   function abrirEnVSCode(grafo) {
-    const enlace = document.createElement("a");
-    enlace.href = "vscode://file/" + grafo.raiz.replace(/\\/g, "/");
-    enlace.click();
+    if (puente?.conectado) {
+      // Con el puente, en una ventana NUEVA: vscode:// lo mandaba a la que ya hubiera abierta.
+      puente.vscode(grafo.raiz).then((error) => { if (error) avisar(`Couldn't open VS Code: ${error}`); });
+    } else {
+      const enlace = document.createElement("a");
+      enlace.href = "vscode://file/" + grafo.raiz.replace(/\\/g, "/");
+      enlace.click();
+    }
     ultimoAbierto = { repo: grafo.nombre, cuando: Date.now() };
     // Si ya está abierto, VS Code solo trae esa ventana al frente: es la forma de escribir en
     // una pantalla, porque el navegador no puede reenviarle teclado ni ratón (SCOPE, fase 2).
@@ -456,6 +463,7 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
     pantallas.splice(i, 1);
     if (agarrada?.pantalla === p) agarrada = null;
     if (encendido?.g3d === p.grafo3d) encendido = null;
+    if (p.hwnd !== null) puente?.soltar(p.hwnd);
     p.cerrar();
   }
 
@@ -463,12 +471,13 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
   // Con el puente, Enter sobre una pantalla aparca la ventana real fuera de la vista y le da
   // el teclado de verdad; el ratón sobre la pantalla se traduce a su imagen y se le envía. El
   // teclado ya no es del mundo: se vuelve con clic fuera de la pantalla o el atajo del puente.
-  // En el fondo (Lively) no hay teclado que dar: ni se intenta.
+  // En el fondo (detrás de los iconos) no hay teclado que dar: ni se intenta.
   // Título único: por él encuentra el puente la ventana del mundo (no hay otra forma de que una
   // página sepa su HWND). Nadie lo ve: el mundo va a pantalla completa.
   if (!fondo) document.title = `infinite-desk · ${Math.random().toString(36).slice(2, 10)}`;
   const puente = fondo ? null : crearPuente(document.title);
   puente?.alSalir(() => dejarDeEscribir(false));
+  puente?.alConectar(() => { for (const p of pantallas) if (p.hwnd !== null) puente.titulo(p.hwnd); });
 
   // F: el panel del escritorio. Lo que se abre desde él sale en el selector de ventanas justo
   // después (el clic en el panel es el gesto que el navegador exige para capturar).
@@ -572,6 +581,7 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
     esperandoR = false;
   });
   if (fondo) setInterval(releerGrafos, RELEER_FONDO_MS);
+  if (fondo) setInterval(() => releerScript("fondo-estado.js"), 1000);
 
   async function regenerar() {
     if (!puente?.conectado) {
@@ -735,6 +745,9 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
   renderer.setAnimationLoop(() => {
     const dt = Math.min(reloj.getDelta(), 0.1);
     if (document.hidden) return;
+    // El fondo, con algo a pantalla completa o maximizado delante, no se ve: no se pinta.
+    // Pero nunca antes de haber pintado: si arranca ya tapado, se quedaba en blanco (uso real).
+    if (fondo && fotograma > 30 && window.INFINITE_DESK_FONDO?.tapado?.[monitor]) return;
 
     if (mirar.isLocked) {
       const correr = teclas.has("ShiftLeft") || teclas.has("ShiftRight") ? 3 : 1;

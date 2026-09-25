@@ -1,9 +1,9 @@
-# "Entrar en infinite-desk" (clic derecho del escritorio, lo instala tools/fondo.mjs).
+﻿# "Entrar en infinite-desk" (clic derecho del escritorio, lo instala tools/fondo.mjs).
 #
-# Para ver el escritorio se minimiza todo, y Edge NO puede capturar una ventana minimizada: ni
+# Para ver el escritorio se minimiza todo, y Chromium NO puede capturar una ventana minimizada: ni
 # la ofrece en el selector. Así que primero se restauran, sin activarlas, y después se abre el
 # mundo a pantalla completa por encima: quedan detrás, vivas y capturables con N.
-param([string]$Edge, [string]$Perfil, [string]$Url)
+param([string]$Navegador, [string]$Perfil, [string]$Url)
 
 Add-Type @'
 using System; using System.Runtime.InteropServices; using System.Text;
@@ -32,11 +32,14 @@ public static class Ventanas {
 # El puente (ADR 0002): sin él el mundo funciona, pero no se puede escribir en las pantallas.
 $raiz = Split-Path $PSScriptRoot -Parent
 $puente = Join-Path $raiz 'puente\bin\Release\net10.0-windows\infinite-desk-bridge.exe'
-if ((Test-Path $puente) -and -not (Get-Process infinite-desk-bridge -ErrorAction SilentlyContinue)) {
+# Se mira el puerto, no el nombre del proceso: el fondo animado (--fondo, ADR 0004) es el mismo
+# ejecutable y no escucha.
+function Escucha { try { (New-Object Net.Sockets.TcpClient '127.0.0.1', 47800).Close(); $true } catch { $false } }
+if ((Test-Path $puente) -and -not (Escucha)) {
   Start-Process $puente -ArgumentList "`"$(Join-Path $raiz 'wallpaper')`"" -WindowStyle Hidden
   # Espera a que escuche (la página también reintenta, pero así Enter funciona a la primera).
   for ($i = 0; $i -lt 50; $i++) {
-    try { (New-Object Net.Sockets.TcpClient '127.0.0.1', 47800).Close(); break } catch { Start-Sleep -Milliseconds 100 }
+    if (Escucha) { break } else { Start-Sleep -Milliseconds 100 }
   }
 }
-Start-Process $Edge -ArgumentList "--user-data-dir=`"$Perfil`"", '--no-first-run', '--start-fullscreen', "--app=$Url"
+Start-Process $Navegador -ArgumentList "--user-data-dir=`"$Perfil`"", '--no-first-run', '--start-fullscreen', "--app=$Url"

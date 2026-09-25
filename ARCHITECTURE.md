@@ -11,14 +11,14 @@ en una revisión ("esto viola la 3") y una cita decide.
    no ve módulos), la isla es el árbol de carpetas, que es estructura, no dependencias, y lo
    dice ([ADR 0003](docs/adr/0003-sin-gb-arbol-de-carpetas.md)).
 3. **El fondo funciona abriendo `index.html` desde disco.** Nada de `type="module"` ni `fetch`
-   de ficheros locales (Chromium los bloquea en `file://`, y Lively carga así). Todo va en un
+   de ficheros locales (Chromium los bloquea en `file://`, y el mundo se abre así). Todo va en un
    bundle clásico más `grafo.js` con `window.GB_GRAFO`.
 4. **La disposición es determinista.** Mismo grafo → mismas posiciones. Un fondo que se
    recoloca en cada arranque desorienta; y lo determinista se puede testear.
 5. **Sin red en tiempo de ejecución.** Three.js va en el bundle, no por CDN: el mundo arranca
    con el equipo sin conexión.
 6. **Una pantalla se engancha a un repo por un hecho, no por adivinar.** El título de la
-   ventana (`repoDeTitulo`, que da el puente: Edge solo da su HWND) o lo último que abriste con Enter; si ninguno aplica, queda sin
+   ventana (`repoDeTitulo`, que da el puente: el navegador solo da su HWND) o lo último que abriste con Enter; si ninguno aplica, queda sin
    grafo y lo eliges tú con G. Nunca se engancha "el más parecido".
 
 ## Cómo se cambia esto

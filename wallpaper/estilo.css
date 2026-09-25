@@ -10,7 +10,7 @@ canvas { display: block; }
 #portada h1 { margin: 0 0 6px; font-size: 22px; font-weight: 600; }
 #portada p { margin: 0; color: #8d96c8; }
 [hidden] { display: none !important; }
-/* Fondo (Lively): se apunta con el cursor, no hay mira. */
+/* Fondo animado (ADR 0004): se apunta con el cursor, no hay mira. */
 body[data-vista="fondo"] #mira { display: none; }
 /* Escribiendo dentro de una pantalla (ADR 0002): el cursor es el ratón de la ventana. */
 body[data-escribiendo] #mira { display: none; }

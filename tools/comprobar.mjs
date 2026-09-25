@@ -9,11 +9,7 @@ const dir = join(dirname(fileURLToPath(import.meta.url)), "..", "wallpaper");
 const fallos = [];
 const falla = (/** @type {string} */ m) => fallos.push(m);
 
-const info = JSON.parse(readFileSync(join(dir, "LivelyInfo.json"), "utf8"));
-if (info.Type !== 1) falla("LivelyInfo.Type debe ser 1 (web)");
-try { statSync(join(dir, info.FileName)); } catch { falla(`falta ${info.FileName}`); }
-
-// index.html es el mundo en el navegador; fondo.html, el mismo mundo como fondo en Lively.
+// index.html es el mundo en el navegador; fondo.html, el mismo mundo como fondo animado (ADR 0004).
 for (const pagina of ["index.html", "fondo.html"]) {
   const html = readFileSync(join(dir, pagina), "utf8");
   if (/type=["']module["']/.test(html)) falla(`${pagina} usa type=module: no carga en file:// (ARCHITECTURE 3)`);
@@ -21,7 +17,7 @@ for (const pagina of ["index.html", "fondo.html"]) {
   if (!html.includes('href="estilo.css"')) falla(`${pagina} no carga estilo.css`);
   if (/https?:\/\//.test(html)) falla(`${pagina} pide algo a la red (ARCHITECTURE 5)`);
 }
-if (!readFileSync(join(dir, "fondo.html"), "utf8").includes('data-vista="fondo"')) falla("fondo.html sin data-vista=\"fondo\": Lively no tiene teclado ni pointer lock");
+if (!readFileSync(join(dir, "fondo.html"), "utf8").includes('data-vista="fondo"')) falla("fondo.html sin data-vista=\"fondo\": detrás de los iconos no hay teclado ni pointer lock");
 
 if (statSync(join(dir, "infinite-desk.js")).size < 1000) falla("infinite-desk.js vacío: ¿se ha construido?");
 

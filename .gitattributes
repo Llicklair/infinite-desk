@@ -1,0 +1,2 @@
+# Los scripts de macOS/bash se rompen con CRLF: siempre LF, se clonen donde se clonen.
+*.sh text eol=lf

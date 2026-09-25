@@ -14,9 +14,12 @@ const REINTENTO_MS = 3000;
  *   titulo(hwnd: number): Promise<string | null>,
  *   entrar(hwnd: number): Promise<string | null>,
  *   salir(): void,
+ *   soltar(hwnd: number): void,
+ *   vscode(ruta: string): Promise<string | null>,
  *   raton(hwnd: number, tipo: "mover" | "bajar" | "doble" | "subir" | "rueda",
  *     u: number, v: number, e: {button?: number, buttons?: number}, delta?: number): void,
  *   alSalir(f: () => void): void,
+ *   alConectar(f: () => void): void,
  *   regenerar(): Promise<boolean>,
  *   alGrafos(f: (r: {ok: boolean, motivo: string, resumen: string}) => void): void,
  *   escritorio(): Promise<import("./ficheros.js").Cosa[]>,
@@ -59,6 +62,8 @@ export function crearPuente(tituloMundo) {
   const alGrafos = [];
   /** @type {((m: EstadoAgentes) => void)[]} */
   const alAgentes = [];
+  /** @type {(() => void)[]} */
+  const alConectar = [];
 
   async function conectar() {
     if (!window.INFINITE_DESK_PUENTE) await releerScript("puente-config.js");
@@ -68,6 +73,8 @@ export function crearPuente(tituloMundo) {
     nuevo.addEventListener("open", () => {
       ws = nuevo;
       if (tituloMundo) pedir({ op: "mundo", titulo: tituloMundo });
+      // Si el puente se reinició, no sabe qué ventanas son pantallas: se le vuelven a presentar.
+      for (const f of alConectar) f();
       // Lo que ya se sabe de los agentes: sin esperar al próximo cambio en disco.
       pedir({ op: "agentes" }).then((r) => {
         for (const m of r.repos ?? []) for (const f of alAgentes) f(m);
@@ -111,11 +118,17 @@ export function crearPuente(tituloMundo) {
       return r.ok ? null : r.error ?? "unknown error";
     },
     salir() { pedir({ op: "salir" }); },
+    async vscode(ruta) {
+      const r = await pedir({ op: "vscode", ruta });
+      return r.ok ? null : r.error ?? "unknown error";
+    },
+    soltar(hwnd) { pedir({ op: "soltar", hwnd }); }, // la pantalla se cerró: si se minimiza, ya no es cosa nuestra
     raton(hwnd, tipo, u, v, e, delta = 0) {
       if (!ws || ws.readyState !== WebSocket.OPEN) return;
       ws.send(JSON.stringify({ op: "raton", hwnd, tipo, u, v, boton: e.button ?? 0, botones: e.buttons ?? 0, delta }));
     },
     alSalir(f) { alSalir.push(f); },
+    alConectar(f) { alConectar.push(f); },
     /** @returns {Promise<boolean>} false si ya había una regeneración en marcha (se repetirá) */
     async regenerar() {
       const r = await pedir({ op: "regenerar" });

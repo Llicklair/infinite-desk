@@ -21,6 +21,12 @@ colocas, agrandas y cierras desde dentro.**
 
 ## Cambios de alcance
 
+- **2026-09-25 · macOS entra; Lively sale.** Tiene que correr en un portátil
+  de empresa (macOS) donde solo se aprueban lenguajes, librerías y Chrome, no aplicaciones. El
+  fondo animado lo pinta el propio puente, detrás de los iconos, con Chrome
+  ([ADR 0004](docs/adr/0004-fondo-sin-lively.md)). El puente también ha de funcionar en macOS:
+  pendiente de su propio ADR.
+
 - **2026-09-24 · refresco de los grafos: entra.** Estaba fuera ("se regeneran con `npm run grafo`").
   El primer uso real preguntó "si levanto un grafo dentro, ¿se añade una isla?". Ahora: R en el
   mundo, solo al entrar y cuando aparece un repo en `dev/` (el puente corre `npm run grafo`), y el

@@ -30,7 +30,8 @@ export async function capturarVentana() {
   // Sin `displaySurface: "window"`: era solo la pestaña con la que abre el selector, y en Edge
   // `--app` tumbaba la captura con NotReadableError "Could not start video source".
   const stream = await navigator.mediaDevices.getDisplayMedia(/** @type {any} */ ({
-    video: { frameRate: 30 },
+    // 60 si la ventana los da: a 30, un vídeo de 60 fps capturado va a tirones (uso real, YouTube).
+    video: { frameRate: { ideal: 60 } },
     audio: false,
     controller: controlador,
     selfBrowserSurface: "exclude", // el propio mundo no se ofrece: sería un espejo infinito

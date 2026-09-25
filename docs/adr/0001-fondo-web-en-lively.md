@@ -1,6 +1,6 @@
 # 0001 — La fase 1 es un fondo web en Lively Wallpaper con Three.js
 
-- Estado: aceptado
+- Estado: sustituido por [0004](0004-fondo-sin-lively.md) (2026-09-25)
 - Fecha: 2026-09-24
 
 ## Contexto

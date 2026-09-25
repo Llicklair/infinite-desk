@@ -10,6 +10,25 @@ Cada medición real: qué se probó, qué salió, qué cambió por ello.
 
 ---
 
+## 2026-09-25 · fondo animado sin Lively (puente --fondo) — FUNCIONA en Windows, macOS sin hacer
+
+- Motivo: el portátil de empresa es un Mac y no admite apps de terceros sin aprobación (ADR 0004).
+- **Negativo:** primero una foto con Chrome headless (6 s, nítida). Uso real: "tiene que tener
+  animaciones también". Fuera.
+- Montaje: Chrome `--kiosk --app=fondo.html` por monitor, `SetParent` a la `WorkerW`; Windows 10,
+  principal 2560×1440 al 200 % y otro 1920×1080 al 100 % a la izquierda.
+- Resultado: dentro de la `WorkerW` y anima (dos capturas con 3 s de diferencia, distintas); con
+  el mundo delante, 0,33 s de CPU en 5 s para los 8 procesos del fondo (pausado).
+- **Negativos, uno por uso real:** barra de título visible (sin kiosco); borroso y descentrado
+  (una sola ventana para dos escalas); botón en la barra de tareas (hay que esconderla antes de
+  marcarla `WS_EX_TOOLWINDOW`); parpadeo en blanco (pausar escondiendo la ventana); blanco fijo
+  (pausado antes de pintar el primer fotograma); segundo monitor a un cuarto (el puente no era
+  PerMonitorV2 pese al manifiesto); **barra de tareas y buscador sordos** (0x052C cada 2 s, y
+  colas de entrada enganchadas por `SetParent` entre procesos: se desenganchan).
+- Lateral: `entrar.ps1` buscaba el puente por nombre de proceso y el fondo es el mismo `.exe`:
+  el Enter "dejó de funcionar". Ahora mira el puerto.
+- **Sin probar:** si el buscador aguanta con el desenganche; todo lo de macOS.
+
 ## 2026-09-24 · render del fondo con el grafo real de galaxy-brain — FUNCIONA (en navegador)
 
 - Montaje: `npm run terminado` sobre `../galaxy-brain`; captura con Edge headless (SwiftShader)
