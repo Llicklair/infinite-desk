@@ -142,8 +142,23 @@ object? Responder(JsonElement m)
             return new { id, ok = error == null, error };
         case "mundo":
             // La página se presenta por su título (único): su ventana pasa a ser en capas.
-            var presentado = Ventanas.Presentar(m.GetProperty("titulo").GetString() ?? "");
-            Registro.Anotar($"mundo \"{m.GetProperty("titulo").GetString()}\": {(presentado ? "ok" : "NO ENCONTRADO")}");
+            var tituloMundo = m.GetProperty("titulo").GetString() ?? "";
+            var presentado = Ventanas.Presentar(tituloMundo);
+            Registro.Anotar($"mundo \"{tituloMundo}\": {(presentado ? "ok" : "aún no está: se reintenta")}");
+            // La página se presenta nada más conectar, y Edge puede tardar en poner el título en
+            // su ventana: sin reintentar, el mundo se quedaba sin puente (uso real: "dice que el
+            // espacio no está conectado al bridge"). Cada 250 ms, hasta 5 s.
+            if (!presentado) _ = Task.Run(async () =>
+            {
+                for (int n = 0; n < 20; n++)
+                {
+                    await Task.Delay(250);
+                    if (!Ventanas.Presentar(tituloMundo)) continue;
+                    Registro.Anotar($"mundo \"{tituloMundo}\": ok tras {(n + 1) * 250} ms");
+                    return;
+                }
+                Registro.Anotar($"mundo \"{tituloMundo}\": NO ENCONTRADO en 5 s");
+            });
             return new { id, ok = presentado };
         case "escritorio":
             return new { id, ok = true, cosas = Escritorio.Listar() };

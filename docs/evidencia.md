@@ -10,6 +10,20 @@ Cada medición real: qué se probó, qué salió, qué cambió por ello.
 
 ---
 
+## 2026-09-25 · Enter: "no está conectado al bridge" y la ventana "a full" delante — ARREGLADO a medias
+
+- **Negativo:** con el puente ya en marcha, la página se presentaba nada más conectar y Edge aún no
+  había puesto el título en su ventana: "mundo … NO ENCONTRADO" y todo Enter fallaba ("the space
+  hasn't connected to the bridge yet"). Antes no pasaba porque el puente arrancaba después.
+  Ahora el puente reintenta cada 250 ms hasta 5 s. **Medido:** "ok tras 250 ms".
+- **Negativo:** a veces, tras Enter, la ventana real salía delante del mundo, a pantalla completa
+  ("tengo que salir y volver a darle Enter"). Hipótesis: Chromium quita el siempre-encima a su
+  ventana a pantalla completa al perder la activación, y a veces lo hace después de que el
+  puente se lo ponga. Mientras se escribe, el puente lo comprueba cada 200 ms y lo devuelve.
+- Uso real: "ahora sí, está perfecto". **Sin confirmar la hipótesis:** en la sesión de prueba el
+  vigilante no tuvo que actuar ni una vez; si vuelve a pasar, el registro lo dirá
+  ("el mundo había perdido el siempre-encima…").
+
 ## 2026-09-25 · el fondo rompe Windows: rehecho con WebView2 en composición — FUNCIONA
 
 - **Negativo 1 (uso real, varias veces):** con Chrome en la `WorkerW`, buscador y barra de tareas

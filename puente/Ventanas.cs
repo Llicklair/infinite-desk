@@ -12,7 +12,7 @@ namespace InfiniteDesk.Puente;
 static class Ventanas
 {
     const int GWL_EXSTYLE = -20;
-    const long WS_EX_NOACTIVATE = 0x08000000, WS_EX_LAYERED = 0x80000, WS_EX_TRANSPARENT = 0x20;
+    const long WS_EX_NOACTIVATE = 0x08000000, WS_EX_LAYERED = 0x80000, WS_EX_TRANSPARENT = 0x20, WS_EX_TOPMOST = 0x8;
     const uint SWP_NOSIZE = 0x1, SWP_NOMOVE = 0x2, SWP_NOZORDER = 0x4, SWP_NOACTIVATE = 0x10, SWP_FRAMECHANGED = 0x20;
     static readonly IntPtr HWND_TOPMOST = -1, HWND_NOTOPMOST = -2;
     const int SW_SHOWNOACTIVATE = 4;
@@ -82,7 +82,29 @@ static class Ventanas
                 SalirSinCerrojo();
                 return "Windows wouldn't let the window be activated";
             }
+            vigia ??= new Timer(_ => MantenerEncima(), null, Timeout.Infinite, Timeout.Infinite);
+            vigia.Change(0, 200);
             return null;
+        }
+    }
+
+    static Timer? vigia;
+
+    /// <summary>
+    /// Mientras se escribe en una pantalla, el mundo tiene que seguir siempre-encima. Chromium le
+    /// quita el siempre-encima a su ventana a pantalla completa cuando pierde la activación, y
+    /// si eso llega DESPUÉS de ponérselo, la ventana real sale delante del mundo (uso real: "a
+    /// veces me abre la ventana a full en el PC; tengo que salir y volver a darle Enter"). Se
+    /// comprueba cada 200 ms y se le devuelve.
+    /// </summary>
+    static void MantenerEncima()
+    {
+        lock (cerrojo)
+        {
+            if (objetivo == IntPtr.Zero || !IsWindow(mundo)) { vigia?.Change(Timeout.Infinite, Timeout.Infinite); return; }
+            if ((GetWindowLongPtr(mundo, GWL_EXSTYLE).ToInt64() & WS_EX_TOPMOST) != 0) return;
+            SetWindowPos(mundo, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+            Registro.Anotar("el mundo había perdido el siempre-encima mientras se escribía: devuelto");
         }
     }
 
