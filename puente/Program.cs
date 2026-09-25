@@ -24,6 +24,7 @@ if (args.Contains("--fondo"))
 
 string mundo = args.Length > 0 ? args[0] : BuscarMundo();
 Registro.Empezar();
+Ventanas.Rescatar(); // lo que dejó escondido un puente anterior que se cayó o se reinició
 // El token se guarda y se reutiliza: si el puente se reinicia, una página ya abierta sigue
 // valiendo (primer uso real: el mundo abierto antes que el puente se quedó sin él).
 string ficheroToken = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "infinite-desk", "puente-token");

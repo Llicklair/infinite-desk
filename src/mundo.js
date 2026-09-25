@@ -6,7 +6,8 @@ import { colocarIslas, firmaGrafos, islasNuevas } from "./islas.js";
 import { crearGrafo3D } from "./grafo3d.js";
 import { rotulo } from "./rotulo.js";
 import { capturaDeDemostracion, capturarVentana, crearPantalla, puedeCapturar } from "./pantallas.js";
-import { encendidosPorAgentes, repoDeTitulo, siguienteRepo, tonoDeAgente } from "./vinculo.js";
+import { colorDeAgente, encendidosPorAgentes, repoDeTitulo, senalesDeAgentes, siguienteRepo, vigorOnda } from "./vinculo.js";
+import { crearConsola } from "./consola3d.js";
 import { mostrarNodo } from "./nodo.js";
 import { crearPuente, releerScript } from "./puente.js";
 import { crearPanelFicheros } from "./ficheros.js";
@@ -272,6 +273,7 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
    * @typedef {{tipo: "nodo", g3d: Grafo3D, i: number}
    *   | {tipo: "pantalla", pantalla: Pantalla}
    *   | {tipo: "isla", isla: typeof islas[number]}
+   *   | {tipo: "consola", consola: import("./consola3d.js").Consola}
    *   | null} Apuntado
    */
   /** @type {Apuntado} */
@@ -297,6 +299,16 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
       if (pantalla) {
         mejor = golpeP.distance;
         res = { tipo: "pantalla", pantalla };
+      }
+    }
+
+    // La terminal de un agente (se agarra y se mueve, como las pantallas).
+    const golpeC = rayo.intersectObjects([...consolas].map((c) => c.cartel), false)[0];
+    if (golpeC && golpeC.distance < mejor) {
+      const consola = [...consolas].find((c) => c.cartel === golpeC.object);
+      if (consola) {
+        mejor = golpeC.distance;
+        res = { tipo: "consola", consola };
       }
     }
 
@@ -336,6 +348,10 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
     if (!apuntado) return null;
     if (apuntado.tipo === "nodo") return apuntado.g3d;
     if (apuntado.tipo === "isla") return apuntado.isla.g3d;
+    if (apuntado.tipo === "consola") {
+      const padre = apuntado.consola.objeto.parent;
+      return vivos().find((g) => g.objeto === padre) ?? null;
+    }
     return apuntado.pantalla.grafo3d;
   }
   /** El repo de lo apuntado, para abrirlo en VS Code. */
@@ -358,6 +374,7 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
         ? `${apuntado.isla.grafo.nombre} — double-click: go`
         : `${apuntado.isla.grafo.nombre} — Enter: open in VS Code · Q/E: rotate · wheel: size`;
     }
+    if (apuntado.tipo === "consola") return `${apuntado.consola.nombre}'s console — hold click: move it · wheel (while holding): closer/farther`;
     const p = apuntado.pantalla;
     const enter = p.hwnd === null ? "Enter: go to VS Code" : puente?.conectado ? "Enter: work in it" : "no bridge";
     return `${p.repo ?? "no repo"} · ${p.titulo} — ${enter} · hold click: move · wheel: size · G: graph · X: close`;
@@ -448,7 +465,8 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
     // para que se vea el grafo detrás y encima.
     ui.portada.hidden = true;
     const repo = porNombre.has("galaxy-brain") ? "galaxy-brain" : nombres[0];
-    capturaDeDemostracion(`cli.py - ${repo} - Visual Studio Code`).then((c) => {
+    // `&agentes`: sin pantalla, que taparía la isla con los agentes de mentira (abajo).
+    if (!new URLSearchParams(location.search).has("agentes")) capturaDeDemostracion(`cli.py - ${repo} - Visual Studio Code`).then((c) => {
       colocarPantalla(c);
       camara.position.set(3.2, 2.6, 2.2);
       camara.lookAt(0, 3.2, -5.5);
@@ -475,7 +493,9 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
   // Título único: por él encuentra el puente la ventana del mundo (no hay otra forma de que una
   // página sepa su HWND). Nadie lo ve: el mundo va a pantalla completa.
   if (!fondo) document.title = `infinite-desk · ${Math.random().toString(36).slice(2, 10)}`;
-  const puente = fondo ? null : crearPuente(document.title);
+  // La demo tampoco: es para comprobar sin manos, y el puente de verdad le pisaría los agentes
+  // de mentira (y le presentaría otra "ventana del mundo").
+  const puente = fondo || opciones.vista === "demo" ? null : crearPuente(document.title);
   puente?.alSalir(() => dejarDeEscribir(false));
   puente?.alConectar(() => { for (const p of pantallas) if (p.hwnd !== null) puente.titulo(p.hwnd); });
 
@@ -594,59 +614,110 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
   }
 
   // --- agentes de gb sobre los nodos --------------------------------------------------------
-  // El puente pregunta `gb who --json` cuando cambia algo en un repo y avisa: los módulos que
-  // toca cada agente se encienden con su color y laten; encima, su nombre. Solo en la vista gb:
-  // en el árbol de carpetas los nodos no son módulos.
-  /** @type {Map<string, import("./puente.js").EstadoAgentes>} */
+  // Como el mapa de gb (viz.py): el puente pregunta `gb who --json` cuando cambia algo en un repo
+  // (y cada 5 s mientras haya agentes). Los módulos que toca cada agente llevan un halo de su
+  // color que late (anillo quieto si solo lo commiteó; blanco si hay cruce), por cada arista
+  // con un extremo tocado viaja una señal hacia el otro, y encima de su primer módulo flota su
+  // terminal con lo que dice su consola. Todo se apaga como en gb: entero 3 min, nada a los 10.
+  // Solo en la vista gb: en el árbol de carpetas los nodos no son módulos.
+  /** @type {Map<string, {estado: import("./puente.js").EstadoAgentes, recibido: number}>} */
   const agentesDe = new Map();
-  /** @type {WeakMap<Grafo3D, THREE.Sprite[]>} */
-  const carteles = new WeakMap();
-  const colorAgente = (/** @type {string} */ nombre) => new THREE.Color().setHSL(tonoDeAgente(nombre), 0.95, 0.62);
+  /** @type {WeakMap<Grafo3D, Map<string, import("./consola3d.js").Consola>>} */
+  const consolasDe = new WeakMap();
+  /** @type {Set<import("./consola3d.js").Consola>} las que hay que animar en cada fotograma */
+  const consolas = new Set();
 
   /** @param {Grafo3D} g3d */
   function encenderGrafo(g3d) {
-    for (const c of carteles.get(g3d) ?? []) {
-      g3d.objeto.remove(c);
-      c.material.map?.dispose();
-      c.material.dispose();
+    const propias = consolasDe.get(g3d) ?? new Map();
+    consolasDe.set(g3d, propias);
+    const dato = agentesDe.get(g3d.grafo.nombre);
+    const agentes = g3d.grafo.fuente === "gb" ? dato?.estado.agentes ?? [] : [];
+    const ahora = performance.now();
+    const nombres = agentes.map((a) => a.nombre);
+    // Lo que dice gb es de cuando se preguntó: la edad sigue corriendo aunque no llegue nada.
+    const vigor = new Map(agentes.map((a) => [a.nombre, vigorOnda(a.hace_seg == null ? null : a.hace_seg + (ahora - (dato?.recibido ?? ahora)) / 1000)]));
+    const enc = encendidosPorAgentes(g3d.grafo.nodos.map((n) => n.id), agentes);
+    const colorDe = (/** @type {{agentes: string[], cruce?: boolean}} */ e) =>
+      new THREE.Color(e.agentes.length > 1 ? "#ffffff" : colorDeAgente(e.agentes[0], nombres));
+    const vigorDe = (/** @type {{agentes: string[]}} */ e) => Math.max(...e.agentes.map((n) => vigor.get(n) ?? 0));
+    g3d.iluminar([...enc].map(([i, e]) => ({ i, color: colorDe(e), pulso: !e.commit, vigor: vigorDe(e) })));
+    g3d.senalar(senalesDeAgentes(g3d.grafo.aristas, enc).map((s) => ({ ...s, color: colorDe(s), vigor: vigorDe(s) })));
+
+    // Una terminal por agente con algo encendido; las de agentes que se fueron, fuera.
+    for (const [nombre, c] of propias) {
+      if (nombres.includes(nombre) && (vigor.get(nombre) ?? 0) > 0) continue;
+      c.cerrar();
+      consolas.delete(c);
+      propias.delete(nombre);
     }
-    carteles.delete(g3d);
-    const estado = agentesDe.get(g3d.grafo.nombre);
-    if (!estado?.agentes.length || g3d.grafo.fuente !== "gb") {
-      g3d.iluminar(new Map());
-      return;
-    }
-    const enc = encendidosPorAgentes(g3d.grafo.nodos.map((n) => n.id), estado.agentes);
-    g3d.iluminar(new Map([...enc].map(([i, e]) => [i,
-      e.cruce ? new THREE.Color("#ffffff") : colorAgente(e.agentes[0]).multiplyScalar(e.commit ? 0.55 : 1)])));
-    // Un cartel por agente, encima de su primer módulo encendido.
-    /** @type {THREE.Sprite[]} */
-    const lista = [];
-    for (const a of estado.agentes) {
+    let piso = 0;
+    for (const a of agentes) {
+      if ((vigor.get(a.nombre) ?? 0) <= 0) continue;
       const i = [...enc].find(([, e]) => e.agentes.includes(a.nombre))?.[0];
       if (i === undefined) continue;
-      const c = rotulo([`🤖 ${a.nombre}`, `touching ${(a.nodos ?? []).length} modules`], { alto: 0.55, color: `#${colorAgente(a.nombre).getHexString()}` });
-      c.position.copy(g3d.posicion(i)).add(new THREE.Vector3(0, 0.9, 0));
-      g3d.objeto.add(c);
-      lista.push(c);
+      let c = propias.get(a.nombre);
+      if (!c) {
+        c = crearConsola(a.nombre, colorDeAgente(a.nombre, nombres));
+        propias.set(a.nombre, c);
+        consolas.add(c);
+        g3d.objeto.add(c.objeto);
+      }
+      c.actualizar(a, dato?.recibido ?? ahora);
+      // Por encima del grafo y del rótulo de la isla (que llega a ~1,7 radios sobre su centro).
+      c.colocar(g3d.posicion(i), g3d.radio * 1.3, g3d.radio * 1.8, piso++);
     }
-    carteles.set(g3d, lista);
   }
   function aplicarAgentes() {
     for (const g3d of vivos()) encenderGrafo(g3d);
   }
+  // Trabajando = toca algo y no se ha apagado (uso real: el repo principal sin cambios desde
+  // hace un mes salía anunciado como "working").
+  const trabajando = (/** @type {import("./puente.js").EstadoAgentes} */ m) => m.agentes.filter((a) =>
+    ((a.nodos ?? []).length || (a.commitados ?? []).length) && vigorOnda(a.hace_seg) > 0);
   puente?.alAgentes((m) => {
-    const antes = agentesDe.get(m.repo)?.agentes.length ?? 0;
-    agentesDe.set(m.repo, m);
+    const antes = agentesDe.get(m.repo);
+    agentesDe.set(m.repo, { estado: m, recibido: performance.now() });
     aplicarAgentes();
-    if (!antes && m.agentes.length) avisar(`🤖 ${m.agentes.map((a) => a.nombre).join(", ")} working on ${m.repo}`);
+    const ahora = trabajando(m);
+    if (ahora.length && !(antes && trabajando(antes.estado).length)) avisar(`🤖 ${ahora.map((a) => a.nombre).join(", ")} working on ${m.repo}`);
   });
+  // Sin noticias también se apagan: la edad corre sola (gb: vigorOnda con haceAhora).
+  setInterval(aplicarAgentes, 5000);
+  if (opciones.vista === "demo") {
+    // Dos agentes de mentira en el repo de la demo, para ver halos, señales, cruce y consolas sin
+    // agentes de verdad (capturas sin manos). El primero además commiteó otro módulo hace poco.
+    const g = porNombre.get("galaxy-brain") ?? porNombre.get(nombres[0]);
+    const ids = g?.nodos.map((n) => n.id) ?? [];
+    if (g && ids.length > 8) {
+      agentesDe.set(g.nombre, {
+        recibido: performance.now(),
+        estado: {
+          repo: g.nombre, cruces: [ids[1]], agentes: [
+            { nombre: "agente-1", nodos: [ids[0], ids[1]], commitados: [ids[8]], hace_seg: 4, consola: [
+              "[14:02:11] $ agente T3", "[14:02:15] Voy a leer el modulo carrito", `[14:02:16] > Read src/${ids[0]}.py`,
+              "[14:02:40] > Bash pytest -q tests/", "[14:03:02] = Hecho: total() acepta descuento"] },
+            { nombre: "agente-2", nodos: [ids[1], ids[5]], hace_seg: 30, cambios: [`${ids[5]}.f: (a, b) -> (a, b, extra)`] },
+          ],
+        },
+      });
+      aplicarAgentes();
+      // `?vista=demo&agentes`: la cámara delante de esa isla, para ver a los agentes de cerca.
+      const isla = islas.find((x) => x.grafo.nombre === g.nombre);
+      if (isla && new URLSearchParams(location.search).has("agentes")) {
+        const centro = isla.g3d.objeto.getWorldPosition(new THREE.Vector3());
+        const hacia = centro.clone().setY(0).normalize();
+        camara.position.copy(centro).addScaledVector(hacia, -isla.g3d.radio * 2.4).setY(centro.y + isla.g3d.radio * 1.1);
+        camara.lookAt(centro.clone().setY(centro.y + isla.g3d.radio * 0.9));
+      }
+    }
+  }
 
   // --- ficha de un nodo (clic) ------------------------------------------------------------
   /** @param {Grafo3D} g3d @param {number} i */
   function fichaDe(g3d, i) {
     if (!ui.nodo) return;
-    mostrarNodo(ui.nodo, g3d.grafo, i, agentesDe.get(g3d.grafo.nombre)?.agentes ?? []);
+    mostrarNodo(ui.nodo, g3d.grafo, i, agentesDe.get(g3d.grafo.nombre)?.estado.agentes ?? []);
     encendido?.g3d.resaltar(null);
     g3d.resaltar(i);
     encendido = { g3d, i };
@@ -708,19 +779,31 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
 
   /** @type {{pantalla: Pantalla, distancia: number} | null} */
   let agarrada = null;
+  /** @type {{consola: import("./consola3d.js").Consola, distancia: number} | null} la terminal que se está moviendo */
+  let arrastrada = null;
   document.addEventListener("mousedown", (e) => {
     if (!mirar.isLocked || e.button !== 0) return;
     // Clic con la mira en un nodo: su ficha. En el vacío: se cierra.
     if (apuntado?.tipo === "nodo") return fichaDe(apuntado.g3d, apuntado.i);
+    if (apuntado?.tipo === "consola") {
+      const d = apuntado.consola.cartel.getWorldPosition(new THREE.Vector3()).distanceTo(camara.position);
+      arrastrada = { consola: apuntado.consola, distancia: d };
+      return;
+    }
     if (apuntado?.tipo !== "pantalla") return cerrarFicha();
     const d = apuntado.pantalla.objeto.position.distanceTo(camara.position);
     agarrada = { pantalla: apuntado.pantalla, distancia: d };
   });
-  document.addEventListener("mouseup", () => (agarrada = null));
+  document.addEventListener("mouseup", () => {
+    agarrada = null;
+    arrastrada = null;
+  });
   document.addEventListener("wheel", (e) => {
     if (!mirar.isLocked) return; // en el fondo la rueda es de la órbita
     const f = e.deltaY < 0 ? 1.1 : 1 / 1.1;
-    if (agarrada) {
+    if (arrastrada) {
+      arrastrada.distancia = THREE.MathUtils.clamp(arrastrada.distancia * f, 1.5, 80);
+    } else if (agarrada) {
       // Con una pantalla en la mano, la rueda la acerca o la aleja.
       agarrada.distancia = THREE.MathUtils.clamp(agarrada.distancia * f, 1.5, 60);
     } else if (apuntado?.tipo === "pantalla") {
@@ -780,6 +863,8 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
     for (const { g3d } of islas) g3d.objeto.rotation.y += dt * 0.08;
     const t = reloj.elapsedTime;
     for (const g3d of vivos()) g3d.latir(t);
+    const ahora = performance.now();
+    for (const c of consolas) c.tick(ahora);
     const giro = (teclas.has("KeyE") ? 1 : 0) - (teclas.has("KeyQ") ? 1 : 0);
     if (giro) {
       const g = grafoApuntado();
@@ -792,9 +877,19 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
       agarrada.pantalla.objeto.lookAt(camara.position);
     }
 
+    if (arrastrada) {
+      // La terminal sigue a la mira; se guarda en coordenadas de su grafo, así gira con la isla.
+      camara.getWorldDirection(dir);
+      const donde = camara.position.clone().addScaledVector(dir, arrastrada.distancia);
+      const grafo = arrastrada.consola.objeto.parent;
+      if (grafo) arrastrada.consola.mover(grafo.worldToLocal(donde));
+    }
+
     // Apuntar cuesta rayos contra cientos de esferas: uno de cada dos fotogramas sobra.
     if (fotograma++ % 2 === 0) {
-      apuntado = agarrada ? { tipo: "pantalla", pantalla: agarrada.pantalla } : hayPuntero ? apuntar() : null;
+      apuntado = agarrada ? { tipo: "pantalla", pantalla: agarrada.pantalla }
+        : arrastrada ? { tipo: "consola", consola: arrastrada.consola }
+        : hayPuntero ? apuntar() : null;
       const nuevo = apuntado?.tipo === "nodo" ? apuntado : null;
       if (nuevo?.g3d !== encendido?.g3d || nuevo?.i !== encendido?.i) {
         encendido?.g3d.resaltar(null);

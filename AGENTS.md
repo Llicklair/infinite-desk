@@ -19,8 +19,9 @@ npm run puente              # dotnet build del puente nativo (ADR 0002): escribi
 npm run fondo               # fondo animado (puente --fondo, Windows) + "Entrar": clic derecho en Windows, app en macOS (ADR 0004)
 ```
 
-Vistas para comprobar sin manos: `index.html?vista=aerea` (todas las islas) y
-`index.html?vista=demo` (una pantalla falsa de VS Code enganchada a galaxy-brain).
+Vistas para comprobar sin manos: `index.html?vista=aerea` (todas las islas),
+`index.html?vista=demo` (una pantalla falsa de VS Code enganchada a galaxy-brain) y
+`index.html?vista=demo&agentes` (dos agentes de mentira en galaxy-brain: halos, señales, cruce y consolas).
 
 ## Gates
 
@@ -43,8 +44,8 @@ lo usa en tiempo de export. Mundo con Three.js: `grafo3d` (un grafo como objeto)
 (captura + grafo enganchado), `rotulo` (texto en el mundo), `mundo` (cámara, islas, acciones);
 `main` lo monta con `window.GB_GRAFOS`. `wallpaper/` es el mundo construido. `puente/` (C#, ADR 0002)
 es lo nativo: activa y pasa el ratón a la ventana de una pantalla, regenera grafos, abre lo del
-escritorio y pregunta `gb who` por los agentes; `src/puente.js` le habla. `nodo` (ficha al hacer
-clic) y `ficheros` (panel F) son DOM. Sin gb, islas de carpetas (ADR 0003).
+escritorio y pregunta `gb who` por los agentes; `src/puente.js` le habla. `consola3d` (la terminal
+flotante de cada agente de gb) va en el mundo; `nodo` (ficha al hacer clic) y `ficheros` (panel F) son DOM. Sin gb, islas de carpetas (ADR 0003).
 
 ## Convenciones de commit y PR
 

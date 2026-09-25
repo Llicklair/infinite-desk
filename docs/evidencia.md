@@ -10,6 +10,39 @@ Cada medición real: qué se probó, qué salió, qué cambió por ello.
 
 ---
 
+## 2026-09-25 · el fondo rompe el buscador: rehecho con WebView2 en composición — MONTADO, por confirmar
+
+- **Negativo (uso real, varias veces):** con el fondo de Chrome en la `WorkerW`, el buscador y la
+  barra de tareas se quedaban sordos "cada dos por tres". Ni cachear la `WorkerW` ni
+  `AttachThreadInput(false)` tras `SetParent` lo arreglaron. Aislado: parado el fondo (mundo y
+  puente en marcha), 20 min sin un fallo. Culpable: el fondo.
+- Montaje nuevo: una ventana del puente por monitor en la `WorkerW`, WebView2 en modo composición
+  (DirectComposition: sin ventanas hijas de otro proceso), ratón por entrada cruda en vez de hook.
+  Arranca: "2 monitor(es) en la WorkerW".
+- **Por medir con manos:** que se vea y anime en los dos monitores, el ratón sobre el escritorio,
+  y sobre todo que el buscador aguante.
+- Laterales del mismo día: un Discord minimizado se restauraba a 314×50 al entrar (recuadro
+  blanco en el escritorio): `entrar.ps1` ya solo restaura ventanas de 300×200 o más. Y la foto
+  del primer intento se había quedado como fondo de Windows: devuelto el anterior del historial.
+
+## 2026-09-25 · agentes de gb como en su mapa: halos, señales y consolas — FUNCIONA sin manos
+
+- Pedido: "animaciones de galaxy-brain más fidedignas: nodos encendiéndose por agente, las
+  consolas de los agentes y las señales de los nodos comunicándose". Copiado de `viz.py` de gb:
+  paleta de agentes por orden de nombre, halo que late (sin(t/380 ms + i·0,7)), anillo quieto si
+  solo commiteó, blanco en cruce, apagado entero 3 min → nada a los 10, señal por arista con un
+  extremo tocado (1,3 s por recorrido, desde el nodo tocado), terminal por agente con las líneas
+  de `<worktree>.consola.log` cayendo cada 700 ms.
+- Montaje: `index.html?vista=demo&agentes` con Chrome headless (SwiftShader), 1600×900.
+- Resultado: halos rosa y verde, cruce en blanco, las dos terminales legibles y apiladas por
+  encima del rótulo, con su hilo hasta el nodo.
+- **Negativos:** la demo se conectaba al puente real, que le pisaba los agentes de mentira con
+  los de verdad (y le presentaba otra ventana del mundo): la demo va sin puente. El único
+  "agente" real encontrado (el repo principal de Automatiza-Core, sin tocar nada desde hace 29
+  días) salía anunciado como "working": ahora solo se anuncia lo que toca algo y sigue vivo.
+- **Sin probar:** con un agente real escribiendo en su consola (el movimiento de las señales y
+  la caída de líneas en tiempo real).
+
 ## 2026-09-25 · fondo animado sin Lively (puente --fondo) — FUNCIONA en Windows, macOS sin hacer
 
 - Motivo: el portátil de empresa es un Mac y no admite apps de terceros sin aprobación (ADR 0004).

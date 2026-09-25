@@ -79,36 +79,113 @@ export function crearGrafo3D(grafo, radio) {
   objeto.add(lineas(aristas.filter((a) => !a.enCiclo), 0.35));
   objeto.add(lineas(aristas.filter((a) => a.enCiclo), 0.9));
 
+  // --- agentes, como el mapa de gb (viz.py): halo que late, anillo si solo commiteó, señales ---
+  // Halos: esferas grandes con mezcla aditiva; con mezcla aditiva, oscurecer el color es bajar
+  // su opacidad, así cada halo lleva su propia "alfa" sin un material por nodo.
+  const halos = new THREE.InstancedMesh(esfera, new THREE.MeshBasicMaterial({
+    transparent: true, blending: THREE.AdditiveBlending, depthWrite: false,
+  }), Math.max(1, nodos.length));
+  halos.count = 0;
+  halos.frustumCulled = false;
+  objeto.add(halos);
+  // Señales: un punto por arista, del nodo tocado hacia el otro extremo (la "sinapsis" de gb).
+  const puntos = new THREE.InstancedMesh(esfera, new THREE.MeshBasicMaterial({
+    transparent: true, blending: THREE.AdditiveBlending, depthWrite: false,
+  }), Math.max(1, aristas.length));
+  puntos.count = 0;
+  puntos.frustumCulled = false;
+  objeto.add(puntos);
+  // El color por instancia tiene que existir antes del primer fotograma: si no, el material se
+  // compila sin él y todo sale blanco.
+  halos.setColorAt(0, new THREE.Color(0));
+  puntos.setColorAt(0, new THREE.Color(0));
+  /** @type {THREE.LineSegments | null} las aristas con señal, teñidas del color del agente */
+  let tenidas = null;
+
   /** @type {THREE.Object3D | null} */
   let resaltado = null;
-  /** @type {Map<number, THREE.Color>} nodos encendidos por agentes, con el color de cada uno */
-  let encendidos = new Map();
+  /** @type {{i: number, color: THREE.Color, pulso: boolean, vigor: number}[]} */
+  let encendidos = [];
+  /** @type {{desde: number, hasta: number, color: THREE.Color, vigor: number, fase: number}[]} */
+  let senales = [];
+  const c = new THREE.Color();
+  const p = new THREE.Vector3();
   return {
     grafo,
     objeto,
     esferas,
+    /** El 90 % de los nodos cabe en esta esfera (unidades del mundo). */
+    radio,
     /** Dónde está un nodo, en coordenadas del grafo. @param {number} i */
     posicion(i) { return pos[i].clone(); },
     /**
-     * Enciende estos nodos con estos colores (los agentes de gb que los tocan) y apaga el resto.
-     * @param {Map<number, THREE.Color>} mapa
+     * Enciende estos nodos (los que tocan los agentes de gb) y apaga el resto. `pulso`: late (sin
+     * commitear); si no, anillo quieto (lo commiteó hace poco). `vigor` 0..1: se va apagando.
+     * @param {{i: number, color: THREE.Color, pulso: boolean, vigor: number}[]} lista
      */
-    iluminar(mapa) {
-      for (const i of encendidos.keys()) {
-        esferas.setColorAt(i, colores[i]);
-        colocar(i, 1);
-      }
-      encendidos = mapa;
-      for (const [i, c] of mapa) esferas.setColorAt(i, c);
+    iluminar(lista) {
+      for (const { i } of encendidos) esferas.setColorAt(i, colores[i]);
+      encendidos = lista.filter((e) => e.vigor > 0);
+      for (const { i, color, vigor } of encendidos) esferas.setColorAt(i, colores[i].clone().lerp(color, 0.6 * vigor));
       if (esferas.instanceColor) esferas.instanceColor.needsUpdate = true;
-      esferas.instanceMatrix.needsUpdate = true;
+      halos.count = encendidos.length;
     },
-    /** Hace latir los nodos encendidos; se llama en cada fotograma. @param {number} t segundos */
+    /**
+     * Las señales por las aristas: cada una va de `desde` a `hasta` en 1,3 s, con su propio
+     * desfase para que no latan todas a la vez (como en gb).
+     * @param {{desde: number, hasta: number, color: THREE.Color, vigor: number}[]} lista
+     */
+    senalar(lista) {
+      senales = lista.filter((s) => s.vigor > 0).map((s) => ({ ...s, fase: ((s.desde * 31 + s.hasta * 17) * 0.013) % 1 }));
+      puntos.count = senales.length;
+      if (tenidas) {
+        objeto.remove(tenidas);
+        tenidas.geometry.dispose();
+        tenidas = null;
+      }
+      if (!senales.length) return;
+      const pp = new Float32Array(senales.length * 6);
+      const cc = new Float32Array(senales.length * 6);
+      senales.forEach((s, j) => {
+        pp.set([...pos[s.desde].toArray(), ...pos[s.hasta].toArray()], j * 6);
+        const k = 0.3 * s.vigor; // alfa 0,3·vigor, en aditivo
+        cc.set([s.color.r * k, s.color.g * k, s.color.b * k, s.color.r * k, s.color.g * k, s.color.b * k], j * 6);
+      });
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute("position", new THREE.BufferAttribute(pp, 3));
+      geo.setAttribute("color", new THREE.BufferAttribute(cc, 3));
+      tenidas = new THREE.LineSegments(geo, new THREE.LineBasicMaterial({
+        vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false,
+      }));
+      objeto.add(tenidas);
+    },
+    /** Halos que laten y señales que viajan; se llama en cada fotograma. @param {number} t segundos */
     latir(t) {
-      if (!encendidos.size) return;
-      const e = 1.8 + 0.6 * Math.sin(t * 4);
-      for (const i of encendidos.keys()) colocar(i, e);
-      esferas.instanceMatrix.needsUpdate = true;
+      encendidos.forEach(({ i, color, pulso, vigor }, j) => {
+        // gb: pu = 0.5 + 0.5·sin(reloj/380 + i·0.7); alfa (0.22 + 0.5·pu)·vigor; radio +8+5·pu.
+        const pu = pulso ? 0.5 + 0.5 * Math.sin(t / 0.38 + i * 0.7) : 0;
+        const alfa = (pulso ? 0.22 + 0.5 * pu : 0.45) * vigor;
+        m.compose(pos[i], q, v.setScalar(radios[i] * (pulso ? 2.1 + 0.6 * pu : 1.5)));
+        halos.setMatrixAt(j, m);
+        halos.setColorAt(j, c.copy(color).multiplyScalar(alfa));
+      });
+      if (encendidos.length) {
+        halos.instanceMatrix.needsUpdate = true;
+        if (halos.instanceColor) halos.instanceColor.needsUpdate = true;
+      }
+      const r = tamano * 0.1; // el punto de la señal: visible, pero menor que el nodo más pequeño
+      senales.forEach((s, j) => {
+        let fase = t / 1.3 + s.fase;
+        fase -= Math.floor(fase);
+        p.lerpVectors(pos[s.desde], pos[s.hasta], fase);
+        m.compose(p, q, v.setScalar(r));
+        puntos.setMatrixAt(j, m);
+        puntos.setColorAt(j, c.copy(s.color).multiplyScalar(0.9 * s.vigor));
+      });
+      if (senales.length) {
+        puntos.instanceMatrix.needsUpdate = true;
+        if (puntos.instanceColor) puntos.instanceColor.needsUpdate = true;
+      }
     },
     /** Enciende las aristas de un nodo (o apaga todo con null). @param {number | null} i */
     resaltar(i) {

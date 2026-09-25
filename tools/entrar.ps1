@@ -16,12 +16,19 @@ public static class Ventanas {
   [DllImport("user32.dll")] static extern int GetWindowLong(IntPtr h, int i);
   [DllImport("user32.dll")] static extern int GetWindowTextLength(IntPtr h);
   [DllImport("user32.dll")] static extern bool ShowWindow(IntPtr h, int c);
+  [StructLayout(LayoutKind.Sequential)] struct RECT { public int L, T, R, B; }
+  [StructLayout(LayoutKind.Sequential)] struct PLACEMENT { public int len, flags, show; public int minX, minY, maxX, maxY; public RECT normal; }
+  [DllImport("user32.dll")] static extern bool GetWindowPlacement(IntPtr h, ref PLACEMENT p);
   public static void RestaurarMinimizadas() {
     EnumWindows((h, l) => {
       // Solo ventanas de aplicación: visibles, con título, sin dueño y no de herramientas.
       bool deApp = IsWindowVisible(h) && GetWindowTextLength(h) > 0
         && GetWindow(h, 4) == IntPtr.Zero && (GetWindowLong(h, -20) & 0x80) == 0;
-      if (deApp && IsIconic(h)) ShowWindow(h, 4); // SW_SHOWNOACTIVATE: sin robar el foco
+      // Y de un tamaño que valga la pena capturar: Discord restauraba a 314×50 y se quedaba como
+      // un recuadro blanco en el escritorio (uso real).
+      var p = new PLACEMENT(); p.len = Marshal.SizeOf(p);
+      bool grande = GetWindowPlacement(h, ref p) && p.normal.R - p.normal.L >= 300 && p.normal.B - p.normal.T >= 200;
+      if (deApp && grande && IsIconic(h)) ShowWindow(h, 4); // SW_SHOWNOACTIVATE: sin robar el foco
       return true;
     }, IntPtr.Zero);
   }

@@ -121,29 +121,73 @@ static class Ventanas
         }
     }
 
-    /// <summary>El estilo extendido de cada ventana escondida, para devolvérselo.</summary>
-    static readonly Dictionary<IntPtr, long> escondidas = [];
+    /// <summary>Las ventanas escondidas ahora mismo.</summary>
+    static readonly HashSet<IntPtr> escondidas = [];
+
+    /// <summary>
+    /// Las escondidas, también en disco: si el puente se reinicia o se cae con una escondida, al
+    /// arrancar la devuelve (<see cref="Rescatar"/>). Uso real: tras un reinicio, una ventana se
+    /// quedó "atraviesa clics" para siempre ("no puedo ni cerrarla ni nada").
+    /// </summary>
+    static readonly string ficheroEscondidas = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "infinite-desk", "escondidas.txt");
+
+    static void Apuntar()
+    {
+        try { File.WriteAllLines(ficheroEscondidas, escondidas.Select(h => h.ToInt64().ToString())); }
+        catch (IOException) { }
+    }
 
     static void Esconder(IntPtr h)
     {
-        if (!escondidas.ContainsKey(h)) escondidas[h] = GetWindowLongPtr(h, GWL_EXSTYLE).ToInt64();
+        escondidas.Add(h);
+        Apuntar();
         ShowWindow(h, SW_SHOWNOACTIVATE);
-        SetWindowLongPtr(h, GWL_EXSTYLE, (IntPtr)(escondidas[h] | WS_EX_LAYERED | WS_EX_TRANSPARENT));
+        long ex = GetWindowLongPtr(h, GWL_EXSTYLE).ToInt64();
+        SetWindowLongPtr(h, GWL_EXSTYLE, (IntPtr)(ex | WS_EX_LAYERED | WS_EX_TRANSPARENT));
         SetLayeredWindowAttributes(h, 0, 0, 2 /*LWA_ALPHA*/);
         SetWindowPos(h, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
         Barra(b => b.DeleteTab(h));
     }
 
-    /// <summary>La devuelve tal cual estaba. Con <paramref name="minimizar"/>, además la minimiza de verdad.</summary>
+    /// <summary>
+    /// La devuelve a la normalidad. No se restaura un estilo "de antes" guardado (podía estar ya
+    /// contaminado si el puente se reinició con ella escondida): se quita lo que pone Esconder.
+    /// Con <paramref name="minimizar"/>, además la minimiza de verdad.
+    /// </summary>
     static void Mostrar(IntPtr h, bool minimizar)
     {
-        if (!escondidas.Remove(h, out long ex) || !IsWindow(h)) return;
+        if (!escondidas.Remove(h)) return;
+        Apuntar();
+        if (IsWindow(h)) Normal(h, minimizar);
+        Registro.Anotar($"{h} \"{Titulo(h)}\": {(minimizar ? "minimizada de verdad (se cerró el mundo)" : "visible otra vez")}");
+    }
+
+    static void Normal(IntPtr h, bool minimizar)
+    {
         SetWindowPos(h, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
-        SetWindowLongPtr(h, GWL_EXSTYLE, (IntPtr)ex);
-        if ((ex & WS_EX_LAYERED) != 0) SetLayeredWindowAttributes(h, 0, 255, 2);
+        long ex = GetWindowLongPtr(h, GWL_EXSTYLE).ToInt64();
+        SetWindowLongPtr(h, GWL_EXSTYLE, (IntPtr)(ex & ~WS_EX_TRANSPARENT));
+        SetLayeredWindowAttributes(h, 0, 255, 2); // en capas con alfa 255 se ve y se usa igual
         Barra(b => b.AddTab(h));
         if (minimizar) ShowWindow(h, 7 /*SW_SHOWMINNOACTIVE*/);
-        Registro.Anotar($"{h} \"{Titulo(h)}\": {(minimizar ? "minimizada de verdad (se cerró el mundo)" : "visible otra vez")}");
+    }
+
+    /// <summary>Al arrancar: lo que quedó escondido de un puente anterior vuelve a la normalidad.</summary>
+    public static void Rescatar()
+    {
+        try
+        {
+            if (!File.Exists(ficheroEscondidas)) return;
+            foreach (var linea in File.ReadAllLines(ficheroEscondidas))
+                if (long.TryParse(linea, out var n) && IsWindow((IntPtr)n))
+                {
+                    Normal((IntPtr)n, minimizar: false);
+                    Registro.Anotar($"rescatada {n} \"{Titulo((IntPtr)n)}\": escondida por un puente anterior");
+                }
+            File.Delete(ficheroEscondidas);
+        }
+        catch (IOException) { }
     }
 
     /// <summary>El mundo se cerró: lo escondido se minimiza de verdad, que es lo que se pidió.</summary>
@@ -154,7 +198,7 @@ static class Ventanas
             // El mundo deja de contar como abierto ANTES de minimizar: si no, ese minimizado
             // volvía a esconder la ventana (uso real: VS Code invisible tras cerrar el mundo).
             mundo = IntPtr.Zero;
-            foreach (var h in escondidas.Keys.ToArray()) Mostrar(h, minimizar: true);
+            foreach (var h in escondidas.ToArray()) Mostrar(h, minimizar: true);
         }
     }
 

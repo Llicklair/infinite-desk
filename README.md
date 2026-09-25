@@ -26,8 +26,7 @@ they're not screenshots: they're your real windows, live, and **you can type and
 
 ## Requirements
 
-- Windows 10 or 11 (with Edge, it ships with Windows, and Chrome for the wallpaper), or macOS
-  with Google Chrome.
+- Windows 10 or 11 (Edge and its WebView2 engine ship with Windows), or macOS with Google Chrome.
 - [Node.js](https://nodejs.org) 20 or newer.
 - [.NET 10 SDK](https://dotnet.microsoft.com/download) to work inside the screens.
 - Optional: galaxy-brain (`gb`) for code maps.

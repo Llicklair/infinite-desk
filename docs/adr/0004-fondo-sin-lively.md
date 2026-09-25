@@ -16,12 +16,18 @@ estático. Uso real: "no, tiene que tener animaciones también".
 
 ## Decisión
 
-- **Windows:** `infinite-desk-bridge --fondo` hace lo que hacía Lively. Abre `fondo.html` en un
-  Chrome por monitor (perfil propio, kiosco, a la escala de ese monitor) y mete cada ventana en
-  la `WorkerW` del Explorador, entre el fondo y los iconos. Un hook de ratón de bajo nivel le pasa
-  el ratón cuando el cursor está sobre el escritorio vacío. Se pausa (deja de pintar) cuando
-  algo tapa su monitor entero. `npm run fondo` lo copia a `%LOCALAPPDATA%` y lo deja arrancando
-  al iniciar sesión.
+- **Windows:** `infinite-desk-bridge --fondo` hace lo que hacía Lively. Por monitor, una ventana
+  del propio puente en la `WorkerW` del Explorador (entre el fondo y los iconos), y dentro el
+  motor de Edge que trae Windows (WebView2, librería `Microsoft.Web.WebView2`) pintando
+  `fondo.html` en modo composición (DirectComposition), a la escala de ese monitor. El ratón se
+  lee con entrada cruda (RegisterRawInputDevices) y se le pasa con `SendMouseInput` si el cursor
+  está sobre el escritorio vacío. Se pausa (deja de pintar) cuando algo tapa su monitor entero.
+  `npm run fondo` lo copia a `%LOCALAPPDATA%` y lo deja arrancando al iniciar sesión.
+- Segunda versión, descartada: ventanas de Chrome (kiosco) metidas en la `WorkerW` y un hook de
+  ratón. Padre e hija de procesos distintos enganchan sus colas de entrada y no se puede
+  deshacer: cada vez que Chrome se entretenía, el buscador y la barra de tareas se quedaban
+  sordos. Parado el fondo, no volvió a pasar. Ahora del Explorador solo cuelga una ventana nuestra,
+  cuyo hilo no hace más que responder, y WebView2 en composición no crea ventanas hijas.
 - "Entrar" sigue en el clic derecho del escritorio, con Edge: viene con Windows y con él se
   midió todo el puente (ADR 0002). En Chrome el Enter sobre una pantalla dejó de funcionar.
 - **macOS:** "Entrar" es una app de AppleScript (`osacompile`, viene con el sistema) en
@@ -32,8 +38,8 @@ estático. Uso real: "no, tiene que tener animaciones también".
 
 - Cero aplicaciones de terceros aparte del navegador, en los dos sistemas.
 - Lo aprendido a la fuerza, todo en `docs/evidencia.md`: mandar `0x052C` a Progman más de una
-  vez, y dejar a Chrome con las colas de entrada enganchadas al Explorador (lo hace `SetParent`
-  entre procesos), dejan sordos la barra de tareas y el buscador. Esconder la ventana para
+  vez, y colgar del Explorador ventanas de otro proceso que no responda al instante, dejan
+  sordos la barra de tareas y el buscador. Esconder la ventana para
   pausar la hace parpadear en blanco. El puente tiene que ser PerMonitorV2 por código: el del
   manifiesto no se aplicaba y el segundo monitor salía al doble.
 - El puente sigue siendo solo de Windows; llevarlo a macOS es otra decisión (otro ADR).

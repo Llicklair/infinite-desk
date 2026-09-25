@@ -2,7 +2,7 @@
 // `gb who --json` (derivado de los worktrees de git: cambios sin commitear y commits recientes),
 // y aquí solo se decide CUÁNDO preguntarlo: cuando cambia un fichero de un repo con gb (con un
 // poco de espera, para no preguntar en mitad de un guardado) y, para los repos con agentes, cada
-// medio minuto (para que se apaguen solos al commitear o parar). Una pregunta a la vez.
+// 5 s (sus consolas, y que se apaguen solos al commitear o parar). Una pregunta a la vez.
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Text.Json;
@@ -12,7 +12,8 @@ namespace InfiniteDesk.Puente;
 
 sealed class Agentes(string mundo, Func<object, Task> difundir)
 {
-    const int ESPERA_MS = 3000, REPASO_MS = 30000;
+    // Con agentes, cada 5 s: sus consolas se leen de disco (gb who) y tienen que verse moverse.
+    const int ESPERA_MS = 3000, REPASO_MS = 5000;
 
     /// <summary>nombre del repo -> su raíz, solo los que tienen grafo de gb (de wallpaper/grafos.js).</summary>
     Dictionary<string, string> repos = new(StringComparer.OrdinalIgnoreCase);
@@ -58,10 +59,14 @@ sealed class Agentes(string mundo, Func<object, Task> difundir)
         vigia.Error += (_, _) => { foreach (var n in repos.Keys) Preguntar(n, ESPERA_MS); }; // se desbordó: repaso entero
         vigia.EnableRaisingEvents = true;
         // Los que tienen agentes se repasan solos: un commit o parar de trabajar los apaga.
+        // Y cada 30 s, todos: un agente nace en un worktree FUERA del repo (git worktree add), y
+        // eso no toca nada que vigile el FileSystemWatcher (uso real: agentes lanzados para probar).
+        int vuelta = 0;
         repaso = new Timer(_ =>
         {
-            foreach (var (nombre, json) in ultimo)
-                if (!json.Contains("\"agentes\":[]")) Preguntar(nombre, 0);
+            bool todos = ++vuelta % (30000 / REPASO_MS) == 0;
+            foreach (var nombre in repos.Keys)
+                if (todos || (ultimo.TryGetValue(nombre, out var json) && !json.Contains("\"agentes\":[]"))) Preguntar(nombre, 0);
         }, null, REPASO_MS, REPASO_MS);
     }
 
@@ -86,7 +91,8 @@ sealed class Agentes(string mundo, Func<object, Task> difundir)
             await p.WaitForExitAsync();
             if (p.ExitCode != 0) return;
             var foto = JsonNode.Parse(salida.TrimStart('﻿'))!;
-            // Al mundo solo le hace falta esto: quién, qué nodos (y símbolos) y hace cuánto.
+            // Al mundo le hace falta: quién, qué nodos (y símbolos), hace cuánto, y para su
+            // terminal flotante lo que dice su consola y qué firmas cambió (como el mapa de gb).
             var agentes = new JsonArray((foto["agentes"]?.AsArray() ?? []).Select(a => (JsonNode)new JsonObject
             {
                 ["nombre"] = a?["nombre"]?.GetValue<string>(),
@@ -95,6 +101,9 @@ sealed class Agentes(string mundo, Func<object, Task> difundir)
                 ["commitados"] = a?["commitados"]?.DeepClone(),
                 ["hace_seg"] = a?["hace_seg"]?.DeepClone(),
                 ["ficheros"] = a?["ficheros"]?.DeepClone(),
+                ["vecinos"] = a?["vecinos"]?.DeepClone(),
+                ["consola"] = a?["consola"]?.DeepClone(),
+                ["cambios"] = a?["cambios"]?.DeepClone(),
             }).ToArray());
             var mensaje = new JsonObject { ["evento"] = "agentes", ["repo"] = nombre, ["agentes"] = agentes, ["cruces"] = foto["cruces"]?.DeepClone() };
             var texto = mensaje.ToJsonString();

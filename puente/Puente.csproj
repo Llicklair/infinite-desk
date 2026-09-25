@@ -12,4 +12,16 @@
     <InvariantGlobalization>true</InvariantGlobalization>
     <ApplicationManifest>app.manifest</ApplicationManifest>
   </PropertyGroup>
+  <ItemGroup>
+    <!-- El fondo animado (ADR 0004): el motor de Edge de Windows (WebView2) en modo composición,
+         dentro de una ventana del puente. Windows Forms solo por su bucle de mensajes. -->
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4191.47" />
+    <FrameworkReference Include="Microsoft.WindowsDesktop.App.WindowsForms" />
+  </ItemGroup>
+  <!-- El paquete mete siempre su control de WPF, que aquí no se usa y choca con WindowsBase. -->
+  <Target Name="SinControlWpfDeWebView2" BeforeTargets="ResolveAssemblyReferences">
+    <ItemGroup>
+      <Reference Remove="@(Reference)" Condition="'%(Filename)' == 'Microsoft.Web.WebView2.Wpf'" />
+    </ItemGroup>
+  </Target>
 </Project>

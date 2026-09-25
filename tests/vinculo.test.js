@@ -1,6 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { encendidosPorAgentes, repoDeTitulo, siguienteRepo, tonoDeAgente } from "../src/vinculo.js";
+import {
+  COLOR_AGENTE_DE_MAS, COLORES_AGENTE, ONDA_FRESCA, ONDA_MUERTA, colorDeAgente, encendidosPorAgentes, lineasNuevas,
+  repoDeTitulo, senalesDeAgentes, siguienteRepo, vigorOnda,
+} from "../src/vinculo.js";
 
 const repos = ["infinite-desk", "galaxy-brain", "galaxy", "TTS pro", "forja", "atalaya"];
 
@@ -49,8 +52,43 @@ test("agentes: encienden sus módulos, el commit se distingue y dos a la vez son
   assert.deepEqual(r.get(3), { agentes: ["uno"], commit: true, cruce: false });
 });
 
-test("el tono de un agente es estable y está en 0..1", () => {
-  assert.equal(tonoDeAgente("worktree-a"), tonoDeAgente("worktree-a"));
-  assert.notEqual(tonoDeAgente("worktree-a"), tonoDeAgente("worktree-b"));
-  for (const n of ["x", "infinite-desk", "agente-7"]) assert.ok(tonoDeAgente(n) >= 0 && tonoDeAgente(n) < 1);
+test("color de agente: la paleta de gb por orden de nombre, gris del quinto en adelante", () => {
+  const todos = ["zeta", "alfa", "delta", "beta", "gamma"];
+  assert.equal(colorDeAgente("alfa", todos), COLORES_AGENTE[0]);
+  assert.equal(colorDeAgente("delta", todos), COLORES_AGENTE[2]);
+  assert.equal(colorDeAgente("zeta", todos), COLOR_AGENTE_DE_MAS);
+  assert.equal(colorDeAgente("alfa", ["alfa"]), colorDeAgente("alfa", ["alfa", "zz"])); // estable al llegar otro detrás
+  assert.equal(colorDeAgente("fantasma", todos), COLOR_AGENTE_DE_MAS);
+});
+
+test("vigor: entero 3 minutos, se apaga en línea recta y a los 10 es cero", () => {
+  assert.equal(vigorOnda(0), 1);
+  assert.equal(vigorOnda(null), 1);
+  assert.equal(vigorOnda(ONDA_FRESCA), 1);
+  assert.equal(vigorOnda((ONDA_FRESCA + ONDA_MUERTA) / 2), 0.5);
+  assert.equal(vigorOnda(ONDA_MUERTA), 0);
+  assert.equal(vigorOnda(5000), 0);
+});
+
+test("señales: desde el nodo tocado hacia el otro extremo, solo en aristas con un extremo tocado", () => {
+  const enc = new Map([[1, { agentes: ["uno"] }], [3, { agentes: ["dos"] }]]);
+  const aristas = [
+    { origen: 0, destino: 1 }, // tocado el destino: la señal sale de él
+    { origen: 1, destino: 2 },
+    { origen: 1, destino: 3 }, // los dos tocados: de origen a destino
+    { origen: 0, destino: 2 }, // ninguno: nada
+  ];
+  assert.deepEqual(senalesDeAgentes(aristas, enc), [
+    { desde: 1, hasta: 0, agentes: ["uno"] },
+    { desde: 1, hasta: 2, agentes: ["uno"] },
+    { desde: 1, hasta: 3, agentes: ["uno"] },
+  ]);
+});
+
+test("consola: solo caen las líneas nuevas; si la vista se perdió, las últimas", () => {
+  assert.deepEqual(lineasNuevas([], ["a", "b", "c"], 2), ["b", "c"]);
+  assert.deepEqual(lineasNuevas(["a", "b"], ["a", "b", "c", "d"]), ["c", "d"]);
+  assert.deepEqual(lineasNuevas(["a", "b"], ["a", "b"]), []);
+  assert.deepEqual(lineasNuevas(["x"], ["a", "b", "c"], 2), ["b", "c"]);
+  assert.deepEqual(lineasNuevas(["ok"], ["ok", "sigue", "ok", "fin"]), ["fin"]); // la última repetida: desde la más reciente
 });
