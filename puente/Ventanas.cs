@@ -7,7 +7,7 @@
 using System.Runtime.InteropServices;
 using System.Text;
 
-namespace Infinitas.Puente;
+namespace InfiniteDesk.Puente;
 
 static class Ventanas
 {
@@ -61,14 +61,14 @@ static class Ventanas
     {
         lock (cerrojo)
         {
-            if (!IsWindow(h)) return "esa ventana ya no existe";
-            if (DeWindows(h)) return "esa es una ventana de Windows (barra de tareas, escritorio): no se toca";
+            if (!IsWindow(h)) return "that window no longer exists";
+            if (DeWindows(h)) return "that is a Windows window (taskbar, desktop): left alone";
             if (objetivo != IntPtr.Zero) SalirSinCerrojo();
             // Solo el mundo que se presentó por su título. Antes, si no, se tomaba la ventana de
             // delante: si era la barra de tareas, se la dejaba no activable y sin siempre-encima
             // (primer uso real: "me has roto la barra de tareas").
-            if (mundo == IntPtr.Zero || !IsWindow(mundo)) return "el mundo aún no se ha presentado al puente: espera un momento";
-            if (mundo == h) return "la ventana ya está delante: vuelve al mundo y pulsa Enter";
+            if (mundo == IntPtr.Zero || !IsWindow(mundo)) return "the space hasn't connected to the bridge yet: wait a moment";
+            if (mundo == h) return "that window is already in front: go back to the space and press Enter";
             if (IsIconic(h)) ShowWindow(h, SW_SHOWNOACTIVATE); // minimizada no se captura ni se pinta
 
             SetWindowPos(mundo, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
@@ -77,7 +77,7 @@ static class Ventanas
             if (!Activar(h))
             {
                 SalirSinCerrojo();
-                return "Windows no dejó activar la ventana";
+                return "Windows wouldn't let the window be activated";
             }
             return null;
         }

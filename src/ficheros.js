@@ -17,9 +17,9 @@ export function crearPanelFicheros(panel, puente, alAbrir, avisar, alCerrar) {
   const lista = document.createElement("div");
   lista.className = "cosas";
   const cabecera = document.createElement("h2");
-  cabecera.textContent = "Escritorio";
+  cabecera.textContent = "Desktop";
   const pie = document.createElement("p");
-  pie.textContent = "Clic: se abre con su programa y eliges su ventana en el selector · Esc o F: cerrar";
+  pie.textContent = "Click: it opens in its app and you pick its window in the picker · Esc or F: close";
   panel.replaceChildren(cabecera, lista, pie);
 
   /** @param {string} icono @param {string} nombre @param {() => Promise<string | null>} abrir */
@@ -32,7 +32,7 @@ export function crearPanelFicheros(panel, puente, alAbrir, avisar, alCerrar) {
     b.addEventListener("click", async () => {
       cerrar();
       const error = await abrir();
-      if (error) avisar(`No se pudo abrir ${nombre}: ${error}`);
+      if (error) avisar(`Couldn't open ${nombre}: ${error}`);
       else alAbrir(nombre);
     });
     return b;
@@ -43,14 +43,14 @@ export function crearPanelFicheros(panel, puente, alAbrir, avisar, alCerrar) {
     const p = puente();
     if (!p?.conectado) {
       lista.replaceChildren(Object.assign(document.createElement("p"), {
-        textContent: "Sin puente no se puede abrir nada. Vuelve a entrar desde el clic derecho del escritorio.",
+        textContent: "No bridge, so nothing can be opened. Come back in from the desktop right-click menu.",
       }));
       return;
     }
     const cosas = await p.escritorio();
     lista.replaceChildren(
-      boton("🗂️", "Explorador de archivos", () => p.abrir({ especial: "explorador" })),
-      boton("🧭", "Navegador", () => p.abrir({ especial: "navegador" })),
+      boton("🗂️", "File Explorer", () => p.abrir({ especial: "explorador" })),
+      boton("🧭", "Browser", () => p.abrir({ especial: "navegador" })),
       ...cosas.map((c) => boton(ICONO[c.tipo] ?? "📄", c.nombre, () => p.abrir({ ruta: c.ruta }))),
     );
   }

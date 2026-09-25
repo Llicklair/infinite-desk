@@ -166,7 +166,7 @@ export function crearPantalla(captura) {
         grafo3d.objeto.visible = grafoVisible;
         objeto.add(grafo3d.objeto);
       }
-      etiqueta = rotulo([grafo ? grafo.nombre : "sin repo", grafo ? titulo : "G para elegir el grafo"], { alto: 0.22 });
+      etiqueta = rotulo([grafo ? grafo.nombre : "no repo", grafo ? titulo : "G to pick a graph"], { alto: 0.22 });
       objeto.add(etiqueta);
       /** @type {THREE.MeshBasicMaterial} */ (marco.material).color.set(grafo ? "#5a6cff" : "#3a4480");
       colocarAnexos();

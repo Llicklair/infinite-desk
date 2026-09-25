@@ -1,4 +1,4 @@
-# infinitas
+# infinite-desk
 
 Mundo 3D en primera persona: una isla por repo con su grafo de gb, y ventanas capturadas
 como pantallas flotantes con el grafo de su repo detrás.
@@ -12,11 +12,11 @@ Lo de esta sección se EJECUTA, así que no puede pudrirse en silencio: si mient
 npm test                    # node --test, núcleo puro (datos, disposición, islas, vínculo)
 npm run tipos               # tsc --checkJs estricto sobre src/ y tools/
 npm run grafo [-- repo ...] # gb graph --json por repo -> wallpaper/grafos.js (por defecto: hermanos en dev/)
-npm run build               # esbuild -> wallpaper/infinitas.js (script clásico, sin módulos)
+npm run build               # esbuild -> wallpaper/infinite-desk.js (script clásico, sin módulos)
 npm run terminado           # todo lo anterior + tools/comprobar.mjs: el criterio de la fase 1
 npm run mundo               # servidor en localhost (solo si el navegador no captura desde file://)
 npm run puente              # dotnet build del puente nativo (ADR 0002): escribir dentro de las pantallas
-npm run fondo               # fondo en Lively (fondo.html) + "Entrar en infinitas" en el clic derecho del escritorio
+npm run fondo               # fondo en Lively (fondo.html) + "Entrar en infinite-desk" en el clic derecho del escritorio
 ```
 
 Vistas para comprobar sin manos: `index.html?vista=aerea` (todas las islas) y

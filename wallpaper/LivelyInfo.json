@@ -1,9 +1,9 @@
 {
   "AppVersion": "1.0.0.0",
-  "Title": "infinitas",
+  "Title": "infinite-desk",
   "Thumbnail": null,
   "Preview": null,
-  "Desc": "Los repos de dev/ como islas con su grafo de galaxy-brain: arrastra para girar, rueda para acercar, doble clic para ir a una isla.",
+  "Desc": "Your repos as islands with their code maps: drag to rotate, wheel to zoom, double-click to fly to an island.",
   "Author": "Llicklair",
   "License": null,
   "Contact": null,

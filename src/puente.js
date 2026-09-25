@@ -1,4 +1,4 @@
-// Cliente del puente nativo (ADR 0002): infinitas-puente escucha en 127.0.0.1 y actúa sobre las
+// Cliente del puente nativo (ADR 0002): infinite-desk-bridge escucha en 127.0.0.1 y actúa sobre las
 // ventanas capturadas. Sin puente el mundo funciona como en la fase 1.
 //
 // El puente puede arrancar DESPUÉS que la página (primer uso real: el mundo ya estaba abierto y
@@ -61,8 +61,8 @@ export function crearPuente(tituloMundo) {
   const alAgentes = [];
 
   async function conectar() {
-    if (!window.INFINITAS_PUENTE) await releerScript("puente-config.js");
-    const config = window.INFINITAS_PUENTE;
+    if (!window.INFINITE_DESK_PUENTE) await releerScript("puente-config.js");
+    const config = window.INFINITE_DESK_PUENTE;
     if (!config) return setTimeout(conectar, REINTENTO_MS);
     const nuevo = new WebSocket(`ws://127.0.0.1:${config.puerto}/?token=${config.token}`);
     nuevo.addEventListener("open", () => {
@@ -83,9 +83,9 @@ export function crearPuente(tituloMundo) {
     });
     nuevo.addEventListener("close", () => {
       if (ws === nuevo) ws = null;
-      for (const r of esperando.values()) r({ ok: false, error: "puente desconectado" });
+      for (const r of esperando.values()) r({ ok: false, error: "bridge disconnected" });
       esperando.clear();
-      window.INFINITAS_PUENTE = undefined; // por si cambió: se relee en el siguiente intento
+      window.INFINITE_DESK_PUENTE = undefined; // por si cambió: se relee en el siguiente intento
       setTimeout(conectar, REINTENTO_MS);
     });
   }
@@ -93,7 +93,7 @@ export function crearPuente(tituloMundo) {
 
   /** @param {Record<string, unknown>} m @returns {Promise<any>} */
   function pedir(m) {
-    if (!ws || ws.readyState !== WebSocket.OPEN) return Promise.resolve({ ok: false, error: "puente desconectado" });
+    if (!ws || ws.readyState !== WebSocket.OPEN) return Promise.resolve({ ok: false, error: "bridge disconnected" });
     const id = ++siguiente;
     ws.send(JSON.stringify({ ...m, id }));
     return new Promise((r) => esperando.set(id, r));
@@ -101,14 +101,14 @@ export function crearPuente(tituloMundo) {
 
   return {
     get conectado() { return ws !== null && ws.readyState === WebSocket.OPEN; },
-    get atajo() { return window.INFINITAS_PUENTE?.atajo ?? null; }, // el atajo global de salir, si consiguió uno
+    get atajo() { return window.INFINITE_DESK_PUENTE?.atajo ?? null; }, // el atajo global de salir, si consiguió uno
     async titulo(hwnd) {
       const r = await pedir({ op: "titulo", hwnd });
       return r.ok ? r.titulo : null;
     },
     async entrar(hwnd) {
       const r = await pedir({ op: "entrar", hwnd });
-      return r.ok ? null : r.error ?? "error desconocido";
+      return r.ok ? null : r.error ?? "unknown error";
     },
     salir() { pedir({ op: "salir" }); },
     raton(hwnd, tipo, u, v, e, delta = 0) {
@@ -129,7 +129,7 @@ export function crearPuente(tituloMundo) {
     alAgentes(f) { alAgentes.push(f); },
     async abrir(que) {
       const r = await pedir({ op: "abrir", ...que });
-      return r.ok ? null : r.error ?? "error desconocido";
+      return r.ok ? null : r.error ?? "unknown error";
     },
   };
 }

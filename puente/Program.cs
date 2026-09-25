@@ -1,4 +1,4 @@
-// infinitas-puente: servidor WebSocket en 127.0.0.1 para el mundo web (ADR 0002).
+// infinite-desk-bridge: servidor WebSocket en 127.0.0.1 para el mundo web (ADR 0002).
 //
 // Seguridad: controlar ventanas desde una página es peligroso si CUALQUIER web puede hacerlo.
 // Por eso (1) solo escucha en 127.0.0.1, (2) exige el origen de una página abierta desde disco
@@ -10,14 +10,14 @@ using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
-using Infinitas.Puente;
+using InfiniteDesk.Puente;
 
 const int PUERTO = 47800;
 
 string mundo = args.Length > 0 ? args[0] : BuscarMundo();
 // El token se guarda y se reutiliza: si el puente se reinicia, una página ya abierta sigue
 // valiendo (primer uso real: el mundo abierto antes que el puente se quedó sin él).
-string ficheroToken = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "infinitas", "puente-token");
+string ficheroToken = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "infinite-desk", "puente-token");
 string token = File.Exists(ficheroToken) ? File.ReadAllText(ficheroToken).Trim() : "";
 if (token.Length < 32)
 {
@@ -77,13 +77,13 @@ if (atajo == null) Console.Error.WriteLine("ningún atajo libre: se sale con cli
 AppDomain.CurrentDomain.ProcessExit += (_, _) => Ventanas.Salir();
 
 File.WriteAllText(config,
-    "// Lo escribe infinitas-puente al arrancar (ADR 0002); no se versiona.\n" +
-    $"window.INFINITAS_PUENTE = {{ puerto: {PUERTO}, token: \"{token}\", atajo: {JsonSerializer.Serialize(atajo)} }};\n");
+    "// Lo escribe infinite-desk-bridge al arrancar (ADR 0002); no se versiona.\n" +
+    $"window.INFINITE_DESK_PUENTE = {{ puerto: {PUERTO}, token: \"{token}\", atajo: {JsonSerializer.Serialize(atajo)} }};\n");
 // Al arrancar (= al entrar en el mundo) los grafos se ponen al día solos, en segundo plano.
 regenerador.Pedir("al entrar");
 regenerador.Vigilar();
 agentes.Empezar();
-Console.WriteLine($"infinitas-puente en ws://127.0.0.1:{PUERTO} · atajo {atajo ?? "ninguno"} · config en {config}");
+Console.WriteLine($"infinite-desk-bridge en ws://127.0.0.1:{PUERTO} · atajo {atajo ?? "ninguno"} · config en {config}");
 await app.RunAsync();
 
 async Task Atender(WebSocket ws)

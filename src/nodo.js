@@ -15,7 +15,7 @@ function lista(titulo, nombres) {
   h.textContent = `${titulo} (${nombres.length})`;
   const ul = document.createElement("ul");
   for (const n of nombres.slice(0, MAX)) ul.append(Object.assign(document.createElement("li"), { textContent: n }));
-  if (nombres.length > MAX) ul.append(Object.assign(document.createElement("li"), { textContent: `… y ${nombres.length - MAX} más`, className: "mas" }));
+  if (nombres.length > MAX) ul.append(Object.assign(document.createElement("li"), { textContent: `… and ${nombres.length - MAX} more`, className: "mas" }));
   d.append(h, ul);
   return d;
 }
@@ -37,24 +37,24 @@ export function mostrarNodo(panel, grafo, i, agentes) {
   const sub = document.createElement("p");
   sub.className = "sub";
   const partes = [grafo.nombre];
-  if (grafo.fuente === "carpetas") partes.push(salen.length ? "carpeta" : "fichero", "árbol de carpetas (sin gb)");
-  else partes.push(`grupo ${n.grupo}`, `lo importan ${n.fanIn}`, `importa ${n.fanOut}`);
+  if (grafo.fuente === "carpetas") partes.push(salen.length ? "folder" : "file", "folder tree (no gb)");
+  else partes.push(`group ${n.grupo}`, `imported by ${n.fanIn}`, `imports ${n.fanOut}`);
   sub.textContent = partes.join(" · ");
 
   const bloques = [titulo, sub];
-  if (n.enCiclo) bloques.push(Object.assign(document.createElement("p"), { className: "ciclo", textContent: "En un ciclo de imports" }));
+  if (n.enCiclo) bloques.push(Object.assign(document.createElement("p"), { className: "ciclo", textContent: "In an import cycle" }));
 
   const tocan = agentes.filter((a) => (a.nodos ?? []).includes(n.id) || (a.commitados ?? []).includes(n.id));
   if (tocan.length) {
     const h = document.createElement("h3");
-    h.textContent = tocan.length > 1 ? `Agentes (${tocan.length}) — cruce` : "Agente";
+    h.textContent = tocan.length > 1 ? `Agents (${tocan.length}) — overlap` : "Agent";
     const ul = document.createElement("ul");
     for (const a of tocan) {
       const vivo = (a.nodos ?? []).includes(n.id);
       const sims = (a.simbolos ?? []).filter((s) => s.startsWith(`${n.id}.`)).map((s) => s.slice(n.id.length + 1));
-      const hace = a.hace_seg == null ? "" : ` · hace ${a.hace_seg < 90 ? `${a.hace_seg} s` : `${Math.round(a.hace_seg / 60)} min`}`;
+      const hace = a.hace_seg == null ? "" : ` · ${a.hace_seg < 90 ? `${a.hace_seg} s` : `${Math.round(a.hace_seg / 60)} min`} ago`;
       ul.append(Object.assign(document.createElement("li"), {
-        textContent: `🤖 ${a.nombre}: ${vivo ? "lo está tocando" : "lo acaba de commitear"}${sims.length ? ` (${sims.join(", ")})` : ""}${hace}`,
+        textContent: `🤖 ${a.nombre}: ${vivo ? "editing it" : "just committed it"}${sims.length ? ` (${sims.join(", ")})` : ""}${hace}`,
       }));
     }
     const d = document.createElement("div");
@@ -64,12 +64,12 @@ export function mostrarNodo(panel, grafo, i, agentes) {
   }
 
   if (grafo.fuente === "carpetas") {
-    const hijos = lista("Contiene", salen.map((s) => s.slice(s.lastIndexOf("/") + 1)));
+    const hijos = lista("Contains", salen.map((s) => s.slice(s.lastIndexOf("/") + 1)));
     if (hijos) bloques.push(hijos);
   } else {
-    for (const b of [lista("Lo importan", entran), lista("Importa", salen)]) if (b) bloques.push(b);
+    for (const b of [lista("Imported by", entran), lista("Imports", salen)]) if (b) bloques.push(b);
   }
-  bloques.push(Object.assign(document.createElement("p"), { className: "pie", textContent: "Clic en otro nodo o en el vacío para cerrar" }));
+  bloques.push(Object.assign(document.createElement("p"), { className: "pie", textContent: "Click another node, or empty space to close" }));
   panel.replaceChildren(...bloques);
   panel.hidden = false;
 }

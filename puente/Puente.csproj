@@ -4,8 +4,8 @@
   <PropertyGroup>
     <TargetFramework>net10.0-windows</TargetFramework>
     <OutputType>Exe</OutputType>
-    <AssemblyName>infinitas-puente</AssemblyName>
-    <RootNamespace>Infinitas.Puente</RootNamespace>
+    <AssemblyName>infinite-desk-bridge</AssemblyName>
+    <RootNamespace>InfiniteDesk.Puente</RootNamespace>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>

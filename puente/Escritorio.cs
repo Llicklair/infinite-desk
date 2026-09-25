@@ -5,7 +5,7 @@
 // los fijos: la página no puede pedir que se ejecute una ruta cualquiera.
 using System.Diagnostics;
 
-namespace Infinitas.Puente;
+namespace InfiniteDesk.Puente;
 
 static class Escritorio
 {
@@ -43,12 +43,12 @@ static class Escritorio
             if (especial == "explorador") return Lanzar("explorer.exe", Carpetas()[0]);
             // El navegador por defecto: una URL la abre él, sea el que sea.
             if (especial == "navegador") return Lanzar("https://www.google.com", null);
-            if (ruta == null) return "nada que abrir";
+            if (ruta == null) return "nothing to open";
             var completa = Path.GetFullPath(ruta);
             bool delEscritorio = Carpetas().Any(c =>
                 string.Equals(Path.GetDirectoryName(completa), c, StringComparison.OrdinalIgnoreCase));
-            if (!delEscritorio) return "solo se abre lo que está en el escritorio";
-            if (!File.Exists(completa) && !Directory.Exists(completa)) return "ya no está en el escritorio";
+            if (!delEscritorio) return "only things on the desktop can be opened";
+            if (!File.Exists(completa) && !Directory.Exists(completa)) return "it is no longer on the desktop";
             return Lanzar(completa, null);
         }
         catch (Exception e) { return e.Message; }

@@ -1,4 +1,4 @@
-# infinitas — alcance
+# infinite-desk — alcance
 
 ## En una frase
 

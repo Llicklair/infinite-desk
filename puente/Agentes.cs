@@ -8,7 +8,7 @@ using System.Diagnostics;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
-namespace Infinitas.Puente;
+namespace InfiniteDesk.Puente;
 
 sealed class Agentes(string mundo, Func<object, Task> difundir)
 {

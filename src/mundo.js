@@ -148,11 +148,11 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
 
     const g3d = crearGrafo3D(grafo, 5);
     g3d.objeto.position.y = 7.5;
-    const ciclos = grafo.ciclos ? ` · ${grafo.ciclos} ciclo${grafo.ciclos === 1 ? "" : "s"}` : "";
+    const ciclos = grafo.ciclos ? ` · ${grafo.ciclos} cycle${grafo.ciclos === 1 ? "" : "s"}` : "";
     const cartel = rotulo(
       [grafo.nombre, grafo.fuente === "carpetas"
-        ? `${grafo.nodos.length} carpetas y ficheros · sin gb` // ADR 0003: estructura, no dependencias
-        : `${grafo.nodos.length} módulos · ${grafo.aristas.length} aristas${ciclos}`],
+        ? `${grafo.nodos.length} folders and files · no gb` // ADR 0003: estructura, no dependencias
+        : `${grafo.nodos.length} modules · ${grafo.aristas.length} edges${ciclos}`],
       { alto: 1.2, color: `#${color.getHexString()}` },
     );
     cartel.position.y = 14.8;
@@ -180,7 +180,7 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
   // (npm run fondo). Con el ratón ya suelto, Esc cierra la ventana y vuelve a verse el fondo.
   if (opciones.vista === "dentro") {
     const pie = ui.portada.querySelector("p");
-    if (pie) pie.textContent = "Clic para entrar · Esc: volver al escritorio";
+    if (pie) pie.textContent = "Click to enter · Esc: back to the desktop";
     document.addEventListener("keydown", (e) => {
       if (e.code === "Escape" && !mirar.isLocked && !escribiendo && !panel?.abierto) window.close();
     });
@@ -206,7 +206,7 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
   let volverAerea = null;
   if (fondo) {
     ui.portada.hidden = true;
-    ui.ayuda.innerHTML = "<b>arrastrar</b> girar · <b>rueda</b> acercar · <b>clic</b> en un nodo: su ficha · <b>doble clic</b> ir a la isla (en el vacío o <b>Esc</b>: volver arriba)";
+    ui.ayuda.innerHTML = "<b>drag</b> rotate · <b>wheel</b> zoom · <b>click</b> a node: its details · <b>double-click</b> fly to an island (on empty space or <b>Esc</b>: back up)";
     camara.position.set(0, 45, 95);
     const o = new OrbitControls(camara, renderer.domElement);
     o.target.set(0, 6, 0);
@@ -347,18 +347,18 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
     if (apuntado.tipo === "nodo") {
       const { g3d, i } = apuntado;
       const n = g3d.grafo.nodos[i];
-      if (g3d.grafo.fuente === "carpetas") return `${g3d.grafo.nombre} · ${n.id}${n.fanOut ? ` · contiene ${n.fanOut}` : ""}`;
-      return `${g3d.grafo.nombre} · ${n.id} · lo importan ${n.fanIn} · importa ${n.fanOut}` +
-        (n.enCiclo ? " · EN CICLO" : "");
+      if (g3d.grafo.fuente === "carpetas") return `${g3d.grafo.nombre} · ${n.id}${n.fanOut ? ` · contains ${n.fanOut}` : ""}`;
+      return `${g3d.grafo.nombre} · ${n.id} · imported by ${n.fanIn} · imports ${n.fanOut}` +
+        (n.enCiclo ? " · IN A CYCLE" : "");
     }
     if (apuntado.tipo === "isla") {
       return fondo
-        ? `${apuntado.isla.grafo.nombre} — doble clic: ir`
-        : `${apuntado.isla.grafo.nombre} — Enter: abrir en VS Code · Q/E: girar · rueda: tamaño`;
+        ? `${apuntado.isla.grafo.nombre} — double-click: go`
+        : `${apuntado.isla.grafo.nombre} — Enter: open in VS Code · Q/E: rotate · wheel: size`;
     }
     const p = apuntado.pantalla;
-    const enter = p.hwnd === null ? "Enter: ir a VS Code" : puente?.conectado ? "Enter: escribir en ella" : "sin puente";
-    return `${p.repo ?? "sin repo"} · ${p.titulo} — ${enter} · mantén clic: mover · rueda: tamaño · G: grafo · X: cerrar`;
+    const enter = p.hwnd === null ? "Enter: go to VS Code" : puente?.conectado ? "Enter: work in it" : "no bridge";
+    return `${p.repo ?? "no repo"} · ${p.titulo} — ${enter} · hold click: move · wheel: size · G: graph · X: close`;
   }
 
   // --- acciones -----------------------------------------------------------------------------
@@ -384,21 +384,21 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
     // Si ya está abierto, VS Code solo trae esa ventana al frente: es la forma de escribir en
     // una pantalla, porque el navegador no puede reenviarle teclado ni ratón (SCOPE, fase 2).
     const yaCapturado = pantallas.some((p) => p.repo === grafo.nombre);
-    avisar(yaCapturado ? `Yendo a VS Code (${grafo.nombre})… Alt+Tab para volver al mundo.` : `Abriendo ${grafo.nombre} en VS Code…`);
+    avisar(yaCapturado ? `Going to VS Code (${grafo.nombre})… Alt+Tab to come back.` : `Opening ${grafo.nombre} in VS Code…`);
     // VS Code se abre en el escritorio, encima del mundo: el aviso útil es al volver aquí.
     if (!yaCapturado) window.addEventListener("focus", () => avisar(
-      `Pulsa N y elige la ventana de VS Code de ${grafo.nombre}: se queda dentro del mundo, detrás de él en el escritorio.`,
+      `Press N and pick the VS Code window for ${grafo.nombre}: it stays here, behind the space on your desktop.`,
     ), { once: true });
   }
 
   /** @param {string} [recienAbierto] lo que se acaba de abrir desde el panel: su ventana aún puede tardar */
   async function nuevaPantalla(recienAbierto) {
     if (!puedeCapturar()) {
-      avisar("Aquí el navegador no deja capturar ventanas. Abre el mundo con `npm run mundo`.");
+      avisar("This browser can't capture windows here. Open it with `npm run mundo`.");
       return;
     }
     mirar.unlock(); // el selector del sistema necesita el ratón
-    if (recienAbierto) avisar(`Abriendo ${recienAbierto}: elige su ventana en el selector cuando aparezca (pestaña Ventana).`);
+    if (recienAbierto) avisar(`Opening ${recienAbierto}: pick its window in the picker when it shows up (Window tab).`);
     let captura;
     try {
       captura = await capturarVentana();
@@ -407,7 +407,7 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
     } catch (e) {
       // NotAllowedError es cerrar el selector; cualquier otro es un fallo y se enseña tal cual.
       const err = /** @type {Error} */ (e);
-      avisar(err.name === "NotAllowedError" ? "Captura cancelada." : `No se pudo capturar: ${err.name}: ${err.message}`);
+      avisar(err.name === "NotAllowedError" ? "Capture cancelled." : `Couldn't capture: ${err.name}: ${err.message}`);
       return;
     }
     colocarPantalla(captura);
@@ -421,18 +421,18 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
     p.objeto.lookAt(camara.position);
 
     let repo = repoDeTitulo(captura.titulo, nombres);
-    let porque = "por el título";
+    let porque = "from its title";
     if (!repo && ultimoAbierto && Date.now() - ultimoAbierto.cuando < RECIENTE_MS) {
       repo = ultimoAbierto.repo;
-      porque = "porque es lo último que abriste";
+      porque = "it's what you opened last";
     }
     p.enganchar(repo ? grafoDe(repo) : null);
     escena.add(p.objeto);
     pantallas.push(p);
     p.alTerminar(() => quitar(p));
     avisar(repo
-      ? `Pantalla con el grafo de ${repo} (${porque}). Si no es, apunta y pulsa G. Clic para volver a entrar.`
-      : `No reconozco el repo en «${captura.titulo}»: apunta a la pantalla y pulsa G. Clic para volver a entrar.`);
+      ? `Screen with the ${repo} graph (${porque}). Wrong one? Aim at it and press G. Click to go back in.`
+      : `No repo recognised in "${captura.titulo}": aim at the screen and press G. Click to go back in.`);
     return p;
   }
 
@@ -466,7 +466,7 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
   // En el fondo (Lively) no hay teclado que dar: ni se intenta.
   // Título único: por él encuentra el puente la ventana del mundo (no hay otra forma de que una
   // página sepa su HWND). Nadie lo ve: el mundo va a pantalla completa.
-  if (!fondo) document.title = `infinitas · ${Math.random().toString(36).slice(2, 10)}`;
+  if (!fondo) document.title = `infinite-desk · ${Math.random().toString(36).slice(2, 10)}`;
   const puente = fondo ? null : crearPuente(document.title);
   puente?.alSalir(() => dejarDeEscribir(false));
 
@@ -495,11 +495,11 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
     const error = await puente.entrar(p.hwnd);
     if (error) {
       dejarDeEscribir(false);
-      avisar(`No se pudo entrar en la pantalla: ${error}`);
+      avisar(`Couldn't work in that screen: ${error}`);
       return;
     }
-    const atajo = puente.atajo ? ` o ${puente.atajo}` : "";
-    avisar(`Escribiendo en ${p.repo ?? p.titulo}. Clic fuera de la pantalla${atajo} para volver.`);
+    const atajo = puente.atajo ? ` or ${puente.atajo}` : "";
+    avisar(`Working in ${p.repo ?? p.titulo}. Click outside the screen${atajo} to come back.`);
   }
 
   function dejarDeEscribir(avisarAlPuente = true) {
@@ -558,16 +558,16 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
     aplicarAgentes();
     const recien = islasNuevas(antes, nombres);
     avisar(recien.length
-      ? `Isla${recien.length === 1 ? "" : "s"} nueva${recien.length === 1 ? "" : "s"}: ${recien.join(", ")}`
-      : `Islas al día: ${nombres.length} repos`);
+      ? `New island${recien.length === 1 ? "" : "s"}: ${recien.join(", ")}`
+      : `Islands up to date: ${nombres.length} repos`);
     return true;
   }
   let esperandoR = false;
   puente?.alGrafos(async (r) => {
     if (!r.ok) {
-      avisar(`No se pudieron regenerar los grafos: ${r.resumen}`);
+      avisar(`Couldn't regenerate the graphs: ${r.resumen}`);
     } else if (!(await releerGrafos()) && esperandoR) {
-      avisar("Grafos regenerados: nada nuevo");
+      avisar("Graphs regenerated: nothing new");
     }
     esperandoR = false;
   });
@@ -575,12 +575,12 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
 
   async function regenerar() {
     if (!puente?.conectado) {
-      avisar("Sin puente no se pueden regenerar los grafos: `npm run grafo` y vuelve a entrar.");
+      avisar("No bridge, so no regenerating: run `npm run grafo` and come back in.");
       return;
     }
     esperandoR = true;
     const empezado = await puente.regenerar();
-    avisar(empezado ? "Regenerando grafos… (alrededor de un minuto; puedes seguir)" : "Ya se estaban regenerando: se repite al acabar.");
+    avisar(empezado ? "Regenerating graphs… (about a minute; keep going)" : "Already regenerating: it'll run again when done.");
   }
 
   // --- agentes de gb sobre los nodos --------------------------------------------------------
@@ -615,7 +615,7 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
     for (const a of estado.agentes) {
       const i = [...enc].find(([, e]) => e.agentes.includes(a.nombre))?.[0];
       if (i === undefined) continue;
-      const c = rotulo([`🤖 ${a.nombre}`, `${(a.nodos ?? []).length} módulos tocando`], { alto: 0.55, color: `#${colorAgente(a.nombre).getHexString()}` });
+      const c = rotulo([`🤖 ${a.nombre}`, `touching ${(a.nodos ?? []).length} modules`], { alto: 0.55, color: `#${colorAgente(a.nombre).getHexString()}` });
       c.position.copy(g3d.posicion(i)).add(new THREE.Vector3(0, 0.9, 0));
       g3d.objeto.add(c);
       lista.push(c);
@@ -629,7 +629,7 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
     const antes = agentesDe.get(m.repo)?.agentes.length ?? 0;
     agentesDe.set(m.repo, m);
     aplicarAgentes();
-    if (!antes && m.agentes.length) avisar(`🤖 ${m.agentes.map((a) => a.nombre).join(", ")} trabajando en ${m.repo}`);
+    if (!antes && m.agentes.length) avisar(`🤖 ${m.agentes.map((a) => a.nombre).join(", ")} working on ${m.repo}`);
   });
 
   // --- ficha de un nodo (clic) ------------------------------------------------------------
@@ -671,27 +671,27 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
       ponerIslas(actuales);
       for (const p of pantallas) if (p.repo) p.enganchar(grafoDe(p.repo));
       aplicarAgentes();
-      avisar(verCarpetas ? "Vista: árbol de carpetas (T para volver a galaxy-brain)" : "Vista: galaxy-brain (dependencias)");
+      avisar(verCarpetas ? "View: folder tree (T for galaxy-brain again)" : "View: galaxy-brain (dependencies)");
     }
     else if (codigo === "KeyH") ui.ayuda.hidden = !ui.ayuda.hidden;
     else if (codigo === "Enter" && apuntado?.tipo === "pantalla" && apuntado.pantalla.hwnd !== null) {
       // Una ventana real: se escribe EN ella, nunca se abre otra (primer uso real: Enter abría un
       // VS Code nuevo porque la página no tenía puente).
       if (puente?.conectado) escribirEn(apuntado.pantalla);
-      else avisar("Sin puente no se puede escribir en la pantalla. Sal (Esc dos veces) y vuelve a entrar desde el clic derecho del escritorio.");
+      else avisar("No bridge, so you can't work in the screen. Leave (Esc twice) and come back in from the desktop right-click menu.");
     } else if (codigo === "Enter") {
       const g = repoApuntado();
       if (g) abrirEnVSCode(g);
-      else avisar("Mira hacia una isla (o su grafo) para abrir ese repo.");
+      else avisar("Look at an island (or its graph) to open that repo.");
     } else if (apuntado?.tipo === "pantalla") {
       const p = apuntado.pantalla;
       if (codigo === "KeyX") quitar(p);
-      if (codigo === "KeyV") avisar(p.alternarGrafo() ? "Grafo encima de la ventana" : "Grafo quitado (V para ponerlo)");
+      if (codigo === "KeyV") avisar(p.alternarGrafo() ? "Graph on top of the window" : "Graph hidden (V to show it)");
       if (codigo === "KeyG") {
         if (encendido?.g3d === p.grafo3d) encendido = null;
         const repo = siguienteRepo(p.repo, nombres);
         p.enganchar(repo ? grafoDe(repo) : null);
-        avisar(repo ? `Grafo de ${repo}` : "Pantalla sin grafo");
+        avisar(repo ? `${repo} graph` : "Screen with no graph");
       }
     }
   }

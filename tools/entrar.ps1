@@ -1,4 +1,4 @@
-# "Entrar en infinitas" (clic derecho del escritorio, lo instala tools/fondo.mjs).
+# "Entrar en infinite-desk" (clic derecho del escritorio, lo instala tools/fondo.mjs).
 #
 # Para ver el escritorio se minimiza todo, y Edge NO puede capturar una ventana minimizada: ni
 # la ofrece en el selector. Así que primero se restauran, sin activarlas, y después se abre el
@@ -31,8 +31,8 @@ public static class Ventanas {
 
 # El puente (ADR 0002): sin él el mundo funciona, pero no se puede escribir en las pantallas.
 $raiz = Split-Path $PSScriptRoot -Parent
-$puente = Join-Path $raiz 'puente\bin\Release\net10.0-windows\infinitas-puente.exe'
-if ((Test-Path $puente) -and -not (Get-Process infinitas-puente -ErrorAction SilentlyContinue)) {
+$puente = Join-Path $raiz 'puente\bin\Release\net10.0-windows\infinite-desk-bridge.exe'
+if ((Test-Path $puente) -and -not (Get-Process infinite-desk-bridge -ErrorAction SilentlyContinue)) {
   Start-Process $puente -ArgumentList "`"$(Join-Path $raiz 'wallpaper')`"" -WindowStyle Hidden
   # Espera a que escuche (la página también reintenta, pero así Enter funciona a la primera).
   for ($i = 0; $i -lt 50; $i++) {
