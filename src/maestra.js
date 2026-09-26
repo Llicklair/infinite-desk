@@ -1,6 +1,6 @@
 // La consola maestra (clic en su holograma, encima del palantír, o la tecla O): gestionar las
 // cuentas de IA (Anthropic, OpenAI, Google DeepMind), todos los repos a la vez y los agentes que
-// trabajan en ellos ("un mega orquestador", uso real). Cuatro pestañas:
+// trabajan en ellos ("un mega orquestador", uso real). Cinco pestañas:
 //   Accounts — quién tiene sesión, con qué plan, y el uso de hoy (lo que se puede contar: el cupo
 //              de una suscripción no se deja consultar por programa);
 //   Repos    — el estado git de cada repo; seleccionar varios y hacer fetch o pull, o mandarles agentes;
@@ -8,10 +8,12 @@
 //              abrir en VS Code o descartar los que hay. Cada uno trabaja en su rama y su worktree,
 //              commitea ahí y NUNCA hace push: se revisa y se fusiona a mano;
 //   Errors   — lo que galaxy-brain ha capturado en tus repos (gb list) y los agentes que fallaron;
-//              clic, la traza, y "mandar un agente a arreglarlo" con ella como tarea.
+//              clic, la traza, y "mandar un agente a arreglarlo" con ella como tarea;
+//   Activity — qué pasó, cuándo y dónde en todos los repos (src/actividad.js), por días.
 // Todo va por el puente a tools/orquestador.mjs. Lo de fuera (nombres, ramas, tareas) se pone como texto.
 import { PROVEEDORES } from "./orquesta.js";
 import { fuerzaDeFallo, tareaDeArreglo } from "./fallos.js";
+import { GRUPOS, ICONOS, filtrarActividad, porDias } from "./actividad.js";
 
 /** @typedef {import("./orquesta.js").Proveedor} Proveedor */
 /** @typedef {import("./orquesta.js").Agente} Agente */
@@ -19,7 +21,8 @@ import { fuerzaDeFallo, tareaDeArreglo } from "./fallos.js";
 /** @typedef {{instalado: boolean, sesion: boolean, cuenta?: string, plan?: string, detalle?: string}} Cuenta */
 /**
  * @typedef {{carpeta: string, cuentas: Record<Proveedor | "github", Cuenta>, repos: Repo[], agentes: Agente[],
- *   uso: Record<Proveedor, {trabajando: number, hoy: number, minutosHoy: number}>, fallos?: import("./fallos.js").Fallo[]}} EstadoMaestra
+ *   uso: Record<Proveedor, {trabajando: number, hoy: number, minutosHoy: number}>, fallos?: import("./fallos.js").Fallo[],
+ *   actividad?: import("./actividad.js").Evento[]}} EstadoMaestra
  */
 
 /**
@@ -54,8 +57,10 @@ function hace(seg) {
 export function crearMaestra(panel, orquestador, alEstado, alCerrar) {
   /** @type {EstadoMaestra | null} */
   let estado = null;
-  /** @type {"cuentas" | "repos" | "agentes" | "errores"} */
+  /** @type {"cuentas" | "repos" | "agentes" | "errores" | "actividad"} */
   let pestana = "repos";
+  /** @type {{repo: string | null, grupo: keyof typeof GRUPOS | null}} */
+  const filtro = { repo: null, grupo: null };
   /** @type {import("./fallos.js").Fallo | null} el fallo abierto en la pestaña Errors */
   let fallo = null;
   /** @type {Map<string, string>} trazas ya pedidas, por id */
@@ -280,19 +285,58 @@ export function crearMaestra(panel, orquestador, alEstado, alCerrar) {
     return d;
   }
 
+  function actividad() {
+    const d = el("div", "actividad");
+    if (!estado) return d;
+    const barra = el("div", "barra");
+    const sel = /** @type {HTMLSelectElement} */ (el("select"));
+    sel.append(Object.assign(document.createElement("option"), { value: "", textContent: "All repos" }));
+    for (const r of estado.repos) sel.append(Object.assign(document.createElement("option"), { value: r.nombre, textContent: r.nombre, selected: filtro.repo === r.nombre }));
+    sel.addEventListener("change", () => { filtro.repo = sel.value || null; pintar(); });
+    barra.append(sel);
+    for (const [id, nombre] of /** @type {const} */ ([[null, "All"], ["agentes", "Agents"], ["commits", "Commits"], ["fallos", "Errors"], ["pulls", "Pulls"]])) {
+      barra.append(boton(nombre, () => { filtro.grupo = id; pintar(); }, filtro.grupo === id ? "activa" : undefined));
+    }
+    d.append(barra);
+    const eventos = filtrarActividad(estado.actividad ?? [], filtro);
+    if (!eventos.length) {
+      d.append(el("p", "nota", (estado.actividad ?? []).length ? "Nothing with these filters." : "Nothing yet: from now on, commits, agents, new errors and pulls show up here."));
+      return d;
+    }
+    for (const grupo of porDias(eventos, Date.now())) {
+      d.append(el("h3", "dia", grupo.dia));
+      for (const e of grupo.eventos) {
+        const fila = el("div", `evento ${e.tipo}`);
+        fila.append(el("span", "hora", new Date(e.ts).toTimeString().slice(0, 5)), el("span", "icono", ICONOS[e.tipo] ?? "·"),
+          el("span", "repo", e.repo), el("span", "texto", e.texto));
+        // Un fallo lleva a su traza; un agente, a la lista de agentes.
+        if (e.tipo === "fallo") {
+          fila.classList.add("enlace");
+          fila.addEventListener("click", () => { fallo = (estado?.fallos ?? []).find((f) => f.id === e.ref) ?? null; pestana = "errores"; pintar(); });
+        } else if (e.tipo.startsWith("agente")) {
+          fila.classList.add("enlace");
+          fila.addEventListener("click", () => { pestana = "agentes"; pintar(); });
+        }
+        d.append(fila);
+      }
+    }
+    return d;
+  }
+
   function pintar() {
     const cabeza = el("div", "cabecera");
     cabeza.append(el("h2", undefined, "Master console"));
     const pestanas = el("div", "pestanas");
     const recientes = (estado?.fallos ?? []).filter((f) => fuerzaDeFallo(f, Date.now()) > 0).length;
-    for (const [id, nombre] of /** @type {const} */ ([["cuentas", "Accounts"], ["repos", "Repos"], ["agentes", "Agents"], ["errores", "Errors"]])) {
+    for (const [id, nombre] of /** @type {const} */ ([["cuentas", "Accounts"], ["repos", "Repos"], ["agentes", "Agents"], ["errores", "Errors"], ["actividad", "Activity"]])) {
       const etiqueta = id === "errores" && recientes ? `Errors (${recientes})` : nombre;
       pestanas.append(boton(etiqueta, () => { pestana = id; pintar(); }, `${pestana === id ? "activa" : ""}${id === "errores" && recientes ? " con-fallos" : ""}`.trim() || undefined));
     }
     cabeza.append(pestanas, boton("Refresh", () => { mensaje = "Refreshing…"; pintar(); void refrescar().then(() => { mensaje = ""; pintar(); }); }), boton("Close (Esc)", () => cerrar()));
     const cuerpo = el("div", "cuerpo");
     cuerpo.append(!estado ? el("p", "nota", mensaje || "Reading accounts and repos…")
-      : pestana === "cuentas" ? cuentas() : pestana === "repos" ? repos() : pestana === "errores" ? errores() : agentes());
+      : pestana === "cuentas" ? cuentas() : pestana === "repos" ? repos() : pestana === "errores" ? errores()
+      : pestana === "actividad" ? actividad() : agentes());
     const pie = el("p", "mensaje", mensaje);
     panel.replaceChildren(cabeza, cuerpo, pie);
   }
@@ -307,7 +351,7 @@ export function crearMaestra(panel, orquestador, alEstado, alCerrar) {
     get abierto() { return !panel.hidden; },
     /** @param {string} [en] la pestaña: "cuentas", "repos", "agentes" o "errores" */
     abrir(en) {
-      if (en === "cuentas" || en === "repos" || en === "agentes" || en === "errores") pestana = en;
+      if (en === "cuentas" || en === "repos" || en === "agentes" || en === "errores" || en === "actividad") pestana = en;
       panel.hidden = false;
       pintar();
       void refrescar();

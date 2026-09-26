@@ -10,6 +10,26 @@ Cada medición real: qué se probó, qué salió, qué cambió por ello.
 
 ---
 
+## 2026-09-26 · registro de actividad: commits, agentes, fallos nuevos y pulls — FUNCIONA sin manos
+
+Montaje: `node tools/orquestador.mjs estado` dos veces y, para simular lo nuevo, el último commit
+visto de infinite-desk puesto dos commits atrás y un fallo quitado de los vistos; capturas de la
+pestaña Activity (demo) y del holograma (mundo real).
+
+- **La primera pasada no vuelca la historia entera:** 0 eventos, y se apunta dónde está cada
+  repo y qué fallos ya existían.
+- **Después:** los 2 commits y el fallo "nuevo" salen como eventos, con hora, repo y texto.
+- **Los agentes apuntan su propio inicio y final**, y el orquestador, los descartes y los pulls.
+- **Dónde se guarda:** `actividad.jsonl`, una línea por evento, en los datos de infinite-desk
+  fuera del repo. Se recorta a 3.000 eventos.
+- **Dónde se ve:**
+  - la pestaña Activity: por días, con filtros; un clic en un fallo lleva a su traza y en un
+    agente, a la lista;
+  - los 2 últimos eventos, en el holograma;
+  - los 3 últimos de cada repo, en la ficha de su isla.
+- **Retoque:** al crecer el holograma, su borde de abajo pisaba la tarjeta de repo de delante.
+  Se subió medio metro.
+
 ## 2026-09-26 · fallos en rojo en su isla, pestaña Errors con "mandar un agente" y resumen del README — FUNCIONA sin manos
 
 Montaje: `gb list --json --all` y `gb show <id> --json --all` de verdad, más capturas del mundo

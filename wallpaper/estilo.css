@@ -137,3 +137,13 @@ body[data-escribiendo] #mira { display: none; }
 #maestra .detalle .mensaje-fallo { color: #ffc2c9; overflow-wrap: anywhere; }
 #maestra .detalle .traza { max-height: 42vh; overflow: auto; padding: 10px 12px; background: rgba(0, 0, 0, 0.4); border-radius: 6px; font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
 #maestra .detalle .proveedores { flex-direction: row; flex-wrap: wrap; margin: 12px 0 8px; }
+#maestra select { padding: 6px 8px; background: rgba(0, 0, 0, 0.35); border: 1px solid #2f9fb0; border-radius: 7px; color: #dff7ff; font: inherit; font-size: 13px; }
+#maestra .actividad .dia { margin: 14px 0 6px; font-size: 13px; color: #6ff3ff; text-transform: uppercase; letter-spacing: .05em; }
+#maestra .evento { display: grid; grid-template-columns: 44px 22px 150px 1fr; gap: 8px; padding: 5px 8px; font-size: 13px; border-bottom: 1px solid #16404c; }
+#maestra .evento.enlace { cursor: pointer; }
+#maestra .evento.enlace:hover { background: rgba(111, 243, 255, 0.07); }
+#maestra .evento .hora { color: #6f93a0; }
+#maestra .evento .repo { color: #9fdfe8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#maestra .evento .texto { overflow-wrap: anywhere; }
+#maestra .evento.fallo .texto, #maestra .evento.agente-fallo .texto { color: #ffb3bd; }
+#maestra .evento.agente-hecho .texto { color: #b8ffd0; }

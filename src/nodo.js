@@ -85,8 +85,9 @@ export function mostrarNodo(panel, grafo, i, agentes, fallos = []) {
  * @param {import("./grafo3d.js").GrafoExportado} grafo
  * @param {import("./vinculo.js").Agente[]} agentes los de su repo ahora mismo
  * @param {import("./fallos.js").Fallo[]} [fallos] los de su repo (gb list), los más recientes primero
+ * @param {import("./actividad.js").Evento[]} [actividad] lo último que ha pasado en su repo
  */
-export function mostrarIsla(panel, grafo, agentes, fallos = []) {
+export function mostrarIsla(panel, grafo, agentes, fallos = [], actividad = []) {
   const titulo = document.createElement("h2");
   titulo.textContent = grafo.nombre;
   const sub = document.createElement("p");
@@ -110,6 +111,14 @@ export function mostrarIsla(panel, grafo, agentes, fallos = []) {
   }
   const f = listaDeFallos(fallos);
   if (f) bloques.push(f);
+  if (actividad.length) {
+    const ahora = Date.now();
+    const d = lista("Recently", actividad.slice(0, 3).map((e) => {
+      const min = Math.max(0, Math.round((ahora - Date.parse(e.ts)) / 60000));
+      return `${min < 60 ? `${min}m` : min < 2880 ? `${Math.round(min / 60)}h` : `${Math.round(min / 1440)}d`} ago · ${e.texto}`;
+    }));
+    if (d) bloques.push(d);
+  }
   bloques.push(Object.assign(document.createElement("p"), { className: "pie", textContent: "Enter: open it in VS Code · click empty space to close" }));
   panel.replaceChildren(...bloques);
   panel.hidden = false;

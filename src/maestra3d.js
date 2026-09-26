@@ -5,11 +5,12 @@
 import * as THREE from "three";
 import { PROVEEDORES } from "./orquesta.js";
 import { fuerzaDeFallo } from "./fallos.js";
+import { ICONOS } from "./actividad.js";
 
 /** @typedef {import("./maestra.js").EstadoMaestra} EstadoMaestra */
 
 const ANCHO = 1024;
-const ALTO = 440;
+const ALTO = 540; // con dos líneas abajo: lo último que ha pasado
 const ANCHO_MUNDO = 9; // a 20 m de donde se aparece: con 7,2 la letra quedaba justa
 const CIAN = "#6ff3ff";
 
@@ -86,6 +87,23 @@ function pintar(e, aviso) {
     const errores = (e.fallos ?? []).filter((f) => fuerzaDeFallo(f, Date.now()) > 0).length;
     ctx.fillStyle = errores ? "#ff6b7d" : "#7dffa8";
     ctx.fillText(errores ? `⚠ ${errores} errors this week` : "no errors this week", 36, 404);
+    // Lo último que ha pasado (el registro de actividad), dos líneas.
+    ctx.fillStyle = "rgba(111, 243, 255, 0.35)";
+    ctx.fillRect(36, 446, ANCHO - 72, 2);
+    ctx.font = letra(24, 500);
+    const ultimos = (e.actividad ?? []).slice(0, 2);
+    if (!ultimos.length) {
+      ctx.fillStyle = "#8fb8c4";
+      ctx.fillText("Latest: nothing yet", 36, 462);
+    }
+    ultimos.forEach((ev, i) => {
+      const min = Math.max(0, Math.round((Date.now() - Date.parse(ev.ts)) / 60000));
+      const hace = min < 60 ? `${min}m` : min < 2880 ? `${Math.round(min / 60)}h` : `${Math.round(min / 1440)}d`;
+      ctx.fillStyle = ev.tipo === "fallo" || ev.tipo === "agente-fallo" ? "#ff9aa6" : "#cfefff";
+      let t = `${ICONOS[ev.tipo] ?? "·"} ${hace} · ${ev.repo}: ${ev.texto}`;
+      while (ctx.measureText(t).width > ANCHO - 72 && t.length > 4) t = `${t.slice(0, -2)}…`;
+      ctx.fillText(t, 36, 462 + i * 34);
+    });
     ctx.font = letra(32, 700);
     ctx.fillStyle = "#e8fbff";
     ctx.fillText("Agents", 560, 284);

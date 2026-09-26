@@ -716,18 +716,20 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
   const demoMaestra = opciones.vista === "demo" && new URLSearchParams(location.search).has("maestra");
   // Bien por encima del anillo de arriba: más bajo, desde donde se aparece caía detrás de la
   // tarjeta de repo de delante (medido en captura).
-  const holograma = !fondo ? crearHolograma(palantir.cima + 5.6) : null;
+  const holograma = !fondo ? crearHolograma(palantir.cima + 6.1) : null;
   if (holograma) escena.add(holograma.objeto);
   const maestra = ui.maestra && holograma
     ? crearMaestra(ui.maestra,
       (args) => (demoMaestra ? Promise.resolve(args[0] === "estado" ? { ok: true, datos: estadoDeDemostracion(nombres) } : { ok: false, error: "demo" })
         : puente ? puente.orquestador(args) : Promise.resolve({ ok: false, error: "no bridge" })),
-      (e) => { holograma.actualizar(e); aplicarFallos(e.fallos ?? []); },
+      (e) => { holograma.actualizar(e); aplicarFallos(e.fallos ?? []); actividad = e.actividad ?? []; },
       () => { if (!mirar.isLocked && !escribiendo) ui.portada.hidden = false; })
     : null;
   // --- fallos (gb list, por la consola maestra cada minuto): en rojo en su isla ------------------
   /** @type {import("./fallos.js").Fallo[]} */
   let fallos = [];
+  /** @type {import("./actividad.js").Evento[]} el registro de actividad (el más reciente primero) */
+  let actividad = [];
   /** @type {Map<string, THREE.Sprite>} el aviso "⚠ N" sobre la base de cada isla con fallos */
   const avisosDeFallos = new Map();
   /** Los de un repo que aún pesan (de la última semana). @param {string} repo */
@@ -1025,7 +1027,8 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
     if (!ui.nodo) return;
     encendido?.g3d.resaltar(null);
     encendido = null;
-    mostrarIsla(ui.nodo, isla.grafo, agentesDe.get(isla.grafo.nombre)?.estado.agentes ?? [], fallosDe(isla.grafo.nombre));
+    mostrarIsla(ui.nodo, isla.grafo, agentesDe.get(isla.grafo.nombre)?.estado.agentes ?? [], fallosDe(isla.grafo.nombre),
+      actividad.filter((e) => e.repo === isla.grafo.nombre));
   }
   function cerrarFicha() {
     if (ui.nodo) ui.nodo.hidden = true;
@@ -1295,6 +1298,13 @@ function estadoDeDemostracion(repos) {
       { id: "b", repo: repos[1] ?? "repo", proveedor: "claude", tarea: "Add a README section about the architecture", rama: "agente/20260926-1150-add-a-readme-section", worktree: "", inicio: new Date(ahora - 30 * 60000).toISOString(), fin: new Date(ahora - 22 * 60000).toISOString(), estado: "hecho", cambios: 2, commit: true },
     ],
     uso: { claude: { trabajando: 1, hoy: 2, minutosHoy: 12 }, codex: { trabajando: 0, hoy: 0, minutosHoy: 0 }, gemini: { trabajando: 0, hoy: 0, minutosHoy: 0 } },
+    actividad: [
+      { ts: new Date(ahora - 4 * 60000).toISOString(), tipo: "agente", repo: repos[0] ?? "repo", texto: "Claude Code: Update the dependencies and make the tests pass", ref: "a" },
+      { ts: new Date(ahora - 22 * 60000).toISOString(), tipo: "agente-hecho", repo: repos[1] ?? "repo", texto: "Claude Code finished: 2 file(s) committed on agente/20260926-1150-add-a-readme-section", ref: "b" },
+      { ts: new Date(ahora - 60 * 60000).toISOString(), tipo: "fallo", repo: repos.includes("galaxy-brain") ? "galaxy-brain" : repos[0] ?? "repo", texto: "NameError: name 're' is not defined (cli.py:2489)", ref: "d1" },
+      { ts: new Date(ahora - 3 * 3600000).toISOString(), tipo: "commit", repo: repos[2] ?? "repo", texto: "Marcos: feat: something new" },
+      { ts: new Date(ahora - 30 * 3600000).toISOString(), tipo: "pull", repo: repos[3] ?? "repo", texto: "Fast-forward 3 files changed" },
+    ],
     fallos: [
       { id: "d1", repo: repos.includes("galaxy-brain") ? "galaxy-brain" : repos[0] ?? "repo", tipo: "NameError", mensaje: "name 're' is not defined", fichero: "src/galaxybrain/cli.py", linea: 2489, veces: 20, ultimo: new Date(ahora - 3600000).toISOString(), primero: new Date(ahora - 5 * 86400000).toISOString() },
       { id: "d2", repo: repos[0] ?? "repo", tipo: "OSError", mensaje: "[Errno 22] Invalid argument", fichero: null, linea: null, veces: 38, ultimo: new Date(ahora - 7200000).toISOString(), primero: new Date(ahora - 20 * 86400000).toISOString() },

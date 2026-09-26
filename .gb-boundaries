@@ -166,3 +166,20 @@ fallos      -/-> lector
 fallos      -/-> chispas
 fallos      -/-> maestra
 fallos      -/-> maestra3d
+
+# El registro de actividad (commits, agentes, fallos nuevos, pulls): núcleo puro.
+actividad   -/-> grafo3d
+actividad   -/-> mundo
+actividad   -/-> pantallas
+actividad   -/-> rotulo
+actividad   -/-> puente
+actividad   -/-> ficheros
+actividad   -/-> nodo
+actividad   -/-> consola3d
+actividad   -/-> ajustes
+actividad   -/-> decorado
+actividad   -/-> palantir
+actividad   -/-> lector
+actividad   -/-> chispas
+actividad   -/-> maestra
+actividad   -/-> maestra3d

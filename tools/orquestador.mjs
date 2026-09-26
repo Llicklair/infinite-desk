@@ -19,8 +19,9 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { PROVEEDORES, esProveedor, estadoDeGit, nombreDeAgente, usoPorProveedor } from "../src/orquesta.js";
 import { fallosDeRepos, trazaLegible } from "../src/fallos.js";
+import { FORMATO_LOG, commitsDeLog, fallosNuevos } from "../src/actividad.js";
 import { carpetaDeProyectos, reposEn } from "./proyectos.mjs";
-import { ENLAZADAS, WORKTREES, fichaDeAgente, leerAgentes } from "./orquestador-datos.mjs";
+import { ENLAZADAS, WORKTREES, anotar, fichaDeAgente, guardarVistos, leerActividad, leerAgentes, leerVistos } from "./orquestador-datos.mjs";
 
 const aqui = dirname(fileURLToPath(import.meta.url));
 const WIN = process.platform === "win32";
@@ -101,20 +102,52 @@ async function estado() {
   const lista = await Promise.all(todos.map(async ([nombre, ruta]) => {
     const [st, log] = await Promise.all([
       correr("git", ["status", "--porcelain=v2", "--branch"], { cwd: ruta }),
-      correr("git", ["log", "-1", "--format=%ct"], { cwd: ruta }),
+      correr("git", ["log", "-1", "--format=%H %ct"], { cwd: ruta }),
     ]);
-    return { nombre, ...estadoDeGit(st.salida), ultimoCommit: Number(log.salida.trim()) || null };
+    const [head, ct] = log.salida.trim().split(" ");
+    return { nombre, ruta, head: log.ok ? head : null, ...estadoDeGit(st.salida), ultimoCommit: Number(ct) || null };
   }));
+  const listaFallos = await fallos();
+  await apuntarLoNuevo(lista, listaFallos);
   const agentes = leerAgentes();
   return {
     carpeta: carpetaDeProyectos(),
     cuentas: await cuentas(),
-    fallos: await fallos(),
+    fallos: listaFallos,
+    actividad: leerActividad(300),
     proveedores: PROVEEDORES,
-    repos: lista.sort((a, b) => a.nombre.localeCompare(b.nombre)),
+    repos: lista.map(({ ruta, head, ...r }) => r).sort((a, b) => a.nombre.localeCompare(b.nombre)),
     agentes: agentes.slice(0, 50).map(({ pid, ...a }) => a),
     uso: usoPorProveedor(agentes, new Date()),
   };
+}
+
+/**
+ * El registro de actividad, desde la última vez: los commits nuevos de cada repo (desde el último
+ * visto; la primera vez solo se apunta dónde está) y los fallos con capturas nuevas.
+ * @param {{nombre: string, ruta: string, head: string | null}[]} lista
+ * @param {import("../src/fallos.js").Fallo[]} listaFallos
+ */
+async function apuntarLoNuevo(lista, listaFallos) {
+  const vistos = leerVistos();
+  const heads = vistos.heads ?? {};
+  /** @type {import("../src/actividad.js").Evento[]} */
+  const eventos = [];
+  await Promise.all(lista.map(async ({ nombre, ruta, head }) => {
+    const antes = heads[nombre];
+    if (head && antes && antes !== head) {
+      const r = await correr("git", ["log", `--format=${FORMATO_LOG}`, "-n", "20", `${antes}..${head}`], { cwd: ruta });
+      // Si el anterior ya no existe (rebase, otra rama), git falla: se apunta solo el último.
+      const nuevos = r.ok ? commitsDeLog(r.salida, nombre)
+        : commitsDeLog((await correr("git", ["log", `--format=${FORMATO_LOG}`, "-n", "1"], { cwd: ruta })).salida, nombre);
+      eventos.push(...nuevos);
+    }
+    if (head) heads[nombre] = head;
+  }));
+  const f = fallosNuevos(listaFallos, vistos.fallos);
+  eventos.push(...f.eventos);
+  anotar(eventos.sort((a, b) => a.ts.localeCompare(b.ts)));
+  guardarVistos({ heads, fallos: f.vistos });
 }
 
 /** @param {string} op @param {string[]} nombres */
@@ -123,7 +156,9 @@ async function accion(op, nombres) {
   if (!ARGS[op]) throw new Error(`unknown action: ${op}`);
   return Promise.all(elegidos(nombres).map(async ([nombre, ruta]) => {
     const r = await correr("git", ARGS[op], { cwd: ruta, ms: 60000 });
-    return { repo: nombre, ok: r.ok, salida: r.salida.trim().split("\n").slice(-2).join(" ").slice(0, 200) };
+    const salida = r.salida.trim().split("\n").slice(-2).join(" ").slice(0, 200);
+    if (op === "pull") anotar([{ ts: new Date().toISOString(), tipo: "pull", repo: nombre, texto: r.ok ? salida || "up to date" : `failed: ${salida}` }]);
+    return { repo: nombre, ok: r.ok, salida };
   }));
 }
 
@@ -169,6 +204,7 @@ async function descartar(id) {
   try { rmdirSync(a.worktree); } catch { /* ya no estaba, o git dejó algo: se deja */ }
   rmSync(`${a.worktree}.consola.log`, { force: true });
   writeFileSync(fichaDeAgente(id), JSON.stringify({ ...a, estado: "descartado", fin: a.fin ?? new Date().toISOString() }, null, 2));
+  anotar([{ ts: new Date().toISOString(), tipo: "agente-descartado", repo: a.repo, texto: `Discarded ${a.rama}`, ref: id }]);
   return { id, descartado: true };
 }
 

@@ -11,7 +11,7 @@ import { execFileSync, spawn } from "node:child_process";
 import { appendFileSync, existsSync, mkdirSync, symlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { PROVEEDORES, lineaDeClaude } from "../src/orquesta.js";
-import { ENLAZADAS, fichaDeAgente } from "./orquestador-datos.mjs";
+import { ENLAZADAS, anotar, fichaDeAgente } from "./orquestador-datos.mjs";
 
 /** @typedef {import("../src/orquesta.js").Agente} Agente */
 
@@ -59,6 +59,7 @@ for (const d of ENLAZADAS) {
   }
 }
 decir(`$ agent ${encargo.proveedor} (${PROVEEDORES[encargo.proveedor].nombre}) on ${encargo.rama}`);
+anotar([{ ts: new Date().toISOString(), tipo: "agente", repo: encargo.repo, texto: `${PROVEEDORES[encargo.proveedor].nombre}: ${encargo.tarea.split("\n")[0].slice(0, 140)}`, ref: encargo.id }]);
 decir(encargo.tarea.split("\n")[0].slice(0, 160));
 
 // Cada proveedor, sin interfaz y con permisos acotados: Claude acepta ediciones pero no ejecuta
@@ -126,4 +127,8 @@ hijo.on("close", (codigo) => {
     : commit ? `= Committed ${cambios} file(s) on ${encargo.rama} (not pushed: review and merge it)`
     : `= ${cambios} file(s) changed but NOT committed: open the worktree to review them`);
   apuntar({ estado: codigo === 0 ? "hecho" : "fallo", fin: new Date().toISOString(), cambios, commit });
+  anotar([{
+    ts: new Date().toISOString(), tipo: codigo === 0 ? "agente-hecho" : "agente-fallo", repo: encargo.repo, ref: encargo.id,
+    texto: `${PROVEEDORES[encargo.proveedor].nombre} ${codigo === 0 ? "finished" : "failed"}: ${!cambios ? "no changes" : commit ? `${cambios} file(s) committed on ${encargo.rama}` : `${cambios} file(s) not committed`}`,
+  }]);
 });
