@@ -20,9 +20,13 @@ import { GRUPOS, ICONOS, filtrarActividad, porDias } from "./actividad.js";
 /** @typedef {import("./orquesta.js").EstadoGit & {nombre: string, ultimoCommit: number | null}} Repo */
 /** @typedef {{instalado: boolean, sesion: boolean, cuenta?: string, plan?: string, detalle?: string}} Cuenta */
 /**
+ * @typedef {{instalado: boolean, version?: string, origen?: string, python: string | null, avisoPython: string | null, local: string | null}} GalaxyBrain
+ *   `origen`: la carpeta si está instalado en modo editable, o "pip"; `local`: tu carpeta de galaxy-brain, si está en la de proyectos
+ */
+/**
  * @typedef {{carpeta: string, cuentas: Record<Proveedor | "github", Cuenta>, repos: Repo[], agentes: Agente[],
  *   uso: Record<Proveedor, {trabajando: number, hoy: number, minutosHoy: number}>, fallos?: import("./fallos.js").Fallo[],
- *   actividad?: import("./actividad.js").Evento[]}} EstadoMaestra
+ *   actividad?: import("./actividad.js").Evento[], galaxyBrain?: GalaxyBrain}} EstadoMaestra
  */
 
 /**
@@ -53,8 +57,9 @@ function hace(seg) {
  * @param {(args: string[]) => Promise<{ok: boolean, datos?: any, error?: string}>} orquestador
  * @param {(e: EstadoMaestra) => void} alEstado cada vez que llega un estado nuevo (el holograma)
  * @param {() => void} alCerrar
+ * @param {() => void} [regenerar] rehacer las islas (R): tras instalar galaxy-brain
  */
-export function crearMaestra(panel, orquestador, alEstado, alCerrar) {
+export function crearMaestra(panel, orquestador, alEstado, alCerrar, regenerar) {
   /** @type {EstadoMaestra | null} */
   let estado = null;
   /** @type {"cuentas" | "repos" | "agentes" | "errores" | "actividad"} */
@@ -109,6 +114,19 @@ export function crearMaestra(panel, orquestador, alEstado, alCerrar) {
       t.append(el("p", bien ? "bien" : "mal", bien ? `Signed in${c.cuenta ? ` as ${c.cuenta}` : ""}${c.plan ? ` · ${c.plan.toUpperCase()}` : ""}` : c?.instalado ? "Not signed in" : "Not installed"));
       if (!bien) t.append(el("code", undefined, c?.instalado ? p.entrar : p.instalar));
       t.append(el("p", "uso", `Today: ${u.hoy} agent${u.hoy === 1 ? "" : "s"} · ${u.minutosHoy} min${u.trabajando ? ` · ${u.trabajando} working now` : ""}`));
+      d.append(t);
+    }
+    // galaxy-brain: sin él, las islas son árboles de carpetas; con él, grafos de dependencias.
+    const gb = estado.galaxyBrain;
+    if (gb) {
+      const t = el("div", "cuenta");
+      t.append(el("div", "empresa", "Code maps · 16 languages"), el("h3", undefined, "galaxy-brain"),
+        el("p", gb.instalado ? "bien" : "mal", gb.instalado ? `Installed · ${gb.version}` : "Not installed: islands are folder trees"));
+      if (gb.instalado) t.append(el("p", "uso", gb.origen && gb.origen !== "pip" ? `Editable, from ${gb.origen}` : "From pip"));
+      if (gb.avisoPython) t.append(el("p", "mal", gb.avisoPython));
+      t.append(el("p", "uso", gb.local ? "Installs from your galaxy-brain folder (stays current with git pull)" : "Installs from GitHub (Llicklair/galaxy-brain)"));
+      t.append(boton(gb.instalado ? "Reinstall" : "Install galaxy-brain", () => void orden(["instalarGb"], "Installing galaxy-brain with pip… (up to a few minutes)",
+        (r) => { regenerar?.(); return `galaxy-brain ${r.version} ready: rebuilding the islands as dependency graphs…`; }), "principal"));
       d.append(t);
     }
     const gh = estado.cuentas.github;

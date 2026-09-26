@@ -33,7 +33,8 @@ they're not screenshots: they're your real windows, live, and **you can type and
 - Windows 10 or 11 (Edge and its WebView2 engine ship with Windows), or macOS with Google Chrome.
 - [Node.js](https://nodejs.org) 20 or newer.
 - [.NET 10 SDK](https://dotnet.microsoft.com/download) to work inside the screens.
-- Optional: galaxy-brain (`gb`) for code maps.
+- Optional: [galaxy-brain](https://github.com/Llicklair/galaxy-brain) (`gb`, it reads 16 languages) for code maps. Without it,
+  islands are folder trees; install it from inside the space: master console (O) → Accounts → Install.
 
 No other apps to install: the wallpaper and the launcher use what ships with the system.
 

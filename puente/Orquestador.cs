@@ -9,7 +9,7 @@ namespace InfiniteDesk.Puente;
 
 static class Orquestador
 {
-    public static readonly HashSet<string> Ordenes = ["estado", "accion", "lanzar", "descartar", "abrir", "traza"];
+    public static readonly HashSet<string> Ordenes = ["estado", "accion", "lanzar", "descartar", "abrir", "traza", "instalarGb"];
 
     public static async Task<(bool ok, JsonElement? datos, string? error)> Correr(string raiz, string[] args)
     {
@@ -29,7 +29,8 @@ static class Orquestador
             using var p = Process.Start(psi)!;
             var salida = p.StandardOutput.ReadToEndAsync();
             _ = p.StandardError.ReadToEndAsync();
-            using var tiempo = new CancellationTokenSource(TimeSpan.FromMinutes(3));
+            // Instalar galaxy-brain con pip puede tardar más que lo demás.
+            using var tiempo = new CancellationTokenSource(TimeSpan.FromMinutes(args[0] == "instalarGb" ? 12 : 3));
             await p.WaitForExitAsync(tiempo.Token);
             var ultima = (await salida).Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).LastOrDefault() ?? "";
             using var doc = JsonDocument.Parse(ultima);

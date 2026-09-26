@@ -8,6 +8,7 @@
 //   node tools/orquestador.mjs descartar <id>     (borra su worktree y su rama)
 //   node tools/orquestador.mjs abrir <id>         (su worktree en una ventana nueva de VS Code)
 //   node tools/orquestador.mjs traza <id>         (la traza legible de un fallo capturado por gb)
+//   node tools/orquestador.mjs instalarGb         (galaxy-brain con pip: de tu carpeta o de GitHub)
 //
 // Los repos se nombran por su carpeta y tienen que estar en la carpeta de proyectos: quien llama
 // no elige rutas. Los agentes, uno por repo, con tools/agente.mjs en segundo plano.
@@ -97,6 +98,58 @@ async function traza(id) {
   return { id, traza: trazaLegible(JSON.parse(r.salida.slice(r.salida.indexOf("{")))) };
 }
 
+// --- galaxy-brain: el que convierte cada repo en su grafo de dependencias (16 lenguajes) --------
+// Sin él las islas son árboles de carpetas (ADR 0003). Se instala con pip (está escrito en Python,
+// aunque analiza muchos más lenguajes): desde tu carpeta si está en la de proyectos (editable: se
+// queda al día con tu `git pull`), y si no, desde GitHub (el repo es público).
+const GB_GITHUB = "git+https://github.com/Llicklair/galaxy-brain";
+
+/** El Python con el que instalar: el lanzador `py` en Windows, `python3` en macOS/Linux. */
+async function python() {
+  /** @type {[string, string[]][]} */
+  const candidatos = WIN ? [["py", ["-3"]], ["python", []]] : [["python3", []], ["python", []]];
+  for (const [cmd, pre] of candidatos) {
+    const r = await correr(cmd, [...pre, "-c", "import sys; print('%d.%d' % sys.version_info[:2])"]);
+    const v = r.salida.trim().split("\n").pop() ?? "";
+    if (r.ok && /^\d+\.\d+$/.test(v)) return { cmd, pre, version: v };
+  }
+  return null;
+}
+
+/** ¿Está galaxy-brain? Su versión, desde dónde (tu carpeta o pip) y con qué Python. */
+async function galaxyBrain() {
+  const [gb, py] = await Promise.all([correr("gb", ["--version"]), python()]);
+  const version = /galaxy-brain\s+(\S+)/.exec(gb.salida)?.[1];
+  let origen;
+  if (py) {
+    const show = await correr(py.cmd, [...py.pre, "-m", "pip", "show", "galaxy-brain"]);
+    origen = /Editable project location:\s*(.+)/.exec(show.salida)?.[1]?.trim() ?? (/^Location:/m.test(show.salida) ? "pip" : undefined);
+  }
+  const [mayor, menor] = (py?.version ?? "0.0").split(".").map(Number);
+  return {
+    instalado: gb.ok && Boolean(version), version, origen, python: py?.version ?? null,
+    // Con Python < 3.12, gb no lee la sintaxis nueva de Python (def f[T], medido en invest-ll).
+    avisoPython: py && (mayor < 3 || (mayor === 3 && menor < 12)) ? `Python ${py.version}: repos using Python 3.12+ syntax may not parse` : null,
+    local: repos().get("galaxy-brain") ?? null,
+  };
+}
+
+/** Instala (o reinstala) galaxy-brain: editable desde tu carpeta si está, si no desde GitHub. */
+async function instalarGb() {
+  const py = await python();
+  if (!py) throw new Error(WIN ? "no Python found: install it from python.org (with the py launcher)" : "no python3 found");
+  const local = repos().get("galaxy-brain");
+  const desde = local && existsSync(join(local, "pyproject.toml")) ? ["-e", local] : [GB_GITHUB];
+  // En macOS/Linux, en el usuario: el Python del sistema no deja instalar fuera de él.
+  const args = [...py.pre, "-m", "pip", "install", "--upgrade", ...(WIN ? [] : ["--user"]), ...desde];
+  const r = await correr(py.cmd, args, { ms: 10 * 60000 });
+  if (!r.ok) throw new Error(`pip failed: ${r.salida.trim().split("\n").slice(-2).join(" ").slice(0, 300)}`);
+  const gb = await galaxyBrain();
+  if (!gb.instalado) throw new Error("installed, but `gb` isn't on the PATH yet: open a new terminal (or add Python's Scripts folder to the PATH)");
+  anotar([{ ts: new Date().toISOString(), tipo: "instalacion", repo: "galaxy-brain", texto: `galaxy-brain ${gb.version} installed (${desde[0] === "-e" ? "editable, from your folder" : "from GitHub"})` }]);
+  return gb;
+}
+
 async function estado() {
   const todos = [...repos()];
   const lista = await Promise.all(todos.map(async ([nombre, ruta]) => {
@@ -113,6 +166,7 @@ async function estado() {
   return {
     carpeta: carpetaDeProyectos(),
     cuentas: await cuentas(),
+    galaxyBrain: await galaxyBrain(),
     fallos: listaFallos,
     actividad: leerActividad(300),
     proveedores: PROVEEDORES,
@@ -224,6 +278,7 @@ try {
     : orden === "descartar" ? await descartar(resto[0])
     : orden === "abrir" ? abrir(resto[0])
     : orden === "traza" ? await traza(resto[0])
+    : orden === "instalarGb" ? await instalarGb()
     : (() => { throw new Error(`unknown order: ${orden ?? "(none)"}`); })();
   process.stdout.write(`${JSON.stringify({ ok: true, r })}\n`);
 } catch (e) {

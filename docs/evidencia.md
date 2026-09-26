@@ -10,6 +10,20 @@ Cada medición real: qué se probó, qué salió, qué cambió por ello.
 
 ---
 
+## 2026-09-26 · instalar galaxy-brain desde el mundo — FUNCIONA sin manos
+
+- **Detección:** galaxy-brain 0.7.0, instalado en modo editable desde `dev/galaxy-brain` con
+  Python 3.11. El único Python registrado en `py` es el 3.11. Pide Python 3.9 o superior, y el
+  repo es público en GitHub.
+- **Instalación:** con pip, en modo editable desde la carpeta de galaxy-brain si está en la de
+  proyectos (así sigue tu `git pull`); si no, desde GitHub. En macOS/Linux, con `--user`.
+  - Probado aquí: 19 s, `gb --version` responde y queda apuntado en la actividad.
+  - Desde el mundo: consola maestra → Accounts → Install. Al acabar, regenera las islas.
+- **Aviso de Python:** con Python por debajo de 3.12, gb no lee la sintaxis nueva de Python
+  (`def f[T]`, ya apuntado en papercuts por invest-ll). La tarjeta lo dice.
+- **Pendiente:** rehacer una sola isla (ahora R rehace las 19, en alrededor de un minuto) y
+  probarlo en una máquina sin gb con manos.
+
 ## 2026-09-26 · registro de actividad: commits, agentes, fallos nuevos y pulls — FUNCIONA sin manos
 
 Montaje: `node tools/orquestador.mjs estado` dos veces y, para simular lo nuevo, el último commit

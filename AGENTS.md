@@ -14,7 +14,7 @@ npm run tipos               # tsc --checkJs estricto sobre src/ y tools/
 npm run carpeta [-- ruta]   # la carpeta de proyectos de esta máquina (selector del sistema) -> infinite-desk.local.json
 npm run grafo [-- repo ...] # gb graph --json por repo -> wallpaper/grafos.js (por defecto: los repos de la carpeta de proyectos)
 npm run noticias            # lo último sobre IA en Bluesky, Reddit, HN y Mastodon + top de GitHub del mes -> wallpaper/noticias.js (el palantír; el puente lo corre cada 30 min)
-node tools/orquestador.mjs estado # la consola maestra por debajo: cuentas (Claude, Codex, Gemini, gh), repos y agentes (también accion/lanzar/descartar/abrir)
+node tools/orquestador.mjs estado # la consola maestra por debajo: cuentas (Claude, Codex, Gemini, gh, galaxy-brain), repos, agentes, fallos y actividad (también accion/lanzar/descartar/abrir/traza/instalarGb)
 npm run build               # esbuild -> wallpaper/infinite-desk.js (script clásico, sin módulos)
 npm run terminado           # todo lo anterior + tools/comprobar.mjs + tools/humo.mjs (el mundo corre sin errores de JS): el criterio
 npm run mundo               # servidor en localhost (solo si el navegador no captura desde file://)

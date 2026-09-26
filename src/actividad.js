@@ -5,13 +5,13 @@
 // vuelca la historia entera: solo lo que pasa desde entonces.
 
 /**
- * @typedef {"agente" | "agente-hecho" | "agente-fallo" | "agente-descartado" | "commit" | "fallo" | "pull"} TipoEvento
+ * @typedef {"agente" | "agente-hecho" | "agente-fallo" | "agente-descartado" | "commit" | "fallo" | "pull" | "instalacion"} TipoEvento
  * @typedef {{ts: string, tipo: TipoEvento, repo: string, texto: string, ref?: string}} Evento
  *   `ts`: ISO; `texto`: lo que se lee; `ref`: el id del agente, del fallo o del commit
  */
 
 export const ICONOS = /** @type {Record<TipoEvento, string>} */ ({
-  agente: "🤖", "agente-hecho": "✅", "agente-fallo": "✗", "agente-descartado": "🗑", commit: "⎇", fallo: "⚠", pull: "⇣",
+  agente: "🤖", "agente-hecho": "✅", "agente-fallo": "✗", "agente-descartado": "🗑", commit: "⎇", fallo: "⚠", pull: "⇣", instalacion: "📦",
 });
 
 /** Los grupos de tipos para filtrar (la pestaña Activity). */
@@ -19,7 +19,7 @@ export const GRUPOS = /** @type {const} */ ({
   agentes: ["agente", "agente-hecho", "agente-fallo", "agente-descartado"],
   commits: ["commit"],
   fallos: ["fallo"],
-  pulls: ["pull"],
+  pulls: ["pull", "instalacion"],
 });
 
 export const SEPARADOR = "\u001f"; // entre campos de `git log --format`: no sale en un mensaje normal

@@ -723,7 +723,8 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
       (args) => (demoMaestra ? Promise.resolve(args[0] === "estado" ? { ok: true, datos: estadoDeDemostracion(nombres) } : { ok: false, error: "demo" })
         : puente ? puente.orquestador(args) : Promise.resolve({ ok: false, error: "no bridge" })),
       (e) => { holograma.actualizar(e); aplicarFallos(e.fallos ?? []); actividad = e.actividad ?? []; },
-      () => { if (!mirar.isLocked && !escribiendo) ui.portada.hidden = false; })
+      () => { if (!mirar.isLocked && !escribiendo) ui.portada.hidden = false; },
+      () => void regenerar())
     : null;
   // --- fallos (gb list, por la consola maestra cada minuto): en rojo en su isla ------------------
   /** @type {import("./fallos.js").Fallo[]} */
@@ -867,9 +868,11 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
     aplicarAgentes();
     aplicarFallos(fallos); // las islas son nuevas: sin esto, sin rojo hasta el siguiente estado
     const recien = islasNuevas(antes, nombres);
+    // Sin galaxy-brain son árboles de carpetas: se dice cómo tener los grafos de dependencias.
+    const sinGb = nuevos.every((g) => g.fuente === "carpetas") ? " · folder trees (no galaxy-brain: O → Accounts to install it)" : "";
     avisar(recien.length
-      ? `New island${recien.length === 1 ? "" : "s"}: ${recien.join(", ")}`
-      : `Islands up to date: ${nombres.length} repos`);
+      ? `New island${recien.length === 1 ? "" : "s"}: ${recien.join(", ")}${sinGb}`
+      : `Islands up to date: ${nombres.length} repos${sinGb}`);
     return true;
   }
   let esperandoR = false;
@@ -1298,6 +1301,7 @@ function estadoDeDemostracion(repos) {
       { id: "b", repo: repos[1] ?? "repo", proveedor: "claude", tarea: "Add a README section about the architecture", rama: "agente/20260926-1150-add-a-readme-section", worktree: "", inicio: new Date(ahora - 30 * 60000).toISOString(), fin: new Date(ahora - 22 * 60000).toISOString(), estado: "hecho", cambios: 2, commit: true },
     ],
     uso: { claude: { trabajando: 1, hoy: 2, minutosHoy: 12 }, codex: { trabajando: 0, hoy: 0, minutosHoy: 0 }, gemini: { trabajando: 0, hoy: 0, minutosHoy: 0 } },
+    galaxyBrain: { instalado: false, python: "3.11", avisoPython: "Python 3.11: repos using Python 3.12+ syntax may not parse", local: null },
     actividad: [
       { ts: new Date(ahora - 4 * 60000).toISOString(), tipo: "agente", repo: repos[0] ?? "repo", texto: "Claude Code: Update the dependencies and make the tests pass", ref: "a" },
       { ts: new Date(ahora - 22 * 60000).toISOString(), tipo: "agente-hecho", repo: repos[1] ?? "repo", texto: "Claude Code finished: 2 file(s) committed on agente/20260926-1150-add-a-readme-section", ref: "b" },
