@@ -811,6 +811,7 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
       alCerrar: () => { if (!mirar.isLocked && !escribiendo) ui.portada.hidden = false; },
       hacer: (a) => void hacerDeKiri(a),
       anotar: (t) => puente?.anotar(t),
+      oido: () => (puente?.conectado ? puente.escuchar : null),
     })
     : null;
   /** Lo que corta la vista nativa de cada pantalla que va siempre por el puente. @type {Map<Pantalla, () => void>} */
@@ -879,6 +880,7 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
       alCerrar: () => { if (!mirar.isLocked && !escribiendo) ui.portada.hidden = false; },
       hacer: (a) => void hacerDeAtlas(a),
       anotar: (t) => puente?.anotar(t),
+      oido: () => (puente?.conectado ? puente.escuchar : null),
     })
     : null;
   function abrirAtlas() {

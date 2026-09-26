@@ -147,6 +147,7 @@ export function unaFrase(op) {
     r.onstart = () => { eventos.push("start"); op.alEmpezar?.(); };
     r.onresult = (/** @type {any} */ ev) => {
       let parcial = "";
+      final = ""; // ev.results trae todo lo reconocido: se rehace entero
       for (const res of ev.results) (res.isFinal ? (final += res[0].transcript) : (parcial += res[0].transcript));
       ultimoParcial = parcial;
       if (!eventos.includes("result")) eventos.push("result");

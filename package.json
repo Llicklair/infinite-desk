@@ -9,7 +9,7 @@
     "medir": "node tools/medir.mjs",
     "probar-zen": "node tools/probar-zen.mjs",
     "carpeta": "node tools/proyectos.mjs",
-    "build": "esbuild src/main.js --bundle --format=iife --minify --target=chrome110 --outfile=wallpaper/infinite-desk.js",
+    "build": "esbuild src/main.js --bundle --format=iife --minify --target=chrome110 --outfile=wallpaper/infinite-desk.js && esbuild src/oido.js --bundle --format=iife --minify --target=chrome110 --outfile=wallpaper/oido.js",
     "mundo": "node tools/servir.mjs",
     "test": "node --test \"tests/*.test.js\"",
     "tipos": "tsc -p .",

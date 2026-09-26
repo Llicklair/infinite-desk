@@ -34,6 +34,7 @@ const REINTENTO_MS = 3000;
  *   abrirUrl(url: string): Promise<string | null>,
  *   abrirWeb(url: string): Promise<{hwnd: number, titulo: string} | {error: string}>,
  *   anotar(texto: string): void,
+ *   escuchar(op: {micro: string, idioma: string}, mientras: (parcial: string) => void): {promesa: Promise<{texto: string | null, error: string | null, eventos: string[]}>, parar: () => void},
  *   orquestador(args: string[]): Promise<{ok: boolean, datos?: any, error?: string}>,
  *   alAgentes(f: (m: EstadoAgentes) => void): void,
  *   alLista(f: (titulo: string) => void): void,
@@ -106,6 +107,8 @@ export function crearPuente(tituloMundo) {
   let siguiente = 0;
   /** @type {Map<number, (r: any) => void>} */
   const esperando = new Map();
+  /** Lo que va entendiendo el oído, por escucha. @type {Map<string, (parcial: string) => void>} */
+  const parciales = new Map();
   /** @type {(() => void)[]} */
   const alSalir = [];
   /** @type {((r: {ok: boolean, motivo: string, resumen: string}) => void)[]} */
@@ -141,6 +144,7 @@ export function crearPuente(tituloMundo) {
       if (m.evento === "isla") for (const f of alIsla) f(m);
       if (m.evento === "agentes") for (const f of alAgentes) f(m);
       if (m.evento === "lista") for (const f of alLista) f(m.titulo);
+      if (m.evento === "oido") parciales.get(m.escucha)?.(String(m.parcial ?? ""));
       esperando.get(m.id)?.(m);
       esperando.delete(m.id);
     });
@@ -288,6 +292,20 @@ export function crearPuente(tituloMundo) {
       return { ok: Boolean(r.ok), datos: r.datos, error: r.error };
     },
     /** Un enlace (http/https, un titular del palantír) en una ventana nueva del navegador; el error, o null. */
+    /**
+     * Una frase por el oído del puente (un Chrome escondido que transcribe: el reconocimiento de
+     * Edge no funciona en este equipo). `micro`: el nombre del micrófono.
+     */
+    escuchar(op, mientras) {
+      const escucha = Math.random().toString(36).slice(2, 12);
+      parciales.set(escucha, mientras);
+      const tiempo = new Promise((r) => setTimeout(() => r({ ok: false, error: "the listener took too long" }), 40000));
+      const promesa = Promise.race([pedir({ op: "escuchar", escucha, micro: op.micro, idioma: op.idioma }), tiempo]).then((/** @type {any} */ r) => {
+        parciales.delete(escucha);
+        return { texto: r.ok && r.texto ? String(r.texto) : null, error: r.ok ? (r.error ?? (r.texto ? null : "no-speech")) : String(r.error ?? "unknown"), eventos: String(r.eventos ?? "").split(" ").filter(Boolean) };
+      });
+      return { promesa, parar: () => void pedir({ op: "pararEscucha", escucha }) };
+    },
     /** Una línea en el registro del puente (diagnóstico: cómo fue la voz, nunca lo que se dijo). */
     anotar(texto) { void pedir({ op: "anotar", texto }); },
     /** Una web como pantalla, sin el selector: el puente la abre en su Edge y da su ventana. */

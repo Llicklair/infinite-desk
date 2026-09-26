@@ -47,7 +47,8 @@ export const KIRI = {
  *   alCerrar: () => void,
  *   hacer: (accion: any) => void,
  *   anotar?: (texto: string) => void,
- * }} op `hacer`: lo que decide hacer (Kiri: música, un vídeo, el cielo; Atlas: abrir repos, ventanas…)
+ *   oido?: () => import("./puente.js").Puente["escuchar"] | null,
+ * }} op `oido`: el oído del puente (un Chrome que transcribe), si está; si no, el del navegador `hacer`: lo que decide hacer (Kiri: música, un vídeo, el cielo; Atlas: abrir repos, ventanas…)
  */
 export function crearCharla(panel, persona, op) {
   /** @type {Turno[]} */
@@ -224,7 +225,7 @@ export function crearCharla(panel, persona, op) {
     selectorMic.hidden = lista.length < 2;
   }
 
-  /** @type {{parar: () => void, abortar: () => void} | null} */
+  /** @type {{parar: () => void, abortar?: () => void} | null} */
   let oido = null;
   /**
    * Escucha una frase: lo entendido, o null (y entonces ya se ha dicho por qué, sin taparlo). Cada
@@ -240,24 +241,26 @@ export function crearCharla(panel, persona, op) {
     }
     const sinPermiso = await permiso();
     if (sinPermiso) { op.avisar(sinPermiso); op.anotar?.(`voz: sin permiso (${sinPermiso})`); return null; }
-    oido?.abortar();
+    oido?.abortar?.() ?? oido?.parar();
     callar(); // si le hablas, se calla
     const e = op.figura();
     const mic = await micQueOye((a) => op.avisar(a)).catch(() => null);
     void listarMicros();
-    const frase = unaFrase({
-      idioma,
-      flujo: mic?.flujo ?? null,
-      mientras,
-      alEmpezar: () => { if (e) e.escuchando = true; microfono.classList.add("oyendo"); op.avisar(`🎙 Listening (${mic?.nombre ?? "default microphone"})…`); },
-    });
+    const alEmpezar = () => { if (e) e.escuchando = true; microfono.classList.add("oyendo"); op.avisar(`🎙 Listening (${mic?.nombre ?? "default microphone"})…`); };
+    // El oído del puente (Chrome) transcribe; aquí solo se elige el micrófono (por su nombre).
+    const oidoDelPuente = op.oido?.();
+    const etiqueta = mic?.flujo.getAudioTracks()[0]?.label ?? "";
+    if (oidoDelPuente) for (const t of mic?.flujo.getTracks() ?? []) t.stop();
+    const frase = oidoDelPuente
+      ? (alEmpezar(), oidoDelPuente({ micro: etiqueta, idioma }, mientras))
+      : unaFrase({ idioma, flujo: mic?.flujo ?? null, mientras, alEmpezar });
     oido = frase;
     const r = await frase.promesa;
     oido = null;
     for (const t of mic?.flujo.getTracks() ?? []) t.stop();
     if (e) e.escuchando = false;
     microfono.classList.remove("oyendo");
-    op.anotar?.(`voz (${persona.nombre}, ${mic?.nombre ?? "sin micro"}): ${r.texto ? `entendido ${r.texto.length} letras` : `nada: ${r.error}`} [${r.eventos.join(" ")}]`);
+    op.anotar?.(`voz (${persona.nombre}, ${oidoDelPuente ? "oído Chrome" : "navegador"}, ${mic?.nombre ?? "sin micro"}): ${r.texto ? `entendido ${r.texto.length} letras` : `nada: ${r.error}`} [${r.eventos.join(" ")}]`);
     if (!r.texto && r.error && r.error !== "aborted") op.avisar(PORQUE[r.error] ?? `Couldn't listen: ${r.error}`);
     return r.texto;
   }
@@ -346,7 +349,7 @@ export function crearCharla(panel, persona, op) {
     cerrar() {
       if (panel.hidden) return;
       panel.hidden = true;
-      oido?.abortar();
+      oido?.abortar?.() ?? oido?.parar();
       recordar();
       op.alCerrar();
     },
@@ -364,7 +367,7 @@ export function crearCharla(panel, persona, op) {
     /** Al irse de su mundo: se cierra el panel, se calla, deja de escuchar y recuerda lo hablado. */
     terminar() {
       ausente = true;
-      oido?.abortar();
+      oido?.abortar?.() ?? oido?.parar();
       callar();
       if (!panel.hidden) { panel.hidden = true; op.alCerrar(); }
       recordar();

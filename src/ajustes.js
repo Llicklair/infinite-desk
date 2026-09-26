@@ -117,13 +117,20 @@ export function crearPanelAjustes(panel, puente, avisar, alCerrar, empezarTutori
     if (!flujo) return;
     probar.disabled = true;
     resultado.textContent = "Listening… say a sentence.";
-    const frase = unaFrase({ idioma, flujo: flujo.clone(), mientras: (t) => (resultado.textContent = `“${t}”`) });
-    const corte = setTimeout(() => frase.parar(), 5000);
+    // Por el oído del puente (un Chrome escondido que transcribe), como Kiri y Atlas; sin puente, el navegador.
+    const p = puente();
+    /** @param {string} t */
+    const mientras = (t) => (resultado.textContent = `“${t}”`);
+    const frase = p?.conectado
+      ? p.escuchar({ micro: flujo.getAudioTracks()[0]?.label ?? "", idioma }, mientras)
+      : unaFrase({ idioma, flujo: flujo.clone(), mientras });
+    if (p?.conectado) resultado.textContent = "Listening… say a sentence (the first time, the listener takes a few seconds to start).";
+    const corte = setTimeout(() => frase.parar(), p?.conectado ? 9000 : 5000);
     const r = await frase.promesa;
     clearTimeout(corte);
     probar.disabled = false;
     resultado.textContent = r.texto ? `✓ Understood: “${r.texto}”` : `✗ ${PORQUE[r.error ?? ""] ?? r.error} · (${r.eventos.join(" → ")})`;
-    puente()?.anotar(`voz (prueba en Ajustes, ${selectorMic.selectedOptions[0]?.textContent ?? "?"}): ${r.texto ? "entendido" : `nada: ${r.error}`} [${r.eventos.join(" ")}]`);
+    puente()?.anotar(`voz (prueba en Ajustes, ${p?.conectado ? "oído Chrome" : "navegador"}, ${selectorMic.selectedOptions[0]?.textContent ?? "?"}): ${r.texto ? "entendido" : `nada: ${r.error}`} [${r.eventos.join(" ")}]`);
   });
 
   panel.replaceChildren(cabecera, titulo, ruta, detalle, cambiar, ...audio, ...tutorial, pie);

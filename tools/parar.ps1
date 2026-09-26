@@ -57,8 +57,11 @@ Get-Process msedge, chrome -ErrorAction SilentlyContinue | Where-Object { $_.Mai
   ForEach-Object { [void]$_.CloseMainWindow(); "mundo cerrado: $($_.MainWindowTitle)" }
 Start-Sleep -Milliseconds 1500
 
-# 2. El puente (el mismo .exe sin --fondo).
+# 2. El puente (el mismo .exe sin --fondo), y lo que abre él: el Chrome del oído (transcribe la voz)
+# y el Edge de las pantallas de los asistentes, cada uno con su perfil propio.
 & $puentes | Where-Object CommandLine -notlike '*--fondo*' | ForEach-Object { Stop-Process -Id $_.ProcessId -Force; "puente parado ($($_.ProcessId))" }
+Get-CimInstance Win32_Process -Filter "Name='chrome.exe' OR Name='msedge.exe'" | Where-Object { $_.CommandLine -like '*chrome-oido*' -or $_.CommandLine -like '*edge-pantallas*' } |
+  ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
 
 # 3. Las ventanas que el puente escondió: las que apuntó, y cualquier otra invisible y atravesable.
 $apuntadas = @()

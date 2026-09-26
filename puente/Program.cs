@@ -49,6 +49,11 @@ var sockets = new ConcurrentDictionary<WebSocket, byte>();
 // cerrarse el que se estaba usando se vuelve al que queda, en vez de quedarse sin mundo (uso real:
 // "the space hasn't connected to the bridge yet" con el mundo de siempre aún abierto).
 var mundosPorConexion = new ConcurrentDictionary<WebSocket, string>();
+// El oído (más abajo, /oido): el Chrome que transcribe, y las escuchas en curso de cada mundo.
+WebSocket? oido = null;
+var oidoListo = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+var escuchas = new ConcurrentDictionary<string, (WebSocket mundo, int id)>();
+DateTime oidoLanzado = DateTime.MinValue;
 var agentes = new Agentes(mundo, Difundir);
 var repo = Path.GetDirectoryName(Path.TrimEndingDirectorySeparator(Path.GetFullPath(mundo)))!;
 var regenerador = new Regenerador(repo, Difundir, agentes.Releer);
@@ -123,6 +128,68 @@ app.Map("/", async (HttpContext ctx) =>
     }
 });
 
+// El oído: el reconocimiento de voz de Edge devuelve texto vacío en este equipo (medido con una frase
+// grabada: "" en castellano; en inglés, "Please open." de toda la frase) y el de Windows sin conexión
+// se atasca; el de Chrome, ya instalado, la transcribe entera. Así que el puente abre un Chrome
+// pequeño fuera de la pantalla (perfil propio) con /mundo/oido.html, que solo escucha: el mundo le
+// pide "escucha" por aquí, el oído transcribe con el micrófono elegido y el texto vuelve al mundo.
+app.Map("/oido", async (HttpContext ctx) =>
+{
+    if (!ctx.WebSockets.IsWebSocketRequest) { ctx.Response.StatusCode = 400; return; }
+    if (ctx.Request.Query["token"] != token || ctx.Request.Headers.Origin.ToString() != ORIGEN_PROPIO) { ctx.Response.StatusCode = 403; return; }
+    using var ws = await ctx.WebSockets.AcceptWebSocketAsync();
+    oido = ws;
+    oidoListo.TrySetResult();
+    Registro.Anotar("oído: conectado");
+    try
+    {
+        while (ws.State == WebSocketState.Open)
+        {
+            var mensaje = await Recibir(ws);
+            if (mensaje == null) break;
+            var m = JsonDocument.Parse(mensaje).RootElement;
+            var escucha = Texto(m, "escucha") ?? "";
+            if (Texto(m, "t") == "parcial" && escuchas.TryGetValue(escucha, out var q))
+                await Enviar(q.mundo, new { evento = "oido", escucha, parcial = Texto(m, "texto") });
+            else if (Texto(m, "t") == "fin" && escuchas.TryRemove(escucha, out var f))
+                await Enviar(f.mundo, new { id = f.id, ok = true, texto = Texto(m, "texto"), error = Texto(m, "error"), eventos = Texto(m, "eventos") });
+        }
+    }
+    catch (WebSocketException) { /* se cerró Chrome */ }
+    finally
+    {
+        oido = null;
+        oidoListo = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        foreach (var (e, q) in escuchas) if (escuchas.TryRemove(e, out _)) await Enviar(q.mundo, new { id = q.id, ok = false, error = "the listener (Chrome) closed" });
+        Registro.Anotar("oído: desconectado");
+    }
+});
+// El Chrome del oído: fuera de la pantalla, que no deje de funcionar tapado, y con el permiso del
+// micrófono ya dado (solo carga nuestra página local, en su perfil propio).
+string? LanzarOido()
+{
+    var chrome = new[] {
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Google", "Chrome", "Application", "chrome.exe"),
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "Google", "Chrome", "Application", "chrome.exe"),
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Google", "Chrome", "Application", "chrome.exe"),
+    }.FirstOrDefault(File.Exists);
+    if (chrome == null) return "Chrome isn't installed (it's what listens: Edge's speech recognition doesn't work here)";
+    if (DateTime.Now - oidoLanzado < TimeSpan.FromSeconds(15)) return null; // ya va de camino
+    oidoLanzado = DateTime.Now;
+    var psi = new System.Diagnostics.ProcessStartInfo(chrome) { UseShellExecute = false };
+    foreach (var a in new[] {
+        $"--user-data-dir={Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "infinite-desk", "chrome-oido")}",
+        "--no-first-run", "--no-default-browser-check", "--use-fake-ui-for-media-stream",
+        "--window-size=320,200", "--window-position=-4000,-4000",
+        "--disable-features=CalculateNativeWinOcclusion", "--disable-backgrounding-occluded-windows",
+        "--disable-renderer-backgrounding", "--disable-background-timer-throttling",
+        $"--app=http://127.0.0.1:{PUERTO}/mundo/oido.html" })
+        psi.ArgumentList.Add(a);
+    System.Diagnostics.Process.Start(psi);
+    Registro.Anotar("oído: lanzando Chrome");
+    return null;
+}
+
 // La vista directa de una pantalla mientras se escribe en ella (Vista.cs): un WebSocket propio, solo
 // binario, para no mezclar los fotogramas con las respuestas del canal de arriba.
 app.Map("/vista", async (HttpContext ctx) =>
@@ -177,14 +244,12 @@ return 0;
 
 async Task Atender(WebSocket ws)
 {
-    var buffer = new byte[16 * 1024];
     while (ws.State == WebSocketState.Open)
     {
-        var r = await ws.ReceiveAsync(buffer, CancellationToken.None);
-        if (r.MessageType == WebSocketMessageType.Close) break;
-        if (!r.EndOfMessage) continue; // los mensajes del mundo son pequeños
+        var mensaje = await Recibir(ws);
+        if (mensaje == null) break;
         object? respuesta;
-        try { respuesta = Responder(JsonDocument.Parse(buffer.AsMemory(0, r.Count)).RootElement, ws); }
+        try { respuesta = Responder(JsonDocument.Parse(mensaje).RootElement, ws); }
         catch (Exception e) { respuesta = new { ok = false, error = e.Message }; }
         if (respuesta != null) await Enviar(ws, respuesta);
     }
@@ -270,6 +335,31 @@ object? Responder(JsonElement m, WebSocket ws)
             if (sinUrl == null) Ventanas.QueNoNazcanMinimizadas(antesDeUrl, t => _ = Difundir(new { evento = "lista", titulo = t }));
             Registro.Anotar($"abrir enlace {Texto(m, "url")}: {sinUrl ?? "ok"}");
             return new { id, ok = sinUrl == null, error = sinUrl };
+        case "escuchar":
+        {
+            // Una frase por el oído (Chrome): contesta al acabar; mientras, eventos "oido" con lo parcial.
+            var escucha = Texto(m, "escucha") ?? Guid.NewGuid().ToString("N");
+            var micro = Texto(m, "micro");
+            var idioma = Texto(m, "idioma") ?? "es-ES";
+            escuchas[escucha] = (ws, id);
+            _ = Task.Run(async () =>
+            {
+                if (oido == null)
+                {
+                    var sinOido = LanzarOido();
+                    if (sinOido != null || await Task.WhenAny(oidoListo.Task, Task.Delay(15000)) != oidoListo.Task)
+                    {
+                        if (escuchas.TryRemove(escucha, out _)) await Enviar(ws, new { id, ok = false, error = sinOido ?? "the listener (Chrome) didn't start" });
+                        return;
+                    }
+                }
+                if (oido is { } o) await Enviar(o, new { t = "escuchar", escucha, micro, idioma });
+            });
+            return null;
+        }
+        case "pararEscucha":
+            if (oido is { } oidoAhora) _ = Enviar(oidoAhora, new { t = "parar", escucha = Texto(m, "escucha") });
+            return new { id, ok = true };
         case "anotar":
             // Lo que la página quiere dejar en el registro para diagnosticar (la voz: qué micrófono,
             // qué eventos, qué error). Corto y en una línea: nunca lo que se dice, solo cómo fue.
@@ -325,6 +415,22 @@ object? Responder(JsonElement m, WebSocket ws)
             return null;
         default:
             return new { id, ok = false, error = $"operación desconocida: {op}" };
+    }
+}
+
+// Un mensaje entero (a trozos si hace falta), o null si se cerró. Antes se leían 16 KB y lo que no
+// cabía se tiraba sin más: una charla larga con Kiri (va entera, en base64) se perdía. Tope, 1 MB.
+static async Task<byte[]?> Recibir(WebSocket ws)
+{
+    var buffer = new byte[16 * 1024];
+    using var todo = new MemoryStream();
+    while (true)
+    {
+        var r = await ws.ReceiveAsync(buffer, CancellationToken.None);
+        if (r.MessageType == WebSocketMessageType.Close) return null;
+        todo.Write(buffer, 0, r.Count);
+        if (todo.Length > 1024 * 1024) throw new WebSocketException("message too large");
+        if (r.EndOfMessage) return todo.ToArray();
     }
 }
 
