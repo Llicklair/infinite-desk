@@ -4,7 +4,7 @@
 // puente abre el selector de carpetas del sistema, la guarda en infinite-desk.local.json y rehace
 // las islas. Sin puente, `npm run carpeta` hace lo mismo desde la terminal. Y el tutorial, que
 // enseña el mundo paso a paso (src/tutorial.js).
-import { PORQUE, Reconocer, abrirMic, altavoces, guardarMic, idiomaDeVoz, medir, micGuardado, micros, nombreDeMic, permiso, unaFrase } from "./audio.js";
+import { PORQUE, Reconocer, abrirMic, altavoces, guardarMic, idiomaDeVoz, medir, micGuardado, micros, nombreDeMic, oidoDelPuente, permiso, sinChrome, unaFrase } from "./audio.js";
 
 /**
  * @param {HTMLElement} panel
@@ -118,7 +118,7 @@ export function crearPanelAjustes(panel, puente, avisar, alCerrar, empezarTutori
     probar.disabled = true;
     resultado.textContent = "Listening… say a sentence.";
     // Por el oído del puente (un Chrome escondido que transcribe), como Kiri y Atlas; sin puente, el navegador.
-    const p = puente();
+    const p = oidoDelPuente.hay ? puente() : null;
     /** @param {string} t */
     const mientras = (t) => (resultado.textContent = `“${t}”`);
     const frase = p?.conectado
@@ -126,8 +126,15 @@ export function crearPanelAjustes(panel, puente, avisar, alCerrar, empezarTutori
       : unaFrase({ idioma, flujo: flujo.clone(), mientras });
     if (p?.conectado) resultado.textContent = "Listening… say a sentence (the first time, the listener takes a few seconds to start).";
     const corte = setTimeout(() => frase.parar(), p?.conectado ? 9000 : 5000);
-    const r = await frase.promesa;
+    let r = await frase.promesa;
     clearTimeout(corte);
+    if (p?.conectado && sinChrome(r.error)) { // sin Chrome: el del navegador, y ya para siempre
+      oidoDelPuente.hay = false;
+      const otra = unaFrase({ idioma, flujo: flujo.clone(), mientras });
+      const corte2 = setTimeout(() => otra.parar(), 5000);
+      r = await otra.promesa;
+      clearTimeout(corte2);
+    }
     probar.disabled = false;
     resultado.textContent = r.texto ? `✓ Understood: “${r.texto}”` : `✗ ${PORQUE[r.error ?? ""] ?? r.error} · (${r.eventos.join(" → ")})`;
     puente()?.anotar(`voz (prueba en Ajustes, ${p?.conectado ? "oído Chrome" : "navegador"}, ${selectorMic.selectedOptions[0]?.textContent ?? "?"}): ${r.texto ? "entendido" : `nada: ${r.error}`} [${r.eventos.join(" ")}]`);

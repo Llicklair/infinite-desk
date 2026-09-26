@@ -6,7 +6,7 @@
 // se puede borrar. Si lo dicho suena a crisis, además de lo que diga, sale el 024. "Sígueme",
 // "quédate aquí" y "vuelve" lo mueven (src/apoyo.js). La conversación vive solo aquí, en memoria.
 import { NOMBRE, base64, ordenDeMovimiento, paraVoz, pareceCrisis } from "./apoyo.js";
-import { PORQUE, Reconocer, guardarMic, idiomaDeVoz, micGuardado, micQueOye, micros, nombreDeMic, permiso, unaFrase } from "./audio.js";
+import { PORQUE, Reconocer, abrirMic, guardarMic, idiomaDeVoz, micGuardado, micQueOye, micros, nombreDeMic, oidoDelPuente as hayOido, permiso, sinChrome, unaFrase } from "./audio.js";
 
 /** @typedef {import("./apoyo.js").Turno} Turno */
 /** @typedef {import("./apoyo.js").Recuerdo} Recuerdo */
@@ -248,14 +248,21 @@ export function crearCharla(panel, persona, op) {
     void listarMicros();
     const alEmpezar = () => { if (e) e.escuchando = true; microfono.classList.add("oyendo"); op.avisar(`🎙 Listening (${mic?.nombre ?? "default microphone"})…`); };
     // El oído del puente (Chrome) transcribe; aquí solo se elige el micrófono (por su nombre).
-    const oidoDelPuente = op.oido?.();
+    const oidoDelPuente = hayOido.hay ? op.oido?.() : null;
     const etiqueta = mic?.flujo.getAudioTracks()[0]?.label ?? "";
     if (oidoDelPuente) for (const t of mic?.flujo.getTracks() ?? []) t.stop();
     const frase = oidoDelPuente
       ? (alEmpezar(), oidoDelPuente({ micro: etiqueta, idioma }, mientras))
       : unaFrase({ idioma, flujo: mic?.flujo ?? null, mientras, alEmpezar });
     oido = frase;
-    const r = await frase.promesa;
+    let r = await frase.promesa;
+    // Sin Chrome (una máquina limpia): el reconocimiento del propio navegador, y ya para siempre.
+    if (oidoDelPuente && sinChrome(r.error)) {
+      hayOido.hay = false;
+      const otra = unaFrase({ idioma, flujo: await abrirMic(micGuardado()).catch(() => null), mientras, alEmpezar });
+      oido = otra;
+      r = await otra.promesa;
+    }
     oido = null;
     for (const t of mic?.flujo.getTracks() ?? []) t.stop();
     if (e) e.escuchando = false;

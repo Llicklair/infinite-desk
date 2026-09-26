@@ -282,3 +282,6 @@ audio       -/-> mundo
 audio       -/-> charla
 audio       -/-> ajustes
 audio       -/-> puente
+
+# El oído (oido): la página del Chrome escondido que transcribe; no importa nada del mundo.
+FUERA = oido

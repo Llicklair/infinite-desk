@@ -19,6 +19,15 @@ export function idiomaDeVoz() {
   return lista.find((l) => l.startsWith(`${base}-`)) ?? (base === "en" ? "en-US" : `${base}-${base.toUpperCase()}`);
 }
 
+/**
+ * El oído del puente (un Chrome escondido que transcribe) solo hace falta donde el reconocimiento
+ * del navegador del mundo no funciona, como en el equipo donde nació (Edge devolvía texto vacío).
+ * Sin Chrome instalado se usa el del navegador, y se recuerda para no volver a intentarlo.
+ */
+export const oidoDelPuente = { hay: true };
+/** ¿Contestó el puente que no hay Chrome para el oído? @param {string | null} error */
+export const sinChrome = (error) => /Chrome isn't installed/.test(error ?? "");
+
 /** El micrófono elegido ("" = el de Windows por defecto). */
 export function micGuardado() { try { return localStorage.getItem(CLAVE_MIC) ?? ""; } catch { return ""; } }
 /** @param {string} id */
