@@ -104,10 +104,33 @@ export async function capturaDeDemostracion(titulo) {
 }
 
 /**
- * @param {{stream: MediaStream, video: HTMLVideoElement, titulo: string, hwnd: number | null}} captura
+ * Una pantalla sin captura de Chromium: su imagen la manda el puente (Vista.cs) desde el principio,
+ * en vivo (las webs que abren los asistentes, sin el selector de N). Hasta el primer fotograma, un
+ * lienzo oscuro.
+ * @param {number} hwnd @param {string} titulo
+ */
+export async function capturaNativa(hwnd, titulo) {
+  const lienzo = document.createElement("canvas");
+  lienzo.width = 16;
+  lienzo.height = 9;
+  const ctx = /** @type {CanvasRenderingContext2D} */ (lienzo.getContext("2d"));
+  ctx.fillStyle = "#101426";
+  ctx.fillRect(0, 0, 16, 9);
+  const stream = lienzo.captureStream(0);
+  const video = document.createElement("video");
+  video.srcObject = stream;
+  video.muted = true;
+  await video.play().catch(() => {});
+  return { stream, video, titulo, hwnd, nativa: true };
+}
+
+/**
+ * @param {{stream: MediaStream, video: HTMLVideoElement, titulo: string, hwnd: number | null, nativa?: boolean}} captura
+ *   `nativa`: la imagen llega siempre del puente (no se vuelve a la de Chromium)
  */
 export function crearPantalla(captura) {
   const { stream, video, titulo, hwnd } = captura;
+  const nativa = Boolean(captura.nativa);
   const objeto = new THREE.Group();
 
   const textura = new THREE.VideoTexture(video);
@@ -124,11 +147,17 @@ export function crearPantalla(captura) {
   marco.userData.pantalla = true;
 
   let alto = ANCHO_INICIAL * 9 / 16;
-  function medir() {
-    if (video.videoWidth) alto = ANCHO_INICIAL * video.videoHeight / video.videoWidth;
+  let cerrada = false;
+  /** @param {number} r alto / ancho */
+  function proporcion(r) {
+    alto = ANCHO_INICIAL * r;
     lienzo.scale.set(ANCHO_INICIAL, alto, 1);
     marco.scale.set(ANCHO_INICIAL + 0.12, alto + 0.12, 1);
     colocarAnexos();
+  }
+  function medir() {
+    if (nativa) return proporcion(alto / ANCHO_INICIAL);
+    proporcion(video.videoWidth ? video.videoHeight / video.videoWidth : alto / ANCHO_INICIAL);
   }
   // La ventana capturada puede cambiar de tamaño: la pantalla la sigue.
   video.addEventListener("resize", medir);
@@ -183,6 +212,8 @@ export function crearPantalla(captura) {
       const nueva = { tex, material, ancho, alto, entera: true };
       tex.onUpdate = () => { nueva.entera = false; };
       directa = nueva;
+      // La forma, la de la ventana (sin vídeo de Chromium que la diga).
+      if (nativa) proporcion(alto / ancho);
     }
     const px = /** @type {Uint8Array} */ (directa.tex.image.data);
     let o = 6 + n * 8;
@@ -207,6 +238,7 @@ export function crearPantalla(captura) {
 
   /** De vuelta a la captura de Chromium. @param {boolean} [volver] */
   function quitarDirecto(volver = true) {
+    if (volver && nativa && !cerrada) return; // la nativa no tiene otra imagen a la que volver
     if (volver) lienzo.material = materialVideo;
     if (!directa) return;
     directa.tex.dispose();
@@ -251,7 +283,10 @@ export function crearPantalla(captura) {
       if (grafo3d) grafo3d.objeto.visible = grafoVisible;
       return grafoVisible;
     },
+    /** Su imagen la manda siempre el puente (una web abierta por un asistente). */
+    nativa,
     cerrar() {
+      cerrada = true;
       for (const t of stream.getTracks()) t.stop();
       quitarDirecto();
       objeto.removeFromParent();

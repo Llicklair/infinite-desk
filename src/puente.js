@@ -32,6 +32,7 @@ const REINTENTO_MS = 3000;
  *   escritorio(): Promise<import("./ficheros.js").Cosa[]>,
  *   abrir(que: {ruta?: string, especial?: "explorador" | "navegador"}): Promise<string | null>,
  *   abrirUrl(url: string): Promise<string | null>,
+ *   abrirWeb(url: string): Promise<{hwnd: number, titulo: string} | {error: string}>,
  *   orquestador(args: string[]): Promise<{ok: boolean, datos?: any, error?: string}>,
  *   alAgentes(f: (m: EstadoAgentes) => void): void,
  *   alLista(f: (titulo: string) => void): void,
@@ -286,6 +287,11 @@ export function crearPuente(tituloMundo) {
       return { ok: Boolean(r.ok), datos: r.datos, error: r.error };
     },
     /** Un enlace (http/https, un titular del palantír) en una ventana nueva del navegador; el error, o null. */
+    /** Una web como pantalla, sin el selector: el puente la abre en su Edge y da su ventana. */
+    async abrirWeb(url) {
+      const r = await pedir({ op: "abrirWeb", url });
+      return r.ok && r.hwnd ? { hwnd: Number(r.hwnd), titulo: String(r.titulo ?? url) } : { error: r.error ?? "unknown error" };
+    },
     async abrirUrl(url) {
       const r = await pedir({ op: "abrirUrl", url });
       return r.ok ? null : r.error ?? "unknown error";

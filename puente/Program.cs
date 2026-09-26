@@ -270,6 +270,16 @@ object? Responder(JsonElement m, WebSocket ws)
             if (sinUrl == null) Ventanas.QueNoNazcanMinimizadas(antesDeUrl, t => _ = Difundir(new { evento = "lista", titulo = t }));
             Registro.Anotar($"abrir enlace {Texto(m, "url")}: {sinUrl ?? "ok"}");
             return new { id, ok = sinUrl == null, error = sinUrl };
+        case "abrirWeb":
+            // Un asistente abre una web como pantalla, sin el selector de N (Ventanas.Web.cs).
+            var urlWeb = Texto(m, "url");
+            _ = Task.Run(async () =>
+            {
+                var (hw, tituloWeb, errorWeb) = await Ventanas.AbrirWeb(urlWeb);
+                Registro.Anotar($"abrir como pantalla {urlWeb}: {errorWeb ?? $"ok ({hw})"}");
+                await Enviar(ws, new { id, ok = errorWeb == null, hwnd = (long)hw, titulo = tituloWeb, error = errorWeb });
+            });
+            return null;
         case "orquestador":
             // La consola maestra: en segundo plano, y contesta cuando acaba.
             var ordenes = m.TryGetProperty("args", out var aa) && aa.ValueKind == JsonValueKind.Array

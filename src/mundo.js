@@ -5,7 +5,7 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { colocarIslas, firmaGrafos, islasNuevas } from "./islas.js";
 import { crearGrafo3D, liberar } from "./grafo3d.js";
 import { rotulo } from "./rotulo.js";
-import { capturaDeDemostracion, capturarVentana, crearPantalla, puedeCapturar } from "./pantallas.js";
+import { capturaDeDemostracion, capturaNativa, capturarVentana, crearPantalla, puedeCapturar } from "./pantallas.js";
 import { colorDeAgente, encendidosPorAgentes, repoDeTitulo, senalesDeAgentes, siguienteRepo, vigorOnda } from "./vinculo.js";
 import { crearConsola } from "./consola3d.js";
 import { paletaConMarca, paletaDeHora, vidaDeRepo } from "./ambiente.js";
@@ -697,6 +697,8 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
   function quitar(p) {
     const i = pantallas.indexOf(p);
     if (i === -1) return;
+    vistasNativas.get(p)?.();
+    vistasNativas.delete(p);
     if (escribiendo === p) dejarDeEscribir();
     pantallas.splice(i, 1);
     if (agarrada?.pantalla === p) agarrada = null;
@@ -810,9 +812,31 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
       hacer: (a) => void hacerDeKiri(a),
     })
     : null;
+  /** Lo que corta la vista nativa de cada pantalla que va siempre por el puente. @type {Map<Pantalla, () => void>} */
+  const vistasNativas = new Map();
+  /**
+   * Una web como pantalla, directamente (sin el selector de N): el puente la abre en su Edge, que no
+   * deja de pintar tapado, y manda su imagen en vivo. Sin puente nuevo, como antes (navegador + N).
+   * @param {string} url @param {string} nombre para los avisos
+   */
+  async function abrirComoPantalla(url, nombre) {
+    if (!puente?.conectado) { avisar("No bridge, so it can't open the browser"); return; }
+    avisar(`Opening ${nombre}…`);
+    const r = await puente.abrirWeb(url);
+    if ("error" in r) {
+      if (!/unknown/i.test(r.error)) { avisar(`Couldn't open ${nombre}: ${r.error}`); return; }
+      const error = await puente.abrirUrl(url); // un puente antiguo: como antes
+      if (error) { avisar(`Couldn't open it: ${error}`); return; }
+      await nuevaPantalla(nombre);
+      return;
+    }
+    const p = colocarPantalla(await capturaNativa(r.hwnd, r.titulo));
+    const puenteAhora = puente;
+    vistasNativas.set(p, puenteAhora.vistaDirecta(r.hwnd, (datos) => p.aplicarDirecto(datos)));
+  }
   /**
    * Lo que Kiri decide hacer: música o algo para distraerse (el primer vídeo de YouTube para su
-   * búsqueda, en el navegador, y el selector para traerlo al santuario como pantalla), o el cielo.
+   * búsqueda, abierto directamente como pantalla en vivo), o el cielo.
    * @param {import("./apoyo.js").Accion} a
    */
   async function hacerDeKiri(a) {
@@ -823,9 +847,7 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
     if (!puente?.conectado) { avisar("No bridge, so it can't open YouTube"); return; }
     const r = await puente.orquestador(["video", base64(a.busqueda)]);
     if (!r.ok || !r.datos?.url) { avisar(`Couldn't find it on YouTube: ${r.error ?? "no result"}`); return; }
-    const error = await puente.abrirUrl(r.datos.url);
-    if (error) { avisar(`Couldn't open YouTube: ${error}`); return; }
-    await nuevaPantalla(`"${r.datos.titulo}" on YouTube`);
+    await abrirComoPantalla(r.datos.url, `"${r.datos.titulo}" on YouTube`);
   }
   // Atlas, el asistente de trabajo del mundo normal (src/asistente.js): un dron que te acompaña; K
   // abre su panel y V le habla por voz (fuera de la zona zen). Sabe de tus repos (y lee su código),
@@ -878,13 +900,7 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
       if (enlace) leer(enlace);
       return;
     }
-    if (a.tipo === "web") {
-      if (!puente?.conectado) { avisar("No bridge, so it can't open the browser"); return; }
-      const error = await puente.abrirUrl(a.url);
-      if (error) { avisar(`Couldn't open it: ${error}`); return; }
-      await nuevaPantalla(new URL(a.url).hostname);
-      return;
-    }
+    if (a.tipo === "web") { await abrirComoPantalla(a.url, new URL(a.url).hostname); return; }
     if (a.tipo === "grafo") { void regenerar([a.repo]); return; }
     const g = grafoDe(a.repo);
     if (a.tipo === "vscode") { if (g) abrirEnVSCode(g); return; }
@@ -1007,7 +1023,7 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
     // Mientras se escribe, la imagen de esta pantalla llega directa del puente (~25 ms de la tecla
     // a la página, frente a ~220 ms de la captura de Chromium; medido). Hasta el primer trozo, y al
     // salir, la captura de siempre.
-    if (escribiendo === p && p.hwnd !== null && new URLSearchParams(location.search).get("directa") !== "0") cerrarDirecta = puente.vistaDirecta(p.hwnd, (datos) => p.aplicarDirecto(datos));
+    if (escribiendo === p && p.hwnd !== null && !p.nativa && new URLSearchParams(location.search).get("directa") !== "0") cerrarDirecta = puente.vistaDirecta(p.hwnd, (datos) => p.aplicarDirecto(datos));
     const atajo = puente.atajo ? ` or ${puente.atajo}` : "";
     avisar(`Working in ${p.repo ?? p.titulo}. Click outside the screen${atajo} to come back.`);
   }

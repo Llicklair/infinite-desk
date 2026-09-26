@@ -102,7 +102,14 @@ export function crearCharla(panel, persona, op) {
     try { localStorage.setItem(persona.claveVoz, selectorVoz.value); } catch { /* sin almacenamiento: solo esta vez */ }
     decir(idioma.startsWith("es") ? "Así sueno ahora." : "This is how I sound now.");
   });
-  mover.append(vozBoton, selectorVoz);
+  // Qué micrófono: el reconocimiento de voz del navegador usa el de Windows por defecto, y ese
+  // puede ser uno apagado (uso real: los cascos con el micro levantado dan silencio absoluto
+  // mientras la webcam sí oye). Se elige aquí y se recuerda en este equipo.
+  const selectorMic = /** @type {HTMLSelectElement} */ (el("select", "elegir-mic"));
+  selectorMic.title = "Microphone";
+  selectorMic.hidden = true;
+  selectorMic.addEventListener("change", () => guardarMic(selectorMic.value));
+  mover.append(vozBoton, selectorVoz, selectorMic);
   const memoria = /** @type {HTMLDetailsElement} */ (el("details", "memoria"));
   const resumen = el("summary");
   const lista = el("ul");
@@ -226,6 +233,66 @@ export function crearCharla(panel, persona, op) {
     }
   }
 
+  const CLAVE_MIC = "infinite-desk.microfono";
+  /** @param {string} id */
+  function guardarMic(id) { try { localStorage.setItem(CLAVE_MIC, id); } catch { /* solo esta vez */ } }
+  function micGuardado() { try { return localStorage.getItem(CLAVE_MIC) ?? ""; } catch { return ""; } }
+  /** Los micrófonos, en el selector (con nombre solo si ya hay permiso). */
+  async function listarMicros() {
+    const entradas = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === "audioinput" && d.deviceId !== "communications");
+    if (!entradas.some((d) => d.label)) return entradas;
+    const elegido = micGuardado();
+    selectorMic.replaceChildren(...entradas.map((d) => {
+      const o = /** @type {HTMLOptionElement} */ (el("option", "", `🎙 ${d.deviceId === "default" ? "Windows default" : d.label.replace(/\s*\([0-9a-f]{4}:[0-9a-f]{4}\)$/i, "")}`));
+      o.value = d.deviceId === "default" ? "" : d.deviceId;
+      o.selected = o.value === elegido;
+      return o;
+    }));
+    selectorMic.hidden = entradas.length < 2;
+    return entradas;
+  }
+  /** Lo más alto que suena en `ms` (0: silencio absoluto, un micro apagado o muteado). @param {MediaStream} flujo @param {number} ms */
+  async function nivel(flujo, ms) {
+    const ctx = new AudioContext();
+    const analizador = ctx.createAnalyser();
+    ctx.createMediaStreamSource(flujo).connect(analizador);
+    const buf = new Float32Array(analizador.fftSize);
+    let max = 0;
+    const fin = performance.now() + ms;
+    while (performance.now() < fin) {
+      await new Promise((r) => setTimeout(r, 40));
+      analizador.getFloatTimeDomainData(buf);
+      for (const x of buf) max = Math.max(max, Math.abs(x));
+    }
+    void ctx.close();
+    return max;
+  }
+  /**
+   * El audio del micrófono elegido. Si da silencio absoluto, el primero que suene (y se avisa).
+   * @returns {Promise<MediaStream>}
+   */
+  async function flujoDeMicrofono() {
+    /** @param {string} id */
+    const abrir = (id) => navigator.mediaDevices.getUserMedia({ audio: id ? { deviceId: { exact: id } } : true });
+    let flujo = await abrir(micGuardado()).catch(() => abrir(""));
+    if ((await nivel(flujo, 300)) > 0) return flujo;
+    const entradas = await listarMicros();
+    for (const d of entradas) {
+      if (d.deviceId === "default" || d.deviceId === micGuardado()) continue;
+      const otro = await abrir(d.deviceId).catch(() => null);
+      if (!otro) continue;
+      if ((await nivel(otro, 300)) > 0) {
+        for (const t of flujo.getTracks()) t.stop();
+        guardarMic(d.deviceId);
+        void listarMicros();
+        op.avisar(`Your microphone gave only silence (muted or off?): using ${d.label.replace(/\s*\([0-9a-f]{4}:[0-9a-f]{4}\)$/i, "")}. Change it in ${persona.nombre}'s panel.`);
+        return otro;
+      }
+      for (const t of otro.getTracks()) t.stop();
+    }
+    return flujo;
+  }
+
   const Reconocer = /** @type {any} */ (window).SpeechRecognition ?? /** @type {any} */ (window).webkitSpeechRecognition;
   /** @type {any} */
   let oido = null;
@@ -243,6 +310,7 @@ export function crearCharla(panel, persona, op) {
     oido?.abort();
     callar(); // si le hablas, se calla
     const e = op.figura();
+    const flujo = await flujoDeMicrofono().catch(() => null);
     return new Promise((resolver) => {
       const r = new Reconocer();
       oido = r;
@@ -270,12 +338,15 @@ export function crearCharla(panel, persona, op) {
         else if (ev.error !== "aborted") op.avisar(`Couldn't listen: ${ev.error}`);
       };
       r.onend = () => {
+        for (const t of flujo?.getTracks() ?? []) t.stop();
         if (e) e.escuchando = false;
         microfono.classList.remove("oyendo");
         oido = null;
         resolver(final.trim() || null);
       };
-      r.start();
+      // Del micrófono elegido (no del que Windows tenga por defecto), si el navegador deja darle la pista.
+      const pista = flujo?.getAudioTracks()[0];
+      try { if (pista) r.start(pista); else r.start(); } catch { r.start(); }
     });
   }
 
@@ -352,6 +423,7 @@ export function crearCharla(panel, persona, op) {
       panel.hidden = false;
       pintarMensajes();
       entrada.focus();
+      void listarMicros().catch(() => {});
       if (!persona.recuerda) return;
       const r = await op.orquestador(["recuerdos"]);
       ponerRecuerdos(r.ok ? r.datos?.recuerdos ?? [] : recuerdos);

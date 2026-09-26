@@ -24,10 +24,12 @@ static class Vista
     static readonly object gpu = new();
     static IntPtr d3d, ctx;
     static IDirect3DDevice? dispositivo;
-    // Una sola vista a la vez: la nueva cierra la anterior. Una vista que se quedara enganchada
-    // (la página se fue sin cerrarla, el envío murió) seguiría capturando con WGC para siempre; con
-    // dos cuelgues del equipo sin explicar (2026-09-26), mejor que no pueda pasar.
-    static CancellationTokenSource? actual;
+    // Una vista por ventana: la nueva de la misma ventana cierra la anterior. Una vista que se
+    // quedara enganchada (la página se fue sin cerrarla, el envío murió) seguiría capturando con WGC
+    // para siempre; con dos cuelgues del equipo sin explicar (2026-09-26), mejor que no pueda pasar.
+    // Y como mucho MAX_VIVAS a la vez (las pantallas que abren los asistentes van siempre en vivo).
+    const int MAX_VIVAS = 6;
+    static readonly System.Collections.Concurrent.ConcurrentDictionary<IntPtr, CancellationTokenSource> porVentana = new();
     static int vivas;
     public static int Vivas => Volatile.Read(ref vivas);
 
@@ -36,12 +38,13 @@ static class Vista
     {
         if (!Ventanas.Existe(h)) return;
         var fin = new CancellationTokenSource();
-        Interlocked.Exchange(ref actual, fin)?.Cancel();
+        porVentana.AddOrUpdate(h, fin, (_, vieja) => { vieja.Cancel(); return fin; });
+        if (Volatile.Read(ref vivas) >= MAX_VIVAS) { porVentana.TryRemove(new(h, fin)); Registro.Anotar($"vista {h}: rechazada ({MAX_VIVAS} ya vivas)"); return; }
         Registro.Anotar($"vista {h}: empieza ({Interlocked.Increment(ref vivas)} viva(s))");
         try { await Servir(ws, h, fin); }
         finally
         {
-            Interlocked.CompareExchange(ref actual, null, fin);
+            porVentana.TryRemove(new(h, fin));
             Registro.Anotar($"vista {h}: termina ({Interlocked.Decrement(ref vivas)} viva(s))");
         }
     }
@@ -57,6 +60,7 @@ static class Vista
         try { sesion.IsCursorCaptureEnabled = false; } catch { /* Windows 10 antiguo: sale el cursor */ }
         item.Closed += (_, _) => { try { señal.Release(); } catch (SemaphoreFullException) { } };
         sesion.StartCapture();
+        Ventanas.Despertar(h); // si no cambia nada, WGC no manda nada: un fotograma para empezar
 
         // Lo que se capturó y lo que ya tiene el mundo: se compara uno con otro por trozos.
         byte[] actual = [], enviado = [];
