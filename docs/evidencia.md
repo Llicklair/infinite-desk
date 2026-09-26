@@ -595,3 +595,71 @@ dos") + una
   = zoom, (3) hover muestra etiqueta, (4) consumo de GPU en reposo con una ventana maximizada.
 - Si la rueda no llega al fondo (Lively no garantiza reenviarla), se apunta aquí y la
   navegación pasa a arrastre + doble clic.
+
+## Rendimiento: cuánta GPU gasta y cuántas pantallas aguanta (`npm run medir`, 2026-09-26)
+
+GTX 1070, 1920x1080, Edge con la GPU real (ANGLE D3D11). Pantallas = vídeo de mentira a 1920x1080 y
+60 fps por el camino de una captura (getDisplayMedia -> VideoTexture); una ventana de verdad quieta
+da menos fotogramas y gasta menos. "GPU 3D" es solo el proceso de GPU de ese Edge.
+
+| escena | fps | CPU ms/fotograma p50 / p95 | GPU 3D % | VRAM MB |
+|---|---|---|---|---|
+| mundo sin pantallas | 60 | 1.6 / 2.9 | 6 | 248 |
+| 1 pantalla | 60 | 2.0 / 4.4 | 8 | 281 |
+| 4 | 60 | 2.5 / 3.3 | 12 | 349 |
+| 8 | 60 | 3.2 / 4.0 | 15 | 452 |
+| 16 | 60 | 4.2 / 5.7 | 20 | 622 |
+| 24 | 60 | 5.7 / 12.5 | 23 | 769 |
+| 32 | 59 | 6.3 / 8.3 | 33 | 950 |
+| 48 | 56 | 8.4 / 27.9 (tirones) | 38 | 1280 |
+| fondo en reposo (30 fps) | 30 | 1.4 / 3.6 | 4 | 221 |
+
+- Cada pantalla 1080p cuesta ~0,15 ms de CPU por fotograma y ~20-25 MB de VRAM; hasta ~32 se
+  mantienen 60 fps; a 48 empiezan los tirones. Una pantalla fuera de la vista no sube su vídeo
+  (three solo lo sube al pintarla).
+- Fuga arreglada: cerrar una pantalla (o cambiarle el grafo con G) solo soltaba la textura de vídeo;
+  el grafo, el marco y el rótulo se quedaban en la GPU (8 pantallas cerradas: 64 buffers vivos).
+  Ahora `liberar()` (grafo3d.js) lo suelta todo, lo mismo que al rehacer las islas.
+- El cartel de info se escribía cada dos fotogramas aunque no cambiara: ahora solo si cambia.
+
+## Latencia al escribir y la rueda en modo Enter (2026-09-26)
+
+Uso real: "hay bastante latencia al clicar dentro del mundo o escribir con el teclado" y "el scroll
+en navegador no funciona". Medido en esta máquina (principal 2560x1440 al 200 %, secundaria 1080p):
+
+| tramo | cuánto |
+|---|---|
+| el mundo: de un clic o tecla a su pintado (Event Timing) | 24-48 ms, con o sin ventana en capas |
+| ritmo del mundo | 16,7 ms clavados, sin tareas largas |
+| tecla -> la ventana real la recibe | 2-3 ms |
+| tecla -> la ventana real cambia EN PANTALLA (píxel leído de la pantalla) | ~16-20 ms, también mientras se captura |
+| tecla -> el fotograma capturado llega a la página | ~220 ms a la vista; ~300 ms detrás del mundo |
+
+- Los ~200 ms son de la captura de ventanas de Chromium (getDisplayMedia): iguales en Edge y en
+  Chrome, a 1280 o a 2560 de ancho, con WGC forzado o quitado, y con el vídeo dentro o fuera del
+  DOM. No es el mundo ni el puente: es el precio de ver la ventana a través de una captura.
+- La rueda: con otra ventana tapando el punto (un Chrome por encima del mundo, o en el monitor que
+  el mundo no cubre), Chromium se la quedaba (RerouteMouseWheel mira WindowFromPoint). Ahora el
+  puente busca otro punto de la ventana que sí sea suyo y, si no hay, lo apunta en el registro.
+  `npm run probar-puente` lo comprueba con una ventana tapando el centro.
+
+### La vista directa (ADR 0005), medida
+
+| | captura de Chromium | vista directa |
+|---|---|---|
+| tecla -> la página (ventana 888x694) | ~220 ms | ~25-30 ms |
+| tecla -> la página (ventana entera 2538x1429 cambiando) | ~220 ms | ~62 ms |
+| tecla -> el píxel en el monitor, en el mundo de verdad | ~340 ms (250-750) | ~85-100 ms |
+| ventana entera cambiando sin parar (scroll): fotogramas/s en el mundo | ~60 | 51-57 |
+| el mundo mientras tanto | 60 fps | 60 fps |
+| CPU del puente | — | ~1,2 núcleos solo mientras la ventana entera cambia; 0 en reposo |
+
+- Por pasos, lo que no funcionó: reordenar BGRA->RGBA en el puente (se lo comía todo); mandar 14 MB
+  sin comprimir (el navegador tardaba 70-450 ms en recibirlos); comprimir en bandas a la vez (la
+  página tardaba más en descomprimir muchas pequeñas: ~35 ms); `desynchronized` (15 ms menos, riesgo
+  de rasgado). Lo que sí: trozos de 64x64 que cambian, deflate de un flujo, créditos (3) con lectura
+  siempre al día, comparar/leer en paralelo, enviar solapado, y 3 workers descomprimiendo en la página.
+- WGC no manda nada de una ventana quieta, ni el primer fotograma: hasta que cambia, la pantalla
+  sigue con la captura de Chromium (y así también con un puente antiguo sin `/vista`).
+- Medido con `?vista=dentro&pantallas=1&escribir` (y `&directa=0` para comparar) y una ventana que
+  cambia de negro a blanco con cada tecla, leyendo el píxel del monitor.

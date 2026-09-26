@@ -3,18 +3,20 @@ import * as THREE from "three";
 import { PointerLockControls } from "three/examples/jsm/controls/PointerLockControls.js";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { colocarIslas, firmaGrafos, islasNuevas } from "./islas.js";
-import { crearGrafo3D } from "./grafo3d.js";
+import { crearGrafo3D, liberar } from "./grafo3d.js";
 import { rotulo } from "./rotulo.js";
 import { capturaDeDemostracion, capturarVentana, crearPantalla, puedeCapturar } from "./pantallas.js";
 import { colorDeAgente, encendidosPorAgentes, repoDeTitulo, senalesDeAgentes, siguienteRepo, vigorOnda } from "./vinculo.js";
 import { crearConsola } from "./consola3d.js";
-import { paletaDeHora, vidaDeRepo } from "./ambiente.js";
+import { paletaConMarca, paletaDeHora, vidaDeRepo } from "./ambiente.js";
 import { crearCielo, crearCristales, crearFaro } from "./decorado.js";
 import { crearPalantir } from "./palantir.js";
 import { crearLector } from "./lector.js";
 import { crearChispas } from "./chispas.js";
 import { crearHolograma } from "./maestra3d.js";
 import { crearMaestra } from "./maestra.js";
+import { crearMarca } from "./marca.js";
+import { crearZen } from "./zen.js";
 import { fuerzaDeFallo, nodoDeFichero } from "./fallos.js";
 import { mostrarIsla, mostrarNodo } from "./nodo.js";
 import { crearPuente, releerScript } from "./puente.js";
@@ -51,6 +53,8 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
 
   // Sin antialiasing en pantallas de alta densidad (≥150 %): los píxeles ya son pequeños y suavizar
   // bordes costaba mucho (medido: el mundo a casi 2 núcleos de CPU en un 200 %).
+  // (Probado `desynchronized`: ~15 ms menos de la tecla al monitor, pero presenta sin esperar al
+  // refresco y puede rasgar la imagen al mover la cámara: no compensa.)
   const renderer = new THREE.WebGLRenderer({ antialias: window.devicePixelRatio < 1.5 });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.setSize(window.innerWidth, window.innerHeight);
@@ -69,10 +73,16 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
     const d = new Date();
     return paletaDeHora(d.getHours() + d.getMinutes() / 60);
   };
+  /** @type {ReturnType<typeof crearMarca> | null} la capa de marca (B); se crea más abajo, con el palantír */
+  let marca = null;
+  /** La zona zen (Z): mientras se está en ella, la niebla es suya. @type {import("./zen.js").Zen | null} */
+  let zen = null;
   function ponerHora() {
-    const p = paletaDeAhora();
+    const ahora = paletaDeAhora();
+    // Con la capa de marca (B), el cielo y el fuego toman sus colores.
+    const p = marca?.activa && marca.marca ? paletaConMarca(ahora, marca.marca.colores) : ahora;
     cielo.paleta(p);
-    niebla.color.setRGB(...p.horizonte, THREE.SRGBColorSpace); // el cielo pinta sRGB tal cual: la niebla, igual
+    if (!zen?.activa) niebla.color.setRGB(...p.horizonte, THREE.SRGBColorSpace); // el cielo pinta sRGB tal cual: la niebla, igual
     for (const f of alCambiarHora) f(p);
   }
   ponerHora();
@@ -89,21 +99,43 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
   camara.lookAt(0, 6.5, 0);
   escena.add(camara);
 
-  escena.add(new THREE.HemisphereLight("#c8d0ff", "#2a1d40", 1.4));
+  const hemi = new THREE.HemisphereLight("#c8d0ff", "#2a1d40", 1.4);
+  escena.add(hemi);
   const sol = new THREE.DirectionalLight("#ffffff", 1.8);
   sol.position.set(20, 40, 10);
   escena.add(sol);
 
-  // Suelo: una rejilla oscura que se pierde en la niebla, estilo holodeck.
-  const suelo = new THREE.Mesh(
-    new THREE.PlaneGeometry(1200, 1200),
-    new THREE.MeshStandardMaterial({ color: "#0a0d1a", roughness: 1 }),
-  );
+  // Suelo: una rejilla oscura que se pierde en la niebla, estilo holodeck. La rejilla la pinta el
+  // propio suelo en su shader, con bordes suavizados (fwidth) y apagándose donde las líneas se
+  // apiñan. Antes eran líneas de 1 px (GridHelper) a 1 cm del suelo: de cerca se peleaban con él
+  // en profundidad y, desde arriba girando, saltaban de fila de píxeles en fila (sin antialiasing
+  // al 200 %); una parpadeaba (uso real: "una de las líneas del suelo flickea... desde la vista
+  // aérea sigue").
+  const materialSuelo = new THREE.MeshStandardMaterial({ color: "#0a0d1a", roughness: 1 });
+  const lineas = { uLinea: { value: new THREE.Color("#141a3a") }, uCentro: { value: new THREE.Color("#26306a") } };
+  materialSuelo.onBeforeCompile = (sh) => {
+    Object.assign(sh.uniforms, lineas);
+    sh.vertexShader = sh.vertexShader
+      .replace("#include <common>", "#include <common>\nvarying vec2 vSuelo;")
+      .replace("#include <begin_vertex>", "#include <begin_vertex>\nvSuelo = (modelMatrix * vec4(position, 1.0)).xz;");
+    sh.fragmentShader = sh.fragmentShader
+      .replace("#include <common>", "#include <common>\nvarying vec2 vSuelo;\nuniform vec3 uLinea;\nuniform vec3 uCentro;")
+      .replace("#include <opaque_fragment>", `
+        // Cada 4 unidades, 1 px de ancho aunque se mire de lado; se apaga cuando caben menos de ~3 px
+        // entre líneas (ahí solo harían moiré). Y las dos del centro, más claras.
+        vec2 celda = vSuelo / 4.0;
+        vec2 paso = fwidth(celda);
+        vec2 g = abs(fract(celda - 0.5) - 0.5) / paso;
+        float linea = (1.0 - min(min(g.x, g.y), 1.0)) * (1.0 - smoothstep(0.2, 0.4, max(paso.x, paso.y)));
+        vec2 g0 = abs(vSuelo) / fwidth(vSuelo);
+        float centro = (1.0 - min(min(g0.x, g0.y), 1.0)) * (1.0 - smoothstep(0.05, 0.1, max(paso.x, paso.y)));
+        outgoingLight = mix(outgoingLight, uLinea, linea);
+        outgoingLight = mix(outgoingLight, uCentro, centro);
+        #include <opaque_fragment>`);
+  };
+  const suelo = new THREE.Mesh(new THREE.PlaneGeometry(1200, 1200), materialSuelo);
   suelo.rotation.x = -Math.PI / 2;
   escena.add(suelo);
-  const rejilla = new THREE.GridHelper(1200, 300, "#26306a", "#141a3a");
-  rejilla.position.y = 0.01;
-  escena.add(rejilla);
 
   // Islas: pedestal, anillo de color, el grafo flotando y el cartel del repo. Y la decoración que
   // cuenta cosas: cristales según la vida del repo (su último commit) y un faro si hay agentes.
@@ -129,17 +161,7 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
   function ponerIslas(nuevos) {
     for (const { base } of islas) {
       escena.remove(base);
-      base.traverse((o) => {
-        const m = /** @type {THREE.Mesh | THREE.Sprite} */ (o);
-        // Compartidas, no se tocan: la esfera de los nodos (grafo3d) y el cuadrado de los sprites (three).
-        if (o instanceof THREE.InstancedMesh) o.dispose();
-        else if (m.geometry && !(o instanceof THREE.Sprite)) m.geometry.dispose();
-        for (const mat of [m.material].flat()) {
-          if (!mat) continue;
-          /** @type {any} */ (mat).map?.dispose();
-          mat.dispose();
-        }
-      });
+      liberar(base);
     }
     islas.length = 0;
     porNombre.clear();
@@ -655,7 +677,9 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
     ui.portada.hidden = true;
     const repo = porNombre.has("galaxy-brain") ? "galaxy-brain" : nombres[0];
     // `&agentes`: sin pantalla, que taparía la isla con los agentes de mentira (abajo).
-    if (!new URLSearchParams(location.search).has("agentes")) capturaDeDemostracion(`cli.py - ${repo} - Visual Studio Code`).then((c) => {
+    // `&pantallas=N`: las pone el bloque de pruebas de más abajo.
+    const params = new URLSearchParams(location.search);
+    if (!params.has("agentes") && !params.has("pantallas")) capturaDeDemostracion(`cli.py - ${repo} - Visual Studio Code`).then((c) => {
       // Relativo a donde se aparece (delante del palantír): en el centro está él.
       const z = camara.position.z;
       colocarPantalla(c);
@@ -687,6 +711,31 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
   // La demo tampoco: es para comprobar sin manos, y el puente de verdad le pisaría los agentes
   // de mentira (y le presentaría otra "ventana del mundo").
   const puente = fondo || opciones.vista === "demo" ? null : crearPuente(document.title);
+
+  // `&pantallas=N`: N pantallas por el camino de una captura de verdad (capturarVentana), en arco
+  // delante de la cámara (una sola, en el centro): lo que cargan tools/medir.mjs (con vídeo de mentira)
+  // y la medida de latencia de extremo a extremo. Con `&escribir`, además se entra a escribir en la
+  // primera, como con Enter (con el puente; `&directa=0`, sin su vista directa, para comparar).
+  const pedidas = new URLSearchParams(location.search).get("pantallas");
+  if (pedidas !== null && !fondo) {
+    ui.portada.hidden = true;
+    (async () => {
+      const cuantas = Number(pedidas);
+      const z = camara.position.z;
+      camara.position.set(0, 3, z + 6);
+      for (let i = 0; i < cuantas; i++) {
+        const a = cuantas === 1 ? 0 : (i / (cuantas - 1) - 0.5) * Math.PI * 0.9;
+        camara.lookAt(Math.sin(a) * 10, 3 + (cuantas === 1 ? 0 : (i % 2) * 2.6), z + 6 - Math.cos(a) * 10);
+        colocarPantalla(await capturarVentana());
+      }
+      camara.lookAt(0, 3, z - 4);
+      if (new URLSearchParams(location.search).has("escribir") && pantallas[0]) {
+        for (let n = 0; n < 40 && !puente?.conectado; n++) await new Promise((r) => setTimeout(r, 250));
+        await escribirEn(pantallas[0]);
+      }
+    })().catch((e) => avisar(`Could not open the screens: ${e}`));
+  }
+
   puente?.alSalir(() => dejarDeEscribir(false));
   puente?.alConectar(() => { for (const p of pantallas) if (p.hwnd !== null) puente.titulo(p.hwnd); });
 
@@ -711,6 +760,13 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
       if (!mirar.isLocked && !escribiendo) ui.portada.hidden = false;
     })
     : null;
+  // Clic fuera del lector: se cierra y se vuelve al mundo de un clic (uso real: "no me deja salir
+  // clicando fuera"). El mismo clic no coge nada: el ratón se bloquea después.
+  document.addEventListener("mousedown", (e) => {
+    if (!lector?.abierto || mirar.isLocked || !(e.target instanceof Node) || ui.lector?.contains(e.target)) return;
+    lector.cerrar();
+    mirar.lock();
+  });
   // La consola maestra: su holograma encima del palantír y, al hacer clic (u O), la consola entera.
   // Solo dentro del mundo: el fondo no tiene puente, y sin él no hay nada que gestionar.
   const demoMaestra = opciones.vista === "demo" && new URLSearchParams(location.search).has("maestra");
@@ -718,13 +774,26 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
   // tarjeta de repo de delante (medido en captura).
   const holograma = !fondo ? crearHolograma(palantir.cima + 6.1) : null;
   if (holograma) escena.add(holograma.objeto);
+  // La capa de marca (B): el logo encima de la consola maestra.
+  marca = !fondo ? crearMarca(escena, { alturaLogo: palantir.cima + 10.8 }) : null;
+  // La zona zen (Z), lejos de las islas; con su cielo, y las luces y la niebla de su ambiente.
+  zen = !fondo ? crearZen(escena, { hemi, sol, niebla, cieloMundo: cielo.objeto, renderer, avisar: (t) => avisar(t) }) : null;
+  const laMarca = marca;
+  if (laMarca) {
+    releerScript("marca.js").then(() => {
+      // `?marca`: entra ya con la marca puesta (para grabar el vídeo).
+      const params = new URLSearchParams(location.search);
+      if (params.has("marca") && laMarca.disponible) { laMarca.poner(true); ponerHora(); }
+    });
+  }
   const maestra = ui.maestra && holograma
     ? crearMaestra(ui.maestra,
       (args) => (demoMaestra ? Promise.resolve(args[0] === "estado" ? { ok: true, datos: estadoDeDemostracion(nombres) } : { ok: false, error: "demo" })
         : puente ? puente.orquestador(args) : Promise.resolve({ ok: false, error: "no bridge" })),
       (e) => { holograma.actualizar(e); aplicarFallos(e.fallos ?? []); actividad = e.actividad ?? []; },
       () => { if (!mirar.isLocked && !escribiendo) ui.portada.hidden = false; },
-      (repos) => void regenerar(repos))
+      (repos) => void regenerar(repos),
+      () => window.GB_GRAFOS ?? [])
     : null;
   // --- fallos (gb list, por la consola maestra cada minuto): en rojo en su isla ------------------
   /** @type {import("./fallos.js").Fallo[]} */
@@ -793,6 +862,8 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
   });
   /** @type {Pantalla | null} */
   let escribiendo = null;
+  /** Cerrar la vista directa de la pantalla en la que se escribe (puente, Vista.cs). @type {(() => void) | null} */
+  let cerrarDirecta = null;
   const rayoRaton = new THREE.Raycaster();
   const ndc = new THREE.Vector2();
 
@@ -808,12 +879,19 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
       avisar(`Couldn't work in that screen: ${error}`);
       return;
     }
+    // Mientras se escribe, la imagen de esta pantalla llega directa del puente (~25 ms de la tecla
+    // a la página, frente a ~220 ms de la captura de Chromium; medido). Hasta el primer trozo, y al
+    // salir, la captura de siempre.
+    if (escribiendo === p && p.hwnd !== null && new URLSearchParams(location.search).get("directa") !== "0") cerrarDirecta = puente.vistaDirecta(p.hwnd, (datos) => p.aplicarDirecto(datos));
     const atajo = puente.atajo ? ` or ${puente.atajo}` : "";
     avisar(`Working in ${p.repo ?? p.titulo}. Click outside the screen${atajo} to come back.`);
   }
 
   function dejarDeEscribir(avisarAlPuente = true) {
     if (!escribiendo) return;
+    cerrarDirecta?.();
+    cerrarDirecta = null;
+    escribiendo.quitarDirecto();
     escribiendo = null;
     delete document.body.dataset.escribiendo;
     if (avisarAlPuente) puente?.salir();
@@ -883,7 +961,9 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
       avisar("Graphs regenerated: nothing new");
     }
     esperandoR = false;
+    maestra?.grafosHechos(r.ok, r.resumen);
   });
+  puente?.alIsla((m) => maestra?.islaHecha(m));
   if (fondo) setInterval(releerGrafos, RELEER_FONDO_MS);
   if (fondo) setInterval(() => releerScript("fondo-estado.js"), 1000);
 
@@ -1092,10 +1172,51 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
     avisar(error ? `Couldn't open it: ${error}` : `Opening ${enlace.etiqueta} in the browser…`);
   }
 
+  /** Dónde se estaba antes de ir a la zona zen, para volver exactamente ahí. @type {{pos: THREE.Vector3, rot: THREE.Quaternion} | null} */
+  let antesDeZen = null;
+  /** Z: a la zona zen, o de vuelta de ella. */
+  /** @param {boolean | "fuera" | "cascada"} [enCabana] llegar dentro de la cabaña (`&cabana`), fuera mirándola (`&cabana=fuera`) o cerca de la cascada (`&mirar=cascada`) */
+  function alternarZen(enCabana = false) {
+    if (!zen) return;
+    if (!zen.activa) {
+      antesDeZen = { pos: camara.position.clone(), rot: camara.quaternion.clone() };
+      zen.activar(true);
+      const l = zen.llegada(enCabana);
+      camara.position.copy(l.posicion);
+      camara.lookAt(l.mirar);
+      avisar("Zen zone · hold click to throw a stone · Space: jump · E: use things (the cabin!) · L: day / sunset / night / rain · Z to go back");
+    } else {
+      zen.activar(false);
+      cargaDesde = null;
+      if (antesDeZen) {
+        camara.position.copy(antesDeZen.pos);
+        camara.quaternion.copy(antesDeZen.rot);
+      }
+      ponerHora();
+      avisar("Back from the zen zone");
+    }
+  }
+
   /** @param {string} codigo */
   function accion(codigo) {
-    if (codigo === "KeyN") nuevaPantalla();
+    if (codigo === "KeyZ" && zen) alternarZen();
+    else if (zen?.activa && codigo === "Space") zen.saltar();
+    else if (zen?.activa && codigo === "KeyE") zen.interactuar(camara);
+    else if (codigo === "KeyL" && zen?.activa) {
+      const a = zen.siguienteAmbiente();
+      avisar(`Zen: ${a === "dia" ? "day" : a === "atardecer" ? "sunset" : a === "noche" ? "night" : "rain"} · L to change it`);
+    }
+    else if (codigo === "KeyN") nuevaPantalla();
     else if (codigo === "KeyO" && maestra) abrirMaestra();
+    else if (codigo === "KeyB" && marca) {
+      if (!marca.disponible) {
+        avisar('No branding set: npm run marca -- --nombre "Company" --colores "#rrggbb,#rrggbb" --logo logo.png');
+      } else {
+        marca.poner(!marca.activa);
+        ponerHora();
+        avisar(marca.activa ? `This is how it would look with ${marca.marca?.nombre}'s branding · B to hide it` : "Branding hidden · B to show it");
+      }
+    }
     else if (codigo === "KeyF" && panel) {
       panel.abrir();
       mirar.unlock();
@@ -1143,12 +1264,22 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
     }
   }
 
+  /** Desde cuándo se está cargando una piedra en la zona zen (ms), o null. @type {number | null} */
+  let cargaDesde = null;
   /** @type {{pantalla: Pantalla, distancia: number} | null} */
   let agarrada = null;
   /** @type {{consola: import("./consola3d.js").Consola, distancia: number} | null} la terminal que se está moviendo */
   let arrastrada = null;
   document.addEventListener("mousedown", (e) => {
     if (!mirar.isLocked || e.button !== 0) return;
+    // En la zona zen, el clic es una piedra (se carga mientras se mantiene y se lanza al soltar),
+    // salvo sobre una pantalla: esas se mueven y se usan como en el resto del mundo (uso real: "que se
+    // puedan abrir ventanas con la N para poner música").
+    if (zen?.activa && apuntado?.tipo !== "pantalla") {
+      if (zen.clic()) return; // con la taza en la mano, un sorbo
+      cargaDesde = performance.now();
+      return;
+    }
     // En plena ronda de Chispas, cada clic es un disparo y nada más; y justo después, nada (un
     // clic de inercia cogía una pantalla).
     if (chispas?.activo) {
@@ -1173,6 +1304,11 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
     agarrada = { pantalla: apuntado.pantalla, distancia: d };
   });
   document.addEventListener("mouseup", () => {
+    if (zen?.activa && cargaDesde !== null) {
+      const botes = zen.lanzar(camara, performance.now() - cargaDesde);
+      cargaDesde = null;
+      if (botes) avisar(`${botes} skip${botes === 1 ? "" : "s"}`);
+    }
     agarrada = null;
     arrastrada = null;
   });
@@ -1199,6 +1335,17 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
     renderer.setSize(window.innerWidth, window.innerHeight);
   });
 
+  // `?zen=dia|atardecer|noche`: se entra ya en la zona zen, con ese ambiente (capturas sin manos).
+  const zenInicial = new URLSearchParams(location.search).get("zen");
+  if (zenInicial !== null && zen) {
+    ui.portada.hidden = true;
+    zen.ponerAmbiente(/** @type {any} */ (zenInicial));
+    // Para comprobar la zona sin manos (tools, capturas): la zona y la cámara.
+    /** @type {any} */ (window).__zen = { zen, camara };
+    const c = new URLSearchParams(location.search).get("cabana");
+    alternarZen(new URLSearchParams(location.search).get("mirar") === "cascada" ? "cascada" : c === "fuera" ? "fuera" : c !== null);
+  }
+
   // --- bucle --------------------------------------------------------------------------------
   const reloj = new THREE.Clock();
   const dir = new THREE.Vector3();
@@ -1219,6 +1366,7 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
     if (fondo && fotograma > 30 && window.INFINITE_DESK_FONDO?.tapado?.[monitor]) return;
 
     if (mirar.isLocked) {
+      const antesDeAndar = zen?.activa ? camara.position.clone() : null;
       const correr = teclas.has("ShiftLeft") || teclas.has("ShiftRight") ? 3 : 1;
       const v = VELOCIDAD * correr * dt;
       if (teclas.has("KeyW")) mirar.moveForward(v);
@@ -1227,6 +1375,8 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
       if (teclas.has("KeyA")) mirar.moveRight(-v);
       if (teclas.has("Space")) camara.position.y += v;
       if (teclas.has("KeyC")) camara.position.y = Math.max(0.6, camara.position.y - v);
+      // En la zona zen se anda con los pies en el suelo, se salta y se choca (src/andar.js).
+      if (zen?.activa && antesDeAndar) zen.ajustar(camara.position, antesDeAndar, dt);
     }
 
     if (orbita) {
@@ -1252,6 +1402,8 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
     palantir.tick(t, dt);
     chispas?.tick(dt);
     holograma?.tick(t, camara);
+    marca?.tick(t, camara);
+    zen?.tick(t, dt, camara);
     for (const { cristales, faro } of islas) { cristales.tick(t); faro.tick(t); }
     for (const g3d of vivos()) g3d.latir(t);
     const ahora = performance.now();
@@ -1288,8 +1440,13 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
         encendido = nuevo ? { g3d: nuevo.g3d, i: nuevo.i } : null;
       }
       palantir.resaltar(apuntado?.tipo === "titular" ? apuntado.tarjeta : null);
-      ui.info.textContent = describir();
-      ui.info.hidden = !apuntado || !ui.info.textContent;
+      // Solo si cambia: escribir el mismo texto 30 veces por segundo recalcula estilos para nada.
+      const texto = cargaDesde !== null
+        ? `Throw ${"▮".repeat(Math.round(Math.min(1, (performance.now() - cargaDesde) / 1100) * 8)).padEnd(8, "▯")} · flat and hard skips`
+        : zen?.activa && apuntado?.tipo !== "pantalla" ? zen.pista(camara) : describir();
+      if (ui.info.textContent !== texto) ui.info.textContent = texto;
+      const oculto = !texto || (!apuntado && cargaDesde === null && !zen?.activa);
+      if (ui.info.hidden !== oculto) ui.info.hidden = oculto;
     }
 
     renderer.render(escena, camara);
@@ -1329,6 +1486,9 @@ function estadoDeDemostracion(repos) {
     fallos: [
       { id: "d1", repo: repos.includes("galaxy-brain") ? "galaxy-brain" : repos[0] ?? "repo", tipo: "NameError", mensaje: "name 're' is not defined", fichero: "src/galaxybrain/cli.py", linea: 2489, veces: 20, ultimo: new Date(ahora - 3600000).toISOString(), primero: new Date(ahora - 5 * 86400000).toISOString() },
       { id: "d2", repo: repos[0] ?? "repo", tipo: "OSError", mensaje: "[Errno 22] Invalid argument", fichero: null, linea: null, veces: 38, ultimo: new Date(ahora - 7200000).toISOString(), primero: new Date(ahora - 20 * 86400000).toISOString() },
+      // Uno de cada: su fichero cambió después (quizás arreglado) y otro marcado a mano.
+      { id: "d3", repo: repos[0] ?? "repo", tipo: "KeyError", mensaje: "'config'", fichero: "src/ajustes.py", linea: 42, veces: 3, ultimo: new Date(ahora - 86400000).toISOString(), primero: new Date(ahora - 2 * 86400000).toISOString(), tocado: new Date(ahora - 3 * 3600000).toISOString(), estado: "quizas" },
+      { id: "d4", repo: repos[0] ?? "repo", tipo: "TypeError", mensaje: "'NoneType' object is not iterable", fichero: "src/lista.py", linea: 7, veces: 1, ultimo: new Date(ahora - 2 * 86400000).toISOString(), primero: new Date(ahora - 2 * 86400000).toISOString(), estado: "arreglado" },
     ],
   };
 }

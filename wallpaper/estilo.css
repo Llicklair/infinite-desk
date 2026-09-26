@@ -43,11 +43,12 @@ body[data-escribiendo] #mira { display: none; }
 #nodo .agentes li { color: #fff; }
 #nodo .pie { margin: 12px 0 0; color: #6f78a8; font-size: 11px; }
 /* Lector del palantír (clic en una tarjeta): el post o la noticia entera, sus respuestas o el README. */
-#lector { position: fixed; inset: 6vh 18vw; z-index: 10; display: flex; flex-direction: column; padding: 18px 26px; background: rgba(12, 16, 40, 0.96); border: 1px solid #3a4480; border-radius: 10px; }
+#lector { position: fixed; inset: 6vh 18vw; z-index: 10; display: flex; overflow: hidden; flex-direction: column; padding: 18px 26px; background: rgba(12, 16, 40, 0.96); border: 1px solid #3a4480; border-radius: 10px; }
 #lector .cabecera { display: flex; gap: 10px; align-items: center; font-size: 13px; color: #8d96c8; }
 #lector .insignia { padding: 2px 10px; border: 1px solid #c9d1d9; border-radius: 999px; font-weight: 700; }
-#lector h2 { margin: 12px 0; font-size: 20px; font-weight: 600; line-height: 1.35; overflow-wrap: anywhere; }
-#lector .texto { flex: 1; overflow: auto; padding-right: 10px; color: #dfe4ff; font-size: 15px; line-height: 1.6; overflow-wrap: anywhere; }
+#lector h2 { margin: 4px 0 12px; font-size: 20px; font-weight: 600; line-height: 1.35; overflow-wrap: anywhere; }
+/* min-height: 0: sin él, un hijo flex crece con su contenido y se sale del recuadro en vez de hacer scroll. */
+#lector .texto { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; margin-top: 10px; padding-right: 10px; color: #dfe4ff; font-size: 15px; line-height: 1.6; overflow-wrap: anywhere; }
 #lector .texto p { margin: 0 0 12px; }
 #lector .texto h3 { margin: 18px 0 8px; font-size: 15px; font-weight: 600; color: #b6bff0; }
 #lector .texto ul { margin: 0 0 12px; padding-left: 22px; }
@@ -60,7 +61,7 @@ body[data-escribiendo] #mira { display: none; }
 #lector .comentario { padding: 8px 0; border-bottom: 1px solid #222a58; }
 #lector .comentario b { font-size: 13px; color: #aab2e0; }
 #lector .comentario p { margin: 4px 0 0; }
-#lector .pie { display: flex; gap: 10px; margin-top: 14px; }
+#lector .pie { flex-shrink: 0; display: flex; gap: 10px; margin-top: 14px; }
 #lector button { padding: 8px 14px; background: rgba(60, 75, 170, 0.5); border: 1px solid #5a6cff; border-radius: 8px; color: #dfe4ff; font: inherit; cursor: pointer; }
 #lector button:hover { background: rgba(80, 95, 200, 0.6); }
 #lector .texto::-webkit-scrollbar { width: 10px; }
@@ -108,6 +109,15 @@ body[data-escribiendo] #mira { display: none; }
 #maestra td.nombre { font-weight: 600; }
 #maestra td.aviso { color: #ffb86b; }
 #maestra td.tenue { color: #6f93a0; }
+/* Maps: dónde está gb arriba; la última columna (por qué es árbol de carpetas, o cómo acabó) puede ser larga. */
+#maestra .mapas .gb { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; margin-bottom: 10px; font-size: 13px; }
+#maestra .mapas span.tenue { color: #6f93a0; overflow-wrap: anywhere; }
+#maestra .mapas span.aviso { margin-left: 8px; font-size: 13px; color: #ffb86b; }
+#maestra .mapas td:last-child { max-width: 38vw; overflow-wrap: anywhere; }
+/* Errors: los arreglados (a mano, o su fichero cambió después), apagados; se marca o se reabre desde el detalle. */
+#maestra .fallo.arreglado, #maestra .fallo.quizas { opacity: 0.55; }
+#maestra .fallo.arreglado .que { text-decoration: line-through; }
+#maestra .marca-fallo { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin: 6px 0 10px; font-size: 13px; }
 #maestra .agentes { display: grid; grid-template-columns: minmax(300px, 1fr) 1.4fr; gap: 18px; }
 #maestra .agentes h3 { margin: 0 0 10px; font-size: 15px; color: #6ff3ff; }
 #maestra .proveedores { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }

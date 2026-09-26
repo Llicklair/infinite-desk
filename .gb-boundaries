@@ -183,3 +183,68 @@ actividad   -/-> lector
 actividad   -/-> chispas
 actividad   -/-> maestra
 actividad   -/-> maestra3d
+
+# La capa de marca (tecla B): del mundo 3D; paletaConMarca va en ambiente, núcleo puro.
+datos       -/-> marca
+disposicion -/-> marca
+islas       -/-> marca
+vinculo     -/-> marca
+ambiente    -/-> marca
+noticias    -/-> marca
+juego       -/-> marca
+orquesta    -/-> marca
+fallos      -/-> marca
+actividad   -/-> marca
+tools -/-> marca
+
+# La zona zen: la física de las piedras (lago) es núcleo puro; la zona (zen), del mundo 3D.
+datos       -/-> zen
+disposicion -/-> zen
+islas       -/-> zen
+vinculo     -/-> zen
+ambiente    -/-> zen
+noticias    -/-> zen
+juego       -/-> zen
+orquesta    -/-> zen
+fallos      -/-> zen
+actividad   -/-> zen
+lago        -/-> zen
+lago        -/-> mundo
+lago        -/-> grafo3d
+lago        -/-> pantallas
+lago        -/-> puente
+tools -/-> zen
+
+# Andar y saltar en la zona zen (andar) es núcleo puro; la cabaña (cabana), del mundo 3D.
+datos       -/-> cabana
+disposicion -/-> cabana
+islas       -/-> cabana
+vinculo     -/-> cabana
+ambiente    -/-> cabana
+noticias    -/-> cabana
+juego       -/-> cabana
+orquesta    -/-> cabana
+fallos      -/-> cabana
+actividad   -/-> cabana
+lago        -/-> cabana
+andar       -/-> cabana
+andar       -/-> zen
+andar       -/-> mundo
+andar       -/-> grafo3d
+andar       -/-> puente
+tools -/-> cabana
+
+# Las texturas de la zona zen (lienzo 2D + three): del mundo 3D.
+datos       -/-> texturas
+disposicion -/-> texturas
+islas       -/-> texturas
+vinculo     -/-> texturas
+ambiente    -/-> texturas
+noticias    -/-> texturas
+juego       -/-> texturas
+orquesta    -/-> texturas
+fallos      -/-> texturas
+actividad   -/-> texturas
+lago        -/-> texturas
+andar       -/-> texturas
+tools -/-> texturas
