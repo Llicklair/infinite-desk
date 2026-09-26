@@ -72,3 +72,16 @@ export function vidaDeRepo(ultimoCommit, ahora) {
   const k = Math.log(dias) / Math.log(180);
   return Math.max(VIDA_MINIMA, 1 - k * (1 - VIDA_MINIMA));
 }
+
+/**
+ * La paleta con los colores de una marca (la capa de marca, tecla B): la nebulosa, del color
+ * principal, y el cénit, un poco hacia el secundario. El horizonte (y la niebla) no se toca: el
+ * suelo se sigue fundiendo con el cielo, y el cielo sigue siendo oscuro.
+ * @param {Paleta} p @param {string[]} colores hex, "#rrggbb": el principal y, si hay, el secundario
+ * @returns {Paleta}
+ */
+export function paletaConMarca(p, colores) {
+  const [uno, dos] = colores.filter((c) => /^#[0-9a-f]{6}$/i.test(c)).map(rgb);
+  if (!uno) return p;
+  return { ...p, nebulosa: uno, cenit: dos ? mezclar(p.cenit, dos, 0.18) : p.cenit };
+}

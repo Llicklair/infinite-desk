@@ -7,4 +7,6 @@ interface Window {
   INFINITE_DESK_FONDO?: { tapado: boolean[] };
   /** Lo escribe tools/noticias.mjs en wallpaper/noticias.js: los titulares del palantír. */
   INFINITE_DESK_NOTICIAS?: import("./palantir.js").Noticias;
+  /** Lo escribe tools/marca.mjs en wallpaper/marca.js: la capa de marca (tecla B). */
+  INFINITE_DESK_MARCA?: import("./marca.js").Marca;
 }

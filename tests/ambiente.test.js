@@ -41,3 +41,14 @@ test("vida: sin fecha de commit, a medias", () => {
   assert.equal(vidaDeRepo(undefined, 1_800_000_000), 0.5);
   assert.equal(vidaDeRepo(Number.NaN, 1_800_000_000), 0.5);
 });
+
+test("marca: la nebulosa, del color principal; el cénit, un poco hacia el secundario; el horizonte, igual", async () => {
+  const { paletaConMarca } = await import("../src/ambiente.js");
+  const p = paletaDeHora(23);
+  const m = paletaConMarca(p, ["#ff0000", "#0000ff"]);
+  assert.deepEqual(m.nebulosa, [1, 0, 0]);
+  assert.deepEqual(m.horizonte, p.horizonte);
+  assert.ok(m.cenit[2] > p.cenit[2] && m.cenit[2] < 0.3, "hacia el azul, sin aclarar el cielo");
+  assert.deepEqual(paletaConMarca(p, ["rojo"]), p, "un color que no es #rrggbb no cambia nada");
+  assert.deepEqual(paletaConMarca(p, []), p);
+});
