@@ -24,11 +24,30 @@ static class Vista
     static readonly object gpu = new();
     static IntPtr d3d, ctx;
     static IDirect3DDevice? dispositivo;
+    // Una sola vista a la vez: la nueva cierra la anterior. Una vista que se quedara enganchada
+    // (la página se fue sin cerrarla, el envío murió) seguiría capturando con WGC para siempre; con
+    // dos cuelgues del equipo sin explicar (2026-09-26), mejor que no pueda pasar.
+    static CancellationTokenSource? actual;
+    static int vivas;
+    public static int Vivas => Volatile.Read(ref vivas);
 
     /// <summary>La vista de <paramref name="h"/> por este WebSocket, hasta que se cierre (o la ventana).</summary>
     public static async Task Servir(WebSocket ws, IntPtr h)
     {
         if (!Ventanas.Existe(h)) return;
+        var fin = new CancellationTokenSource();
+        Interlocked.Exchange(ref actual, fin)?.Cancel();
+        Registro.Anotar($"vista {h}: empieza ({Interlocked.Increment(ref vivas)} viva(s))");
+        try { await Servir(ws, h, fin); }
+        finally
+        {
+            Interlocked.CompareExchange(ref actual, null, fin);
+            Registro.Anotar($"vista {h}: termina ({Interlocked.Decrement(ref vivas)} viva(s))");
+        }
+    }
+
+    static async Task Servir(WebSocket ws, IntPtr h, CancellationTokenSource fin)
+    {
         Preparar();
         var item = Elemento(h);
         var señal = new SemaphoreSlim(0, 1);
@@ -52,18 +71,26 @@ static class Vista
         // que espera es el envío, y cuando hay crédito se manda lo último leído.
         var creditos = new SemaphoreSlim(3, 3);
         var cierre = Escuchar(ws, creditos, señal);
+        _ = cierre.ContinueWith(_ => fin.Cancel(), TaskScheduler.Default); // la página la cerró
         // Comprimir y enviar, en otra tarea: mientras, se lee y compara el siguiente fotograma.
         var cola = System.Threading.Channels.Channel.CreateBounded<byte[]>(1);
         var envio = Task.Run(async () =>
         {
-            await foreach (var m in cola.Reader.ReadAllAsync())
-                await ws.SendAsync(Empaquetar(m), WebSocketMessageType.Binary, true, CancellationToken.None);
+            // Si el envío falla (sea cual sea la excepción), se acaba la vista: si no, el bucle se
+            // quedaba esperando sitio en la cola para siempre, con la captura viva.
+            try
+            {
+                await foreach (var m in cola.Reader.ReadAllAsync(fin.Token))
+                    await ws.SendAsync(Empaquetar(m), WebSocketMessageType.Binary, true, fin.Token);
+            }
+            catch (Exception) { fin.Cancel(); }
         });
         try
         {
-            while (ws.State == WebSocketState.Open && Ventanas.Existe(h))
+            while (ws.State == WebSocketState.Open && Ventanas.Existe(h) && !fin.IsCancellationRequested)
             {
-                if (await Task.WhenAny(señal.WaitAsync(), cierre) == cierre) break;
+                await Task.WhenAny(señal.WaitAsync(fin.Token), cierre);
+                if (fin.IsCancellationRequested || cierre.IsCompleted) break;
                 // Solo el último: los que se acumularon mientras tanto sobran.
                 Direct3D11CaptureFrame? marco = null;
                 for (var f = pool.TryGetNextFrame(); f != null; f = pool.TryGetNextFrame()) { marco?.Dispose(); marco = f; }
@@ -95,20 +122,23 @@ static class Vista
                 sinMandar = false;
                 var mensaje = Diferencia(actual, enviado, ancho, alto, entero);
                 if (mensaje == null) continue;
-                await creditos.WaitAsync();
-                await cola.Writer.WriteAsync(mensaje);
+                await creditos.WaitAsync(fin.Token);
+                await cola.Writer.WriteAsync(mensaje, fin.Token);
                 entero = false;
                 // Lo enviado es ahora lo que tiene el mundo; el siguiente fotograma se lee entero encima del otro.
                 (actual, enviado) = (enviado, actual);
             }
         }
         catch (WebSocketException) { /* el mundo cerró la vista */ }
+        catch (OperationCanceledException) { /* otra vista, o el envío murió */ }
         finally
         {
+            fin.Cancel();
             cola.Writer.TryComplete();
-            try { await envio; } catch (WebSocketException) { /* cerrada a medio envío */ }
+            try { await envio; } catch (Exception) { /* cerrada a medio envío */ }
             if (staging != IntPtr.Zero) Marshal.Release(staging);
             pool.Dispose();
+            if (ws.State == WebSocketState.Open) ws.Abort(); // la cerró otra vista: que la página lo sepa
         }
     }
 
@@ -227,8 +257,16 @@ static class Vista
         {
             if (dispositivo != null) return;
             Marcar(D3D11CreateDevice(IntPtr.Zero, 1 /*HARDWARE*/, IntPtr.Zero, 0x20 /*BGRA*/, IntPtr.Zero, 0, 7, out d3d, out _, out ctx), "D3D11CreateDevice");
+            // El contexto inmediato no es de varios hilos, y WGC entrega en los suyos: que D3D lo
+            // proteja él también (ID3D10Multithread::SetMultithreadProtected), además del cerrojo.
+            var iidMt = new Guid("9B7E4E00-342C-4106-A19F-4F2704F689F0");
+            if (Marshal.QueryInterface(ctx, in iidMt, out var mt) == 0)
+            {
+                unsafe { ((delegate* unmanaged[Stdcall]<IntPtr, int, int>)(*(IntPtr**)mt)[5])(mt, 1); }
+                Marshal.Release(mt);
+            }
             var iid = new Guid("54ec77fa-1377-44e6-8c32-88fd5f44c84c"); // IDXGIDevice
-            Marshal.QueryInterface(d3d, ref iid, out var dxgi);
+            Marshal.QueryInterface(d3d, in iid, out var dxgi);
             Marcar(CreateDirect3D11DeviceFromDXGIDevice(dxgi, out var inspectable), "CreateDirect3D11DeviceFromDXGIDevice");
             Marshal.Release(dxgi);
             dispositivo = MarshalInterface<IDirect3DDevice>.FromAbi(inspectable);

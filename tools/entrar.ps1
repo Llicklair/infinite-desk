@@ -5,6 +5,12 @@
 # mundo a pantalla completa por encima: quedan detrás, vivas y capturables con N.
 param([string]$Navegador, [string]$Perfil, [string]$Url)
 
+# Uno a la vez: dos clics seguidos en "Entrar" abrían dos mundos (el segundo aún no veía la
+# ventana del primero), cada uno capturando todas las ventanas (registro del puente, 2026-09-26:
+# dos mundos nuevos en medio segundo, justo antes de un cuelgue del equipo).
+$unico = New-Object Threading.Mutex($false, 'Local\infinite-desk-entrar')
+if (-not $unico.WaitOne(0)) { exit }
+
 Add-Type @'
 using System; using System.Runtime.InteropServices; using System.Text;
 public static class Ventanas {
@@ -77,3 +83,5 @@ if ($h -ne [IntPtr]::Zero) {
   exit
 }
 Start-Process $Navegador -ArgumentList "--user-data-dir=`"$Perfil`"", '--no-first-run', '--start-fullscreen', "--app=$Url"
+# Hasta que el mundo tenga su título (así un clic más lo encuentra y vuelve a él), sin soltar el turno.
+for ($i = 0; $i -lt 100 -and [Entrar.Mundo]::Buscar() -eq [IntPtr]::Zero; $i++) { Start-Sleep -Milliseconds 150 }

@@ -69,7 +69,7 @@ sealed class Regenerador(string raiz, Func<object, Task> difundir, Action alTerm
             };
             psi.ArgumentList.Add(Path.Combine(raiz, "tools", "exportar.mjs"));
             foreach (var r in repos ?? []) psi.ArgumentList.Add(r);
-            using var p = Process.Start(psi)!;
+            using var p = Hijos.Lanzar(psi, TimeSpan.FromMinutes(15), "grafos");
             var errores = p.StandardError.ReadToEndAsync();
             // Línea a línea: cada isla que acaba ("  isla   nombre: …" o "  salto  nombre: …") se
             // avisa al momento, y la pestaña Maps de la consola maestra la va marcando.

@@ -105,7 +105,10 @@ sealed class Agentes(string mundo, Func<object, Task> difundir)
             var psi = new ProcessStartInfo(gb[0]) { UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true };
             foreach (var a in gb.Skip(1).Concat(["who", "--json", raiz])) psi.ArgumentList.Add(a);
             psi.Environment["PYTHONUTF8"] = "1";
-            using var p = Process.Start(psi)!;
+            using var p = Hijos.Lanzar(psi, TimeSpan.FromMinutes(1), $"gb who {nombre}");
+            // El error también se lee: si nadie lo vacía y gb escribe mucho, se queda bloqueado
+            // escribiendo, y con él todas las preguntas siguientes (van de una en una).
+            _ = p.StandardError.ReadToEndAsync();
             var salida = await p.StandardOutput.ReadToEndAsync();
             await p.WaitForExitAsync();
             if (p.ExitCode != 0) return;

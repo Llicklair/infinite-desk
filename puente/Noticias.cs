@@ -26,7 +26,7 @@ sealed class Noticias(string raiz)
                 UseShellExecute = false,
                 CreateNoWindow = true,
             };
-            using var p = Process.Start(psi)!;
+            using var p = Hijos.Lanzar(psi, TimeSpan.FromMinutes(5), "noticias");
             var salida = p.StandardOutput.ReadToEndAsync();
             var errores = p.StandardError.ReadToEndAsync();
             await p.WaitForExitAsync();

@@ -26,12 +26,14 @@ static class Orquestador
         foreach (var a in args) psi.ArgumentList.Add(a);
         try
         {
-            using var p = Process.Start(psi)!;
+            // Instalar galaxy-brain con pip puede tardar más que lo demás. Pasado el tiempo se mata
+            // con sus hijos (antes solo se dejaba de esperar: node y sus git seguían vivos).
+            var max = TimeSpan.FromMinutes(args[0] == "instalarGb" ? 12 : 3);
+            using var p = Hijos.Lanzar(psi, max, $"orquestador {args[0]}");
             var salida = p.StandardOutput.ReadToEndAsync();
             _ = p.StandardError.ReadToEndAsync();
-            // Instalar galaxy-brain con pip puede tardar más que lo demás.
-            using var tiempo = new CancellationTokenSource(TimeSpan.FromMinutes(args[0] == "instalarGb" ? 12 : 3));
-            await p.WaitForExitAsync(tiempo.Token);
+            await p.WaitForExitAsync();
+            if (p.ExitCode != 0 && string.IsNullOrWhiteSpace(await salida)) return (false, null, $"took more than {max.TotalMinutes:0} minutes, or failed");
             var ultima = (await salida).Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).LastOrDefault() ?? "";
             using var doc = JsonDocument.Parse(ultima);
             var raizJson = doc.RootElement;
@@ -40,7 +42,6 @@ static class Orquestador
             JsonElement? datos = raizJson.TryGetProperty("r", out var r) ? r.Clone() : null;
             return (ok, datos, error);
         }
-        catch (OperationCanceledException) { return (false, null, "took more than 3 minutes"); }
         catch (Exception e) { return (false, null, e.Message); }
     }
 }

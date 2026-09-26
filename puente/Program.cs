@@ -136,6 +136,7 @@ regenerador.Vigilar();
 agentes.Empezar();
 // Las noticias del palantír: ahora y cada 30 minutos.
 new Noticias(repo).Empezar();
+Hijos.VigilarSalud(() => Vista.Vivas);
 Console.WriteLine($"infinite-desk-bridge en ws://127.0.0.1:{PUERTO} · atajo {atajo ?? "ninguno"} · config en {config}");
 await app.RunAsync();
 return 0;
