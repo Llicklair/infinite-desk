@@ -33,6 +33,7 @@ const REINTENTO_MS = 3000;
  *   abrir(que: {ruta?: string, especial?: "explorador" | "navegador"}): Promise<string | null>,
  *   abrirUrl(url: string): Promise<string | null>,
  *   abrirWeb(url: string): Promise<{hwnd: number, titulo: string} | {error: string}>,
+ *   anotar(texto: string): void,
  *   orquestador(args: string[]): Promise<{ok: boolean, datos?: any, error?: string}>,
  *   alAgentes(f: (m: EstadoAgentes) => void): void,
  *   alLista(f: (titulo: string) => void): void,
@@ -287,6 +288,8 @@ export function crearPuente(tituloMundo) {
       return { ok: Boolean(r.ok), datos: r.datos, error: r.error };
     },
     /** Un enlace (http/https, un titular del palantír) en una ventana nueva del navegador; el error, o null. */
+    /** Una línea en el registro del puente (diagnóstico: cómo fue la voz, nunca lo que se dijo). */
+    anotar(texto) { void pedir({ op: "anotar", texto }); },
     /** Una web como pantalla, sin el selector: el puente la abre en su Edge y da su ventana. */
     async abrirWeb(url) {
       const r = await pedir({ op: "abrirWeb", url });

@@ -270,6 +270,12 @@ object? Responder(JsonElement m, WebSocket ws)
             if (sinUrl == null) Ventanas.QueNoNazcanMinimizadas(antesDeUrl, t => _ = Difundir(new { evento = "lista", titulo = t }));
             Registro.Anotar($"abrir enlace {Texto(m, "url")}: {sinUrl ?? "ok"}");
             return new { id, ok = sinUrl == null, error = sinUrl };
+        case "anotar":
+            // Lo que la página quiere dejar en el registro para diagnosticar (la voz: qué micrófono,
+            // qué eventos, qué error). Corto y en una línea: nunca lo que se dice, solo cómo fue.
+            var nota = (Texto(m, "texto") ?? "").Replace('\n', ' ').Replace('\r', ' ');
+            Registro.Anotar($"página: {(nota.Length > 300 ? nota[..300] : nota)}");
+            return new { id, ok = true };
         case "abrirWeb":
             // Un asistente abre una web como pantalla, sin el selector de N (Ventanas.Web.cs).
             var urlWeb = Texto(m, "url");

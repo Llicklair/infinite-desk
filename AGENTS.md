@@ -38,7 +38,7 @@ Vistas para comprobar sin manos: `index.html?vista=aerea` (todas las islas),
 `index.html?vista=demo&chispas` (una ronda de Chispas, el minijuego del palantír, que se juega sola) y
 `index.html?vista=demo&maestra` (la consola maestra abierta con repos y agentes de mentira; `&maestra=mapas` en la pestaña Maps) y
 `index.html?vista=demo&isla=<repo>` (la ficha de esa isla: el resumen de su README); `&maestra=errores` (o `=actividad`) abre la consola en esa pestaña;
-`index.html?vista=dentro&marca` (la capa de marca encendida); `index.html?vista=demo&tutorial=N` (el tutorial de los ajustes abierto en el paso N, de 0); `index.html?vista=demo&atlas` (el panel de Atlas abierto); `index.html?vista=demo&pantallas=N` (N pantallas por el camino de captura real: lo que carga `npm run medir`);
+`index.html?vista=dentro&marca` (la capa de marca encendida); `index.html?vista=demo&tutorial=N` (el tutorial de los ajustes abierto en el paso N, de 0); `index.html?vista=demo&atlas` (el panel de Atlas abierto); `index.html?vista=demo&ajustes` (los ajustes abiertos: micrófono, su nivel y una prueba de voz); `index.html?vista=demo&pantallas=N` (N pantallas por el camino de captura real: lo que carga `npm run medir`);
 `index.html?vista=dentro&zen=dia` (o `atardecer`, `noche`, `lluvia`: la zona zen, tecla Z; `&cabana` dentro de la cabaña, `&cabana=fuera` mirándola, `&espiritu` con el panel del espíritu abierto) y `index.html?vista=dentro&pantallas=1&escribir` entra además a escribir en ella con el puente (la vista directa, ADR 0005; `&directa=0` sin ella, para comparar la latencia).
 
 ## Gates

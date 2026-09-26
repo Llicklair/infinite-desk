@@ -810,6 +810,7 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
       avisar: (t) => avisar(t),
       alCerrar: () => { if (!mirar.isLocked && !escribiendo) ui.portada.hidden = false; },
       hacer: (a) => void hacerDeKiri(a),
+      anotar: (t) => puente?.anotar(t),
     })
     : null;
   /** Lo que corta la vista nativa de cada pantalla que va siempre por el puente. @type {Map<Pantalla, () => void>} */
@@ -877,6 +878,7 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
       avisar: (t) => avisar(t),
       alCerrar: () => { if (!mirar.isLocked && !escribiendo) ui.portada.hidden = false; },
       hacer: (a) => void hacerDeAtlas(a),
+      anotar: (t) => puente?.anotar(t),
     })
     : null;
   function abrirAtlas() {
@@ -1489,6 +1491,8 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
   // final: la tarjeta mira el lector y la consola, que se crean más arriba.
   const pasoTutorial = new URLSearchParams(location.search).get("tutorial");
   if (tutorial && pasoTutorial !== null) tutorial.empezar(Number(pasoTutorial) || 0);
+  // `?ajustes`: los ajustes abiertos (el audio, para comprobarlo sin manos).
+  if (new URLSearchParams(location.search).has("ajustes") && ajustes) { ui.portada.hidden = true; void ajustes.abrir(); }
   // `?atlas`: el panel de Atlas abierto (para verlo sin manos).
   if (new URLSearchParams(location.search).has("atlas")) { ui.portada.hidden = true; abrirAtlas(); }
   if (zenInicial !== null && zen) {

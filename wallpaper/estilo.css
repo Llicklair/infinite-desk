@@ -31,6 +31,13 @@ body[data-escribiendo] #mira { display: none; }
 #ajustes p.pie { margin-top: 14px; font-size: 12px; }
 #ajustes button { padding: 8px 14px; background: rgba(60, 75, 170, 0.5); border: 1px solid #5a6cff; border-radius: 8px; color: #dfe4ff; font: inherit; cursor: pointer; }
 #ajustes button:disabled { opacity: 0.6; cursor: default; }
+#ajustes h3 { margin-top: 16px; }
+#ajustes .fila-audio { display: flex; gap: 8px; align-items: center; }
+#ajustes select { flex: 1; padding: 7px 10px; background: rgba(40, 50, 120, 0.35); border: 1px solid #5a6cff; border-radius: 8px; color: #dfe4ff; font: inherit; }
+#ajustes select option { background: #0c1028; }
+#ajustes .medidor { height: 8px; margin: 10px 0 4px; background: rgba(255, 255, 255, 0.08); border-radius: 4px; overflow: hidden; }
+#ajustes .medidor div { height: 100%; width: 0; background: linear-gradient(90deg, #5ae08a, #f2d35a, #ff7a6b); transition: width 0.05s linear; }
+#ajustes p.prueba { color: #dfe4ff; }
 /* El tutorial (Settings): una tarjeta arriba a la izquierda que no quita el ratón al mundo. */
 #tutorial { position: fixed; top: 20px; left: 20px; width: min(380px, 40vw); z-index: 9; padding: 14px 16px; background: rgba(12, 16, 40, 0.92); border: 1px solid #5a6cff; border-radius: 10px; pointer-events: none; font-size: 13px; color: #dfe4ff; box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35); }
 #tutorial .cuenta { font-size: 11px; color: #8d96c8; text-transform: uppercase; letter-spacing: .05em; }

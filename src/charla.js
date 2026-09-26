@@ -6,6 +6,7 @@
 // se puede borrar. Si lo dicho suena a crisis, además de lo que diga, sale el 024. "Sígueme",
 // "quédate aquí" y "vuelve" lo mueven (src/apoyo.js). La conversación vive solo aquí, en memoria.
 import { NOMBRE, base64, ordenDeMovimiento, paraVoz, pareceCrisis } from "./apoyo.js";
+import { PORQUE, Reconocer, guardarMic, idiomaDeVoz, micGuardado, micQueOye, micros, nombreDeMic, permiso, unaFrase } from "./audio.js";
 
 /** @typedef {import("./apoyo.js").Turno} Turno */
 /** @typedef {import("./apoyo.js").Recuerdo} Recuerdo */
@@ -45,6 +46,7 @@ export const KIRI = {
  *   avisar: (texto: string) => void,
  *   alCerrar: () => void,
  *   hacer: (accion: any) => void,
+ *   anotar?: (texto: string) => void,
  * }} op `hacer`: lo que decide hacer (Kiri: música, un vídeo, el cielo; Atlas: abrir repos, ventanas…)
  */
 export function crearCharla(panel, persona, op) {
@@ -58,9 +60,9 @@ export function crearCharla(panel, persona, op) {
   // del todo, y lo que contestara después ya no se dice ni se hace.
   let ausente = false;
   let voz = true;
-  const idioma = navigator.language?.startsWith("es") ? navigator.language : "es-ES";
-  // El país de la voz: el del navegador, o el "propio" del idioma si no lo dice (es -> es-ES).
-  const pais = idioma.includes("-") ? idioma : `${idioma}-${idioma.toUpperCase()}`;
+  // Con país (es-ES): con "es" a secas el reconocimiento de Edge no funciona (audio.js).
+  const idioma = idiomaDeVoz();
+  const pais = idioma;
 
   // --- el panel ---------------------------------------------------------------------------------
   /** @param {string} etiqueta @param {string} [clase] @param {string} [texto] */
@@ -208,99 +210,26 @@ export function crearCharla(panel, persona, op) {
     siguiente(0);
   }
 
-  /**
-   * ¿Se puede usar el micrófono? Si nunca se ha pedido, se pide ya, con el ratón suelto (a pantalla
-   * completa y con el ratón capturado, el aviso del navegador no se veía ni se podía pulsar).
-   * @returns {Promise<boolean>}
-   */
-  async function microfonoListo() {
-    let estado = "prompt";
-    try { estado = (await navigator.permissions.query(/** @type {any} */ ({ name: "microphone" }))).state; } catch { /* sin Permissions API: se prueba */ }
-    if (estado === "granted") return true;
-    if (estado === "denied") {
-      op.avisar("The microphone is blocked for infinite-desk: allow it in edge://settings/content/microphone, then press V again");
-      return false;
-    }
-    document.exitPointerLock?.();
-    op.avisar("Allow the microphone in the browser's prompt (top of the window) to talk by voice");
-    try {
-      const flujo = await navigator.mediaDevices.getUserMedia({ audio: true });
-      for (const pista of flujo.getTracks()) pista.stop();
-      op.avisar("Microphone ready: press V (or 🎙) and talk");
-      return true;
-    } catch (e) {
-      const nombre = /** @type {Error} */ (e).name;
-      op.avisar(nombre === "NotFoundError" ? "No microphone found: check it's plugged in and chosen as the default input in Windows"
-        : "The microphone wasn't allowed: allow it in edge://settings/content/microphone to talk by voice");
-      return false;
-    }
-  }
-
-  const CLAVE_MIC = "infinite-desk.microfono";
-  /** @param {string} id */
-  function guardarMic(id) { try { localStorage.setItem(CLAVE_MIC, id); } catch { /* solo esta vez */ } }
-  function micGuardado() { try { return localStorage.getItem(CLAVE_MIC) ?? ""; } catch { return ""; } }
-  /** Los micrófonos, en el selector (con nombre solo si ya hay permiso). */
+  /** Los micrófonos, en el selector del panel (con nombre solo si ya hay permiso). */
   async function listarMicros() {
-    const entradas = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === "audioinput" && d.deviceId !== "communications");
-    if (!entradas.some((d) => d.label)) return entradas;
+    const lista = await micros();
+    if (!lista.some((d) => d.label)) return;
     const elegido = micGuardado();
-    selectorMic.replaceChildren(...entradas.map((d) => {
-      const o = /** @type {HTMLOptionElement} */ (el("option", "", `🎙 ${d.deviceId === "default" ? "Windows default" : d.label.replace(/\s*\([0-9a-f]{4}:[0-9a-f]{4}\)$/i, "")}`));
+    selectorMic.replaceChildren(...lista.map((d) => {
+      const o = /** @type {HTMLOptionElement} */ (el("option", "", `🎙 ${nombreDeMic(d)}`));
       o.value = d.deviceId === "default" ? "" : d.deviceId;
       o.selected = o.value === elegido;
       return o;
     }));
-    selectorMic.hidden = entradas.length < 2;
-    return entradas;
-  }
-  /** Lo más alto que suena en `ms` (0: silencio absoluto, un micro apagado o muteado). @param {MediaStream} flujo @param {number} ms */
-  async function nivel(flujo, ms) {
-    const ctx = new AudioContext();
-    const analizador = ctx.createAnalyser();
-    ctx.createMediaStreamSource(flujo).connect(analizador);
-    const buf = new Float32Array(analizador.fftSize);
-    let max = 0;
-    const fin = performance.now() + ms;
-    while (performance.now() < fin) {
-      await new Promise((r) => setTimeout(r, 40));
-      analizador.getFloatTimeDomainData(buf);
-      for (const x of buf) max = Math.max(max, Math.abs(x));
-    }
-    void ctx.close();
-    return max;
-  }
-  /**
-   * El audio del micrófono elegido. Si da silencio absoluto, el primero que suene (y se avisa).
-   * @returns {Promise<MediaStream>}
-   */
-  async function flujoDeMicrofono() {
-    /** @param {string} id */
-    const abrir = (id) => navigator.mediaDevices.getUserMedia({ audio: id ? { deviceId: { exact: id } } : true });
-    let flujo = await abrir(micGuardado()).catch(() => abrir(""));
-    if ((await nivel(flujo, 300)) > 0) return flujo;
-    const entradas = await listarMicros();
-    for (const d of entradas) {
-      if (d.deviceId === "default" || d.deviceId === micGuardado()) continue;
-      const otro = await abrir(d.deviceId).catch(() => null);
-      if (!otro) continue;
-      if ((await nivel(otro, 300)) > 0) {
-        for (const t of flujo.getTracks()) t.stop();
-        guardarMic(d.deviceId);
-        void listarMicros();
-        op.avisar(`Your microphone gave only silence (muted or off?): using ${d.label.replace(/\s*\([0-9a-f]{4}:[0-9a-f]{4}\)$/i, "")}. Change it in ${persona.nombre}'s panel.`);
-        return otro;
-      }
-      for (const t of otro.getTracks()) t.stop();
-    }
-    return flujo;
+    selectorMic.hidden = lista.length < 2;
   }
 
-  const Reconocer = /** @type {any} */ (window).SpeechRecognition ?? /** @type {any} */ (window).webkitSpeechRecognition;
-  /** @type {any} */
+  /** @type {{parar: () => void, abortar: () => void} | null} */
   let oido = null;
   /**
-   * Escucha una frase y la devuelve (o null si no se oyó nada o no se puede).
+   * Escucha una frase: lo entendido, o null (y entonces ya se ha dicho por qué, sin taparlo). Cada
+   * intento queda en el registro del puente (qué micrófono, qué eventos, qué error): uso real,
+   * "pulso V, hablo y dice I didn't catch anything" sin más pista.
    * @param {(parcial: string) => void} mientras lo que va entendiendo
    * @returns {Promise<string | null>}
    */
@@ -309,48 +238,28 @@ export function crearCharla(panel, persona, op) {
       op.avisar("This browser can't listen (no speech recognition): type instead");
       return null;
     }
-    if (!(await microfonoListo())) return null;
-    oido?.abort();
+    const sinPermiso = await permiso();
+    if (sinPermiso) { op.avisar(sinPermiso); op.anotar?.(`voz: sin permiso (${sinPermiso})`); return null; }
+    oido?.abortar();
     callar(); // si le hablas, se calla
     const e = op.figura();
-    const flujo = await flujoDeMicrofono().catch(() => null);
-    return new Promise((resolver) => {
-      const r = new Reconocer();
-      oido = r;
-      r.lang = idioma;
-      r.interimResults = true;
-      r.continuous = false;
-      let final = "";
-      r.onstart = () => { if (e) e.escuchando = true; microfono.classList.add("oyendo"); };
-      r.onresult = (/** @type {any} */ ev) => {
-        let parcial = "";
-        for (const res of ev.results) (res.isFinal ? (final += res[0].transcript) : (parcial += res[0].transcript));
-        mientras(final + parcial);
-      };
-      // Cada fallo, con su porqué (antes, casi todos acababan en silencio: "pulso V pero no recoge mi voz").
-      r.onerror = (/** @type {any} */ ev) => {
-        const porque = /** @type {Record<string, string>} */ ({
-          "not-allowed": "The microphone is blocked for infinite-desk: allow it in edge://settings/content/microphone (or answer the browser's prompt)",
-          "service-not-allowed": "The browser won't let this page use speech recognition",
-          "network": "Speech recognition needs internet (the browser sends the audio to its service)",
-          "audio-capture": "No microphone found: check it's plugged in and chosen as the default input in Windows",
-          "no-speech": "I didn't hear anything: check the microphone (Windows sound settings) and speak after pressing V",
-          "language-not-supported": `Speech recognition doesn't support ${idioma} here`,
-        })[ev.error];
-        if (porque) op.avisar(porque);
-        else if (ev.error !== "aborted") op.avisar(`Couldn't listen: ${ev.error}`);
-      };
-      r.onend = () => {
-        for (const t of flujo?.getTracks() ?? []) t.stop();
-        if (e) e.escuchando = false;
-        microfono.classList.remove("oyendo");
-        oido = null;
-        resolver(final.trim() || null);
-      };
-      // Del micrófono elegido (no del que Windows tenga por defecto), si el navegador deja darle la pista.
-      const pista = flujo?.getAudioTracks()[0];
-      try { if (pista) r.start(pista); else r.start(); } catch { r.start(); }
+    const mic = await micQueOye((a) => op.avisar(a)).catch(() => null);
+    void listarMicros();
+    const frase = unaFrase({
+      idioma,
+      flujo: mic?.flujo ?? null,
+      mientras,
+      alEmpezar: () => { if (e) e.escuchando = true; microfono.classList.add("oyendo"); op.avisar(`🎙 Listening (${mic?.nombre ?? "default microphone"})…`); },
     });
+    oido = frase;
+    const r = await frase.promesa;
+    oido = null;
+    for (const t of mic?.flujo.getTracks() ?? []) t.stop();
+    if (e) e.escuchando = false;
+    microfono.classList.remove("oyendo");
+    op.anotar?.(`voz (${persona.nombre}, ${mic?.nombre ?? "sin micro"}): ${r.texto ? `entendido ${r.texto.length} letras` : `nada: ${r.error}`} [${r.eventos.join(" ")}]`);
+    if (!r.texto && r.error && r.error !== "aborted") op.avisar(PORQUE[r.error] ?? `Couldn't listen: ${r.error}`);
+    return r.texto;
   }
 
   // --- hablar -------------------------------------------------------------------------------------
@@ -409,7 +318,7 @@ export function crearCharla(panel, persona, op) {
     }
   });
   microfono.addEventListener("click", async () => {
-    if (oido) { oido.stop(); return; }
+    if (oido) { oido.parar(); return; }
     const dicho = await escuchar((p) => (entrada.value = p));
     entrada.value = "";
     if (dicho) void enviar(dicho);
@@ -437,17 +346,17 @@ export function crearCharla(panel, persona, op) {
     cerrar() {
       if (panel.hidden) return;
       panel.hidden = true;
-      oido?.abort();
+      oido?.abortar();
       recordar();
       op.alCerrar();
     },
     /** V en la zona: escucha una frase y contesta en voz alta, sin abrir el panel (subtítulos en el aviso). */
     async hablarPorVoz() {
       ausente = false;
-      if (oido) { oido.stop(); return; }
+      if (oido) { oido.parar(); return; }
       op.avisar("🎙 Listening… (V again to stop)");
       const dicho = await escuchar((p) => op.avisar(`🎙 ${p}`));
-      if (!dicho) { op.avisar("I didn't catch anything"); return; }
+      if (!dicho) return; // el porqué ya lo dijo escuchar (antes este aviso lo tapaba)
       op.avisar(`You: ${dicho}`);
       const r = await enviar(dicho);
       if (r) op.avisar(`${persona.nombre}: ${r}`);
@@ -455,7 +364,7 @@ export function crearCharla(panel, persona, op) {
     /** Al irse de su mundo: se cierra el panel, se calla, deja de escuchar y recuerda lo hablado. */
     terminar() {
       ausente = true;
-      oido?.abort();
+      oido?.abortar();
       callar();
       if (!panel.hidden) { panel.hidden = true; op.alCerrar(); }
       recordar();
