@@ -23,6 +23,7 @@ npm run mundo               # servidor en localhost (solo si el navegador no cap
 npm run puente              # dotnet build del puente nativo (ADR 0002): escribir dentro de las pantallas
 npm run fondo               # fondo animado (puente --fondo, Windows) + "Entrar": clic derecho en Windows, app en macOS (ADR 0004)
 npm run alternar-fondo [-- on|off] # enciende o apaga el fondo animado (también al iniciar sesión); o doble clic en tools/alternar-fondo.cmd
+tools/fondo.cmd             # doble clic: si el fondo está parado, instala la versión de ahora (npm run fondo) y lo arranca; si corre, lo para
 npm run medir [-- --pantallas 0,4,8 --res 1920x1080] # GPU real (Windows): fps, ms/fotograma, % de GPU y VRAM con N pantallas de vídeo; no está en terminado
 npm run marca -- --nombre "X" --colores "#rrggbb,#rrggbb" [--logo f] # capa de marca (tecla B) -> wallpaper/marca.js, sin versionar; --quitar la borra
 npm run parar [-- --explorador] # lo para todo y devuelve las ventanas escondidas; con --explorador, reinicia el Explorador
