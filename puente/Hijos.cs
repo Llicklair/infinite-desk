@@ -19,6 +19,10 @@ static class Hijos
     /// </summary>
     public static Process Lanzar(ProcessStartInfo psi, TimeSpan max, string que)
     {
+        // Lo que escriben node y gb es UTF-8; sin decirlo, .NET lo lee con la página de códigos de la
+        // consola y las tildes llegaban rotas al mundo (uso real: "peque├▒o zorro", por "pequeño").
+        if (psi.RedirectStandardOutput) psi.StandardOutputEncoding ??= System.Text.Encoding.UTF8;
+        if (psi.RedirectStandardError) psi.StandardErrorEncoding ??= System.Text.Encoding.UTF8;
         var p = Process.Start(psi)!;
         vivos[p.Id] = (p, que);
         var limite = new Timer(_ =>
