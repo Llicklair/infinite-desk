@@ -1,15 +1,17 @@
 // El menú de ajustes (P): de momento, la carpeta de proyectos, cuyos repos son las islas. Cada
 // máquina tiene la suya (uso real: "en una máquina limpia la ruta puede ser distinta"); el
 // puente abre el selector de carpetas del sistema, la guarda en infinite-desk.local.json y rehace
-// las islas. Sin puente, `npm run carpeta` hace lo mismo desde la terminal.
+// las islas. Sin puente, `npm run carpeta` hace lo mismo desde la terminal. Y el tutorial, que
+// enseña el mundo paso a paso (src/tutorial.js).
 
 /**
  * @param {HTMLElement} panel
  * @param {() => import("./puente.js").Puente | null} puente
  * @param {(texto: string) => void} avisar
  * @param {() => void} alCerrar
+ * @param {(() => void) | null} [empezarTutorial]
  */
-export function crearPanelAjustes(panel, puente, avisar, alCerrar) {
+export function crearPanelAjustes(panel, puente, avisar, alCerrar, empezarTutorial = null) {
   const cabecera = document.createElement("h2");
   cabecera.textContent = "Settings";
   const titulo = document.createElement("h3");
@@ -21,7 +23,18 @@ export function crearPanelAjustes(panel, puente, avisar, alCerrar) {
   const pie = document.createElement("p");
   pie.className = "pie";
   pie.textContent = "Every repo inside this folder is an island · Esc or P: close";
-  panel.replaceChildren(cabecera, titulo, ruta, detalle, cambiar, pie);
+  const tituloTutorial = document.createElement("h3");
+  tituloTutorial.textContent = "Tutorial";
+  const textoTutorial = document.createElement("p");
+  textoTutorial.textContent = "A short guided tour: moving, islands and their graphs, screens, the palantír, the master console and the zen zone. It moves on as you try each thing.";
+  const botonTutorial = document.createElement("button");
+  botonTutorial.textContent = "Start the tutorial";
+  botonTutorial.addEventListener("click", () => {
+    cerrar();
+    empezarTutorial?.();
+  });
+  const tutorial = empezarTutorial ? [tituloTutorial, textoTutorial, botonTutorial] : [];
+  panel.replaceChildren(cabecera, titulo, ruta, detalle, cambiar, ...tutorial, pie);
 
   /** @param {import("./puente.js").Carpeta} c */
   function pintar(c) {

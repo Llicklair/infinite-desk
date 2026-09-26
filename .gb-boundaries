@@ -256,3 +256,10 @@ risco       -/-> texturas
 risco       -/-> mundo
 risco       -/-> grafo3d
 risco       -/-> puente
+
+# Los pasos del tutorial (guia) son núcleo puro; la tarjeta (tutorial), DOM.
+guia        -/-> tutorial
+guia        -/-> mundo
+guia        -/-> grafo3d
+guia        -/-> puente
+guia        -/-> zen

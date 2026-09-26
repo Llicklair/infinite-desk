@@ -22,6 +22,7 @@ import { mostrarIsla, mostrarNodo } from "./nodo.js";
 import { crearPuente, releerScript } from "./puente.js";
 import { crearPanelFicheros } from "./ficheros.js";
 import { crearPanelAjustes } from "./ajustes.js";
+import { crearTutorial } from "./tutorial.js";
 
 const VELOCIDAD = 9; // metros por segundo; Shift la triplica
 const ALTURA_OJOS = 1.7;
@@ -34,7 +35,7 @@ const RELEER_NOTICIAS_MS = 5 * 60000; // noticias.js lo rehace el puente cada 30
  * @typedef {import("./grafo3d.js").GrafoExportado} GrafoExportado
  * @typedef {import("./grafo3d.js").Grafo3D} Grafo3D
  * @typedef {import("./pantallas.js").Pantalla} Pantalla
- * @typedef {{portada: HTMLElement, info: HTMLElement, aviso: HTMLElement, ayuda: HTMLElement, ficheros: HTMLElement | null, nodo: HTMLElement | null, ajustes?: HTMLElement | null, lector?: HTMLElement | null, juego?: HTMLElement | null, maestra?: HTMLElement | null}} Interfaz
+ * @typedef {{portada: HTMLElement, info: HTMLElement, aviso: HTMLElement, ayuda: HTMLElement, ficheros: HTMLElement | null, nodo: HTMLElement | null, ajustes?: HTMLElement | null, lector?: HTMLElement | null, juego?: HTMLElement | null, maestra?: HTMLElement | null, tutorial?: HTMLElement | null}} Interfaz
  */
 
 /**
@@ -748,11 +749,26 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
       if (!mirar.isLocked && !escribiendo) ui.portada.hidden = false;
     })
     : null;
-  // P: los ajustes (la carpeta de proyectos, cuyos repos son las islas).
+  // El tutorial (se empieza en los ajustes): una tarjeta que enseña el mundo paso a paso y pasa
+  // sola al siguiente cuando uno hace lo que pide. Lo que mira, aquí.
+  const tutorial = ui.tutorial && !fondo
+    ? crearTutorial(ui.tutorial, camara, () => ({
+      apuntaIsla: islaApuntada() !== null, pantallas: pantallas.length, escribiendo: escribiendo !== null,
+      ficheros: Boolean(panel?.abierto), lector: Boolean(lector?.abierto), maestra: Boolean(maestra?.abierto),
+      zen: Boolean(zen?.activa),
+    }))
+    : null;
+  // Tab, Shift+Tab y Retroceso son del tutorial mientras está abierto (salvo escribiendo en algo).
+  document.addEventListener("keydown", (e) => {
+    if (!tutorial?.activo || escribiendo) return;
+    if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+    if (tutorial.tecla(e)) { e.preventDefault(); e.stopImmediatePropagation(); }
+  }, true);
+  // P: los ajustes (la carpeta de proyectos, cuyos repos son las islas, y el tutorial).
   const ajustes = ui.ajustes && !fondo
     ? crearPanelAjustes(ui.ajustes, () => puente, avisar, () => {
       if (!mirar.isLocked && !escribiendo) ui.portada.hidden = false;
-    })
+    }, tutorial ? () => { tutorial.empezar(); avisar("Tutorial: click to enter the world and follow the card (top left)"); } : null)
     : null;
   // El lector del palantír: el post o la noticia entera, dentro del mundo.
   const lector = ui.lector && !fondo
@@ -1337,6 +1353,10 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
 
   // `?zen=dia|atardecer|noche`: se entra ya en la zona zen, con ese ambiente (capturas sin manos).
   const zenInicial = new URLSearchParams(location.search).get("zen");
+  // `?tutorial` (o `?tutorial=N`, en el paso N): la tarjeta abierta, para verla sin manos. Aquí, al
+  // final: la tarjeta mira el lector y la consola, que se crean más arriba.
+  const pasoTutorial = new URLSearchParams(location.search).get("tutorial");
+  if (tutorial && pasoTutorial !== null) tutorial.empezar(Number(pasoTutorial) || 0);
   if (zenInicial !== null && zen) {
     ui.portada.hidden = true;
     zen.ponerAmbiente(/** @type {any} */ (zenInicial));

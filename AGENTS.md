@@ -9,7 +9,7 @@ Alcance y criterio de terminado en [SCOPE.md](SCOPE.md); reglas en [ARCHITECTURE
 Lo de esta sección se EJECUTA, así que no puede pudrirse en silencio: si miente, falla.
 
 ```bash
-npm test                    # node --test, núcleo puro (datos, disposición, islas, vínculo, ambiente, noticias, juego, orquesta, fallos, actividad, lago, andar, risco)
+npm test                    # node --test, núcleo puro (datos, disposición, islas, vínculo, ambiente, noticias, juego, orquesta, fallos, actividad, lago, andar, risco, guia)
 npm run tipos               # tsc --checkJs estricto sobre src/ y tools/
 npm run carpeta [-- ruta]   # la carpeta de proyectos de esta máquina (selector del sistema) -> infinite-desk.local.json
 npm run grafo [-- repo ...] # gb graph --json por repo, 4 a la vez -> wallpaper/grafos.js (sin argumentos, todos; con nombres o rutas, solo esas islas y el resto se queda)
@@ -38,7 +38,7 @@ Vistas para comprobar sin manos: `index.html?vista=aerea` (todas las islas),
 `index.html?vista=demo&chispas` (una ronda de Chispas, el minijuego del palantír, que se juega sola) y
 `index.html?vista=demo&maestra` (la consola maestra abierta con repos y agentes de mentira; `&maestra=mapas` en la pestaña Maps) y
 `index.html?vista=demo&isla=<repo>` (la ficha de esa isla: el resumen de su README); `&maestra=errores` (o `=actividad`) abre la consola en esa pestaña;
-`index.html?vista=dentro&marca` (la capa de marca encendida); `index.html?vista=demo&pantallas=N` (N pantallas por el camino de captura real: lo que carga `npm run medir`);
+`index.html?vista=dentro&marca` (la capa de marca encendida); `index.html?vista=demo&tutorial=N` (el tutorial de los ajustes abierto en el paso N, de 0); `index.html?vista=demo&pantallas=N` (N pantallas por el camino de captura real: lo que carga `npm run medir`);
 `index.html?vista=dentro&zen=dia` (o `atardecer`, `noche`, `lluvia`: la zona zen, tecla Z; `&cabana` dentro de la cabaña, `&cabana=fuera` mirándola) y `index.html?vista=dentro&pantallas=1&escribir` entra además a escribir en ella con el puente (la vista directa, ADR 0005; `&directa=0` sin ella, para comparar la latencia).
 
 ## Gates
@@ -57,14 +57,14 @@ Vistas para comprobar sin manos: `index.html?vista=aerea` (todas las islas),
 
 ## Arquitectura
 
-Núcleo puro (`datos`, `disposicion`, `islas`, `vinculo`, `ambiente`, `noticias`, `juego`, `orquesta`, `fallos`, `actividad`, `lago`, `andar`, `risco`), probado en Node; `tools/exportar.mjs`
+Núcleo puro (`datos`, `disposicion`, `islas`, `vinculo`, `ambiente`, `noticias`, `juego`, `orquesta`, `fallos`, `actividad`, `lago`, `andar`, `risco`, `guia`), probado en Node; `tools/exportar.mjs`
 lo usa en tiempo de export. Mundo con Three.js: `grafo3d` (un grafo como objeto), `pantallas`
 (captura + grafo enganchado), `rotulo` (texto en el mundo), `decorado` (cielo por la hora, cristales por la vida del repo, faro de
 agentes), `palantir` (la esfera del centro: titulares de IA abajo, repos del mes arriba; clic en ella, `chispas`, el minijuego), `zen` (la zona zen, tecla Z: la cascada cae de un risco de una sola pieza cuya forma da `risco`, poza y piedras que rebotan con la física de `lago`; se anda y se salta con `andar`; E toca cosas de `cabana`, la cabaña con fuego, sillón y chocolate caliente; `texturas` hace la piedra, la madera, las tejas y el césped, y las pone en triplanar; L: día, atardecer, noche o lluvia), `mundo` (cámara, islas, acciones);
 `main` lo monta con `window.GB_GRAFOS`. `wallpaper/` es el mundo construido. `puente/` (C#, ADR 0002)
 es lo nativo: activa y pasa el ratón a la ventana de una pantalla, la captura con WGC mientras se escribe en ella (`Vista.cs`, ADR 0005), regenera grafos, abre lo del
 escritorio y pregunta `gb who` por los agentes; `src/puente.js` le habla. `consola3d` (la terminal
-flotante de cada agente de gb) va en el mundo; `nodo` (ficha al hacer clic), `ficheros` (panel F) `lector` (el post, artículo o README entero de una tarjeta del palantír) y `maestra` (la consola maestra: cuentas de IA, repos en masa y agentes; su holograma, `maestra3d`, flota sobre el palantír) son DOM. Los agentes (`tools/agente.mjs`) son worktrees en su rama, fuera de la carpeta de proyectos, que commitean ahí y nunca hacen push; `gb who` los ve y su consola es `<worktree>.consola.log`. Sin gb, islas de carpetas (ADR 0003).
+flotante de cada agente de gb) va en el mundo; `nodo` (ficha al hacer clic), `ficheros` (panel F) `lector` (el post, artículo o README entero de una tarjeta del palantír) y `tutorial` (la tarjeta del tutorial que se empieza en los ajustes, P; sus pasos, en `guia`) y `maestra` (la consola maestra: cuentas de IA, repos en masa y agentes; su holograma, `maestra3d`, flota sobre el palantír) son DOM. Los agentes (`tools/agente.mjs`) son worktrees en su rama, fuera de la carpeta de proyectos, que commitean ahí y nunca hacen push; `gb who` los ve y su consola es `<worktree>.consola.log`. Sin gb, islas de carpetas (ADR 0003).
 
 ## Convenciones de commit y PR
 

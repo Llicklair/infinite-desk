@@ -31,6 +31,17 @@ body[data-escribiendo] #mira { display: none; }
 #ajustes p.pie { margin-top: 14px; font-size: 12px; }
 #ajustes button { padding: 8px 14px; background: rgba(60, 75, 170, 0.5); border: 1px solid #5a6cff; border-radius: 8px; color: #dfe4ff; font: inherit; cursor: pointer; }
 #ajustes button:disabled { opacity: 0.6; cursor: default; }
+/* El tutorial (Settings): una tarjeta arriba a la izquierda que no quita el ratón al mundo. */
+#tutorial { position: fixed; top: 20px; left: 20px; width: min(380px, 40vw); z-index: 9; padding: 14px 16px; background: rgba(12, 16, 40, 0.92); border: 1px solid #5a6cff; border-radius: 10px; pointer-events: none; font-size: 13px; color: #dfe4ff; box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35); }
+#tutorial .cuenta { font-size: 11px; color: #8d96c8; text-transform: uppercase; letter-spacing: .05em; }
+#tutorial h2 { margin: 4px 0 8px; font-size: 17px; font-weight: 600; }
+#tutorial p { margin: 0 0 10px; line-height: 1.45; color: #b6bff0; }
+#tutorial ul { margin: 0 0 10px; padding: 0; list-style: none; }
+#tutorial li { margin: 3px 0; color: #aab2e0; }
+#tutorial kbd { display: inline-block; min-width: 18px; padding: 1px 6px; margin-right: 4px; background: rgba(60, 75, 170, 0.45); border: 1px solid #5a6cff; border-radius: 4px; color: #fff; font-family: inherit; font-weight: 600; font-size: 12px; line-height: 1.5; text-align: center; }
+#tutorial p.pide { margin: 0; padding: 8px 10px; background: rgba(90, 108, 255, 0.18); border-radius: 6px; color: #fff; }
+#tutorial p.pide.hecho { background: rgba(60, 170, 110, 0.3); }
+#tutorial p.pie { margin: 10px 0 0; font-size: 11px; color: #6f78a8; }
 /* Ficha de un nodo (clic): a la derecha, como el panel de galaxy-brain. */
 #nodo { position: fixed; top: 70px; right: 20px; width: min(380px, 34vw); max-height: calc(100vh - 140px); overflow: auto; padding: 14px 16px; background: rgba(12, 16, 40, 0.92); border: 1px solid #3a4480; border-radius: 8px; pointer-events: none; font-size: 13px; }
 #nodo h2 { margin: 0 0 4px; font-size: 16px; font-weight: 600; overflow-wrap: anywhere; }
