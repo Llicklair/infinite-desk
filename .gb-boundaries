@@ -149,3 +149,20 @@ orquesta    -/-> maestra
 orquesta    -/-> maestra3d
 tools -/-> maestra
 tools -/-> maestra3d
+
+# Los fallos (repartirlos por repo y módulo, la traza, la tarea de arreglo): núcleo puro.
+fallos      -/-> grafo3d
+fallos      -/-> mundo
+fallos      -/-> pantallas
+fallos      -/-> rotulo
+fallos      -/-> puente
+fallos      -/-> ficheros
+fallos      -/-> nodo
+fallos      -/-> consola3d
+fallos      -/-> ajustes
+fallos      -/-> decorado
+fallos      -/-> palantir
+fallos      -/-> lector
+fallos      -/-> chispas
+fallos      -/-> maestra
+fallos      -/-> maestra3d

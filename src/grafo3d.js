@@ -16,9 +16,10 @@ function colorDeGrupo(grupo, grupos) {
 
 /**
  * @typedef {import("./datos.js").Grafo & {posiciones: number[]}} GrafoDispuesto
- * @typedef {GrafoDispuesto & {nombre: string, alt?: GrafoDispuesto, ultimoCommit?: number}} GrafoExportado
+ * @typedef {GrafoDispuesto & {nombre: string, alt?: GrafoDispuesto, ultimoCommit?: number, resumen?: string}} GrafoExportado
  *   `alt`: el árbol de carpetas de un repo que tiene grafo de gb (tecla T);
- *   `ultimoCommit`: segundos desde 1970 del último commit (la vida de la isla, ambiente.js)
+ *   `ultimoCommit`: segundos desde 1970 del último commit (la vida de la isla, ambiente.js);
+ *   `resumen`: lo que cuenta su README, en corto (la ficha de la isla)
  */
 
 /**
@@ -96,9 +97,17 @@ export function crearGrafo3D(grafo, radio) {
   puntos.count = 0;
   puntos.frustumCulled = false;
   objeto.add(puntos);
+  // Fallos (gb list): un halo rojo en los módulos donde algo se rompe, que late despacio.
+  const rojos = new THREE.InstancedMesh(esfera, new THREE.MeshBasicMaterial({
+    transparent: true, blending: THREE.AdditiveBlending, depthWrite: false,
+  }), Math.max(1, nodos.length));
+  rojos.count = 0;
+  rojos.frustumCulled = false;
+  objeto.add(rojos);
   // El color por instancia tiene que existir antes del primer fotograma: si no, el material se
   // compila sin él y todo sale blanco.
   halos.setColorAt(0, new THREE.Color(0));
+  rojos.setColorAt(0, new THREE.Color(0));
   puntos.setColorAt(0, new THREE.Color(0));
   /** @type {THREE.LineSegments | null} las aristas con señal, teñidas del color del agente */
   let tenidas = null;
@@ -109,6 +118,9 @@ export function crearGrafo3D(grafo, radio) {
   let encendidos = [];
   /** @type {{desde: number, hasta: number, color: THREE.Color, vigor: number, fase: number}[]} */
   let senales = [];
+  /** @type {{i: number, fuerza: number}[]} los módulos con fallos, y cuánto (0..1) */
+  let conFallos = [];
+  const rojo = new THREE.Color("#ff3344");
   const c = new THREE.Color();
   const p = new THREE.Vector3();
   return {
@@ -160,8 +172,27 @@ export function crearGrafo3D(grafo, radio) {
       }));
       objeto.add(tenidas);
     },
+    /**
+     * Los módulos con fallos (gb list): un halo rojo que late despacio, más fuerte cuanto más
+     * reciente y repetido (`fuerza` 0..1). Lista vacía: se apagan.
+     * @param {{i: number, fuerza: number}[]} lista
+     */
+    marcarFallos(lista) {
+      conFallos = lista.filter((f) => f.fuerza > 0 && f.i >= 0 && f.i < nodos.length);
+      rojos.count = conFallos.length;
+    },
     /** Halos que laten y señales que viajan; se llama en cada fotograma. @param {number} t segundos */
     latir(t) {
+      conFallos.forEach(({ i, fuerza }, j) => {
+        const pu = 0.5 + 0.5 * Math.sin(t * 2.2 + i);
+        m.compose(pos[i], q, v.setScalar(radios[i] * (2.4 + 0.8 * pu)));
+        rojos.setMatrixAt(j, m);
+        rojos.setColorAt(j, c.copy(rojo).multiplyScalar((0.25 + 0.35 * pu) * (0.4 + 0.6 * fuerza)));
+      });
+      if (conFallos.length) {
+        rojos.instanceMatrix.needsUpdate = true;
+        if (rojos.instanceColor) rojos.instanceColor.needsUpdate = true;
+      }
       encendidos.forEach(({ i, color, pulso, vigor }, j) => {
         // gb: pu = 0.5 + 0.5·sin(reloj/380 + i·0.7); alfa (0.22 + 0.5·pu)·vigor; radio +8+5·pu.
         const pu = pulso ? 0.5 + 0.5 * Math.sin(t / 0.38 + i * 0.7) : 0;

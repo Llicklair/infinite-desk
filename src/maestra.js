@@ -1,14 +1,17 @@
 // La consola maestra (clic en su holograma, encima del palantír, o la tecla O): gestionar las
 // cuentas de IA (Anthropic, OpenAI, Google DeepMind), todos los repos a la vez y los agentes que
-// trabajan en ellos ("un mega orquestador", uso real). Tres pestañas:
+// trabajan en ellos ("un mega orquestador", uso real). Cuatro pestañas:
 //   Accounts — quién tiene sesión, con qué plan, y el uso de hoy (lo que se puede contar: el cupo
 //              de una suscripción no se deja consultar por programa);
 //   Repos    — el estado git de cada repo; seleccionar varios y hacer fetch o pull, o mandarles agentes;
 //   Agents   — lanzar un agente por repo (Claude Code, Codex o Gemini CLI) con una tarea, y ver,
 //              abrir en VS Code o descartar los que hay. Cada uno trabaja en su rama y su worktree,
-//              commitea ahí y NUNCA hace push: se revisa y se fusiona a mano.
+//              commitea ahí y NUNCA hace push: se revisa y se fusiona a mano;
+//   Errors   — lo que galaxy-brain ha capturado en tus repos (gb list) y los agentes que fallaron;
+//              clic, la traza, y "mandar un agente a arreglarlo" con ella como tarea.
 // Todo va por el puente a tools/orquestador.mjs. Lo de fuera (nombres, ramas, tareas) se pone como texto.
 import { PROVEEDORES } from "./orquesta.js";
+import { fuerzaDeFallo, tareaDeArreglo } from "./fallos.js";
 
 /** @typedef {import("./orquesta.js").Proveedor} Proveedor */
 /** @typedef {import("./orquesta.js").Agente} Agente */
@@ -16,7 +19,7 @@ import { PROVEEDORES } from "./orquesta.js";
 /** @typedef {{instalado: boolean, sesion: boolean, cuenta?: string, plan?: string, detalle?: string}} Cuenta */
 /**
  * @typedef {{carpeta: string, cuentas: Record<Proveedor | "github", Cuenta>, repos: Repo[], agentes: Agente[],
- *   uso: Record<Proveedor, {trabajando: number, hoy: number, minutosHoy: number}>}} EstadoMaestra
+ *   uso: Record<Proveedor, {trabajando: number, hoy: number, minutosHoy: number}>, fallos?: import("./fallos.js").Fallo[]}} EstadoMaestra
  */
 
 /**
@@ -51,8 +54,12 @@ function hace(seg) {
 export function crearMaestra(panel, orquestador, alEstado, alCerrar) {
   /** @type {EstadoMaestra | null} */
   let estado = null;
-  /** @type {"cuentas" | "repos" | "agentes"} */
+  /** @type {"cuentas" | "repos" | "agentes" | "errores"} */
   let pestana = "repos";
+  /** @type {import("./fallos.js").Fallo | null} el fallo abierto en la pestaña Errors */
+  let fallo = null;
+  /** @type {Map<string, string>} trazas ya pedidas, por id */
+  const trazas = new Map();
   /** @type {Set<string>} */
   const elegidos = new Set();
   /** @type {Proveedor} */
@@ -212,16 +219,80 @@ export function crearMaestra(panel, orquestador, alEstado, alCerrar) {
     return d;
   }
 
+  function errores() {
+    const d = el("div", "errores");
+    if (!estado) return d;
+    const lista = el("div", "lista");
+    const todos = estado.fallos ?? [];
+    const ahora = Date.now();
+    lista.append(el("h3", undefined, `Captured by galaxy-brain (${todos.length})`));
+    if (!todos.length) lista.append(el("p", "nota", "Nothing captured in your repos (or gb isn't installed)."));
+    for (const f of todos) {
+      const fila = el("div", `fallo${fuerzaDeFallo(f, ahora) > 0 ? " reciente" : ""}${fallo?.id === f.id ? " abierto" : ""}`);
+      fila.append(
+        el("div", "que", `${f.tipo}: ${f.mensaje}`),
+        el("div", "donde", `${f.repo}${f.fichero ? ` · ${f.fichero}${f.linea ? `:${f.linea}` : ""}` : ""} · ×${f.veces} · ${hace(Date.parse(f.ultimo) / 1000)} ago`),
+      );
+      fila.addEventListener("click", () => {
+        fallo = f;
+        pintar();
+        if (!trazas.has(f.id)) {
+          void orquestador(["traza", f.id]).then((r) => {
+            trazas.set(f.id, r.ok ? r.datos.traza : `(couldn't read the traceback: ${r.error})`);
+            if (fallo?.id === f.id) pintar();
+          });
+        }
+      });
+      lista.append(fila);
+    }
+    const fallidos = estado.agentes.filter((a) => a.estado === "fallo");
+    if (fallidos.length) {
+      lista.append(el("h3", undefined, `Failed agents (${fallidos.length})`));
+      for (const a of fallidos) {
+        const fila = el("div", "fallo agente-fallido");
+        fila.append(el("div", "que", `${a.repo}: ${a.tarea.split("\n")[0].slice(0, 120)}`), el("div", "donde", `${a.rama} · its console is on its island`));
+        fila.append(boton("Open in VS Code", () => void orden(["abrir", a.id], "Opening…", () => `Opened ${a.rama}`)));
+        lista.append(fila);
+      }
+    }
+    const detalle = el("div", "detalle");
+    if (!fallo) detalle.append(el("p", "nota", "Click an error to see its traceback and send an agent to fix it."));
+    else {
+      const f = fallo;
+      const traza = trazas.get(f.id);
+      detalle.append(el("h3", undefined, `${f.tipo} in ${f.repo}`), el("p", "mensaje-fallo", f.mensaje),
+        el("p", "nota", `${f.fichero ?? "(no file)"}${f.linea ? `:${f.linea}` : ""} · ${f.veces} time${f.veces === 1 ? "" : "s"} · first ${hace(Date.parse(f.primero) / 1000)} ago, last ${hace(Date.parse(f.ultimo) / 1000)} ago`),
+        el("pre", "traza", traza ?? "Reading the traceback…"));
+      const listos = /** @type {Proveedor[]} */ (["claude", "codex", "gemini"]).filter((id) => estado?.cuentas[id]?.sesion);
+      if (!listos.includes(proveedor) && listos.length) proveedor = listos[0];
+      const provs = el("div", "proveedores");
+      for (const id of listos) provs.append(boton(`${PROVEEDORES[id].empresa} · ${PROVEEDORES[id].nombre}`, () => { proveedor = id; pintar(); }, proveedor === id ? "elegido" : undefined));
+      const mandar = /** @type {HTMLButtonElement} */ (boton("Send an agent to fix it", () => {
+        const tareaF = tareaDeArreglo(f, traza ?? "");
+        const b64 = btoa(String.fromCharCode(...new TextEncoder().encode(tareaF)));
+        void orden(["lanzar", proveedor, b64, f.repo], `Sending a ${PROVEEDORES[proveedor].nombre} agent to ${f.repo}…`,
+          () => { pestana = "agentes"; return `Agent sent to ${f.repo}: it works on its own branch; watch it on the island`; });
+      }, "principal"));
+      mandar.disabled = !traza || !listos.length || ocupado;
+      detalle.append(provs, mandar, el("p", "nota", listos.length ? "It works on its own worktree and branch, commits there and never pushes." : "No AI account signed in (see Accounts)."));
+    }
+    d.append(lista, detalle);
+    return d;
+  }
+
   function pintar() {
     const cabeza = el("div", "cabecera");
     cabeza.append(el("h2", undefined, "Master console"));
     const pestanas = el("div", "pestanas");
-    for (const [id, nombre] of /** @type {const} */ ([["cuentas", "Accounts"], ["repos", "Repos"], ["agentes", "Agents"]])) {
-      pestanas.append(boton(nombre, () => { pestana = id; pintar(); }, pestana === id ? "activa" : undefined));
+    const recientes = (estado?.fallos ?? []).filter((f) => fuerzaDeFallo(f, Date.now()) > 0).length;
+    for (const [id, nombre] of /** @type {const} */ ([["cuentas", "Accounts"], ["repos", "Repos"], ["agentes", "Agents"], ["errores", "Errors"]])) {
+      const etiqueta = id === "errores" && recientes ? `Errors (${recientes})` : nombre;
+      pestanas.append(boton(etiqueta, () => { pestana = id; pintar(); }, `${pestana === id ? "activa" : ""}${id === "errores" && recientes ? " con-fallos" : ""}`.trim() || undefined));
     }
     cabeza.append(pestanas, boton("Refresh", () => { mensaje = "Refreshing…"; pintar(); void refrescar().then(() => { mensaje = ""; pintar(); }); }), boton("Close (Esc)", () => cerrar()));
     const cuerpo = el("div", "cuerpo");
-    cuerpo.append(!estado ? el("p", "nota", mensaje || "Reading accounts and repos…") : pestana === "cuentas" ? cuentas() : pestana === "repos" ? repos() : agentes());
+    cuerpo.append(!estado ? el("p", "nota", mensaje || "Reading accounts and repos…")
+      : pestana === "cuentas" ? cuentas() : pestana === "repos" ? repos() : pestana === "errores" ? errores() : agentes());
     const pie = el("p", "mensaje", mensaje);
     panel.replaceChildren(cabeza, cuerpo, pie);
   }
@@ -234,7 +305,9 @@ export function crearMaestra(panel, orquestador, alEstado, alCerrar) {
 
   return {
     get abierto() { return !panel.hidden; },
-    abrir() {
+    /** @param {string} [en] la pestaña: "cuentas", "repos", "agentes" o "errores" */
+    abrir(en) {
+      if (en === "cuentas" || en === "repos" || en === "agentes" || en === "errores") pestana = en;
       panel.hidden = false;
       pintar();
       void refrescar();

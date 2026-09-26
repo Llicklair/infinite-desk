@@ -15,7 +15,8 @@ import { crearLector } from "./lector.js";
 import { crearChispas } from "./chispas.js";
 import { crearHolograma } from "./maestra3d.js";
 import { crearMaestra } from "./maestra.js";
-import { mostrarNodo } from "./nodo.js";
+import { fuerzaDeFallo, nodoDeFichero } from "./fallos.js";
+import { mostrarIsla, mostrarNodo } from "./nodo.js";
 import { crearPuente, releerScript } from "./puente.js";
 import { crearPanelFicheros } from "./ficheros.js";
 import { crearPanelAjustes } from "./ajustes.js";
@@ -106,7 +107,7 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
 
   // Islas: pedestal, anillo de color, el grafo flotando y el cartel del repo. Y la decoración que
   // cuenta cosas: cristales según la vida del repo (su último commit) y un faro si hay agentes.
-  /** @type {{g3d: Grafo3D, base: THREE.Group, grafo: GrafoExportado, color: THREE.Color, cristales: ReturnType<typeof crearCristales>, faro: ReturnType<typeof crearFaro>}[]} */
+  /** @type {{g3d: Grafo3D, base: THREE.Group, pedestal: THREE.Mesh, grafo: GrafoExportado, color: THREE.Color, cristales: ReturnType<typeof crearCristales>, faro: ReturnType<typeof crearFaro>}[]} */
   const islas = [];
   let firma = "";
   // T: cada isla con gb puede verse también como su árbol de carpetas (`alt`, ADR 0003).
@@ -189,7 +190,7 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
     const faro = crearFaro();
     base.add(pedestal, anillo, cristales.objeto, faro.objeto, g3d.objeto, cartel);
     escena.add(base);
-    islas.push({ g3d, base, grafo, color, cristales, faro });
+    islas.push({ g3d, base, pedestal, grafo, color, cristales, faro });
   }
   ponerIslas(grafos);
 
@@ -400,7 +401,7 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
   /**
    * @typedef {{tipo: "nodo", g3d: Grafo3D, i: number}
    *   | {tipo: "pantalla", pantalla: Pantalla}
-   *   | {tipo: "isla", isla: typeof islas[number]}
+   *   | {tipo: "isla", isla: typeof islas[number], base?: boolean}
    *   | {tipo: "consola", consola: import("./consola3d.js").Consola}
    *   | {tipo: "titular", enlace: import("./palantir.js").Enlace, tarjeta: THREE.Object3D}
    *   | {tipo: "palantir"}
@@ -458,6 +459,16 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
       if (golpeE && golpeE.distance < mejor) {
         mejor = golpeE.distance;
         res = { tipo: "palantir" };
+      }
+    }
+
+    // La base de una isla (su pedestal): clic, su ficha con el resumen del README.
+    const golpeB = rayo.intersectObjects(islas.map((i) => i.pedestal), false)[0];
+    if (golpeB && golpeB.distance < mejor) {
+      const isla = islas.find((i) => i.pedestal === golpeB.object);
+      if (isla) {
+        mejor = golpeB.distance;
+        res = { tipo: "isla", isla, base: true };
       }
     }
 
@@ -530,6 +541,9 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
       if (g3d.grafo.fuente === "carpetas") return `${g3d.grafo.nombre} · ${n.id}${n.fanOut ? ` · contains ${n.fanOut}` : ""}`;
       return `${g3d.grafo.nombre} · ${n.id} · imported by ${n.fanIn} · imports ${n.fanOut}` +
         (n.enCiclo ? " · IN A CYCLE" : "");
+    }
+    if (apuntado.tipo === "isla" && apuntado.base) {
+      return `${apuntado.isla.grafo.nombre} — click: what it is · Enter: open in VS Code`;
     }
     if (apuntado.tipo === "isla") {
       return fondo
@@ -632,6 +646,9 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
     return p;
   }
 
+  // `?vista=demo&isla=<repo>`: la ficha de esa isla abierta (capturas sin manos).
+  const islaDemo = opciones.vista === "demo" ? new URLSearchParams(location.search).get("isla") : null;
+  if (islaDemo) setTimeout(() => { const i = islas.find((x) => x.grafo.nombre === islaDemo); if (i) fichaDeIsla(i); }, 500);
   if (opciones.vista === "demo") {
     // Una pantalla de VS Code "abierta" en galaxy-brain (o el primer repo), vista de lado
     // para que se vea el grafo detrás y encima.
@@ -705,9 +722,49 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
     ? crearMaestra(ui.maestra,
       (args) => (demoMaestra ? Promise.resolve(args[0] === "estado" ? { ok: true, datos: estadoDeDemostracion(nombres) } : { ok: false, error: "demo" })
         : puente ? puente.orquestador(args) : Promise.resolve({ ok: false, error: "no bridge" })),
-      (e) => holograma.actualizar(e),
+      (e) => { holograma.actualizar(e); aplicarFallos(e.fallos ?? []); },
       () => { if (!mirar.isLocked && !escribiendo) ui.portada.hidden = false; })
     : null;
+  // --- fallos (gb list, por la consola maestra cada minuto): en rojo en su isla ------------------
+  /** @type {import("./fallos.js").Fallo[]} */
+  let fallos = [];
+  /** @type {Map<string, THREE.Sprite>} el aviso "⚠ N" sobre la base de cada isla con fallos */
+  const avisosDeFallos = new Map();
+  /** Los de un repo que aún pesan (de la última semana). @param {string} repo */
+  const fallosDe = (repo) => fallos.filter((f) => f.repo === repo && fuerzaDeFallo(f, Date.now()) > 0);
+  /** @param {import("./fallos.js").Fallo[]} nuevos */
+  function aplicarFallos(nuevos) {
+    fallos = nuevos;
+    const ahora = Date.now();
+    for (const g3d of vivos()) {
+      const ids = g3d.grafo.nodos.map((n) => n.id);
+      /** @type {Map<number, number>} */
+      const fuerza = new Map();
+      for (const f of fallos) {
+        if (f.repo !== g3d.grafo.nombre || !f.fichero) continue;
+        const i = nodoDeFichero(f.fichero, ids);
+        const k = fuerzaDeFallo(f, ahora);
+        if (i >= 0 && k > 0) fuerza.set(i, Math.max(fuerza.get(i) ?? 0, k));
+      }
+      g3d.marcarFallos([...fuerza].map(([i, k]) => ({ i, fuerza: k })));
+    }
+    for (const isla of islas) {
+      const n = fallosDe(isla.grafo.nombre).length;
+      const viejo = avisosDeFallos.get(isla.grafo.nombre);
+      if (viejo) {
+        isla.base.remove(viejo);
+        viejo.material.map?.dispose();
+        viejo.material.dispose();
+        avisosDeFallos.delete(isla.grafo.nombre);
+      }
+      if (!n) continue;
+      const aviso = rotulo([`⚠ ${n} error${n === 1 ? "" : "s"}`], { alto: 0.9, color: "#ff5566" });
+      aviso.position.set(0, 1.6, 0);
+      isla.base.add(aviso);
+      avisosDeFallos.set(isla.grafo.nombre, aviso);
+    }
+  }
+
   function abrirMaestra() {
     if (!maestra) return;
     maestra.abrir();
@@ -720,7 +777,8 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
       if (puente.conectado) void maestra.refrescar(); // ya conectado antes de llegar aquí: alConectar no volverá a saltar
       setInterval(() => { if (puente.conectado) void maestra.refrescar(); }, 60000);
     } else if (demoMaestra) {
-      void maestra.refrescar().then(() => maestra.abrir());
+      // `&maestra=errores`: la demo con la pestaña Errors abierta.
+      void maestra.refrescar().then(() => { maestra.abrir(new URLSearchParams(location.search).get("maestra") || undefined); });
     } else holograma?.actualizar(null, "No bridge: come in from the desktop right-click menu");
   }
   document.addEventListener("keydown", (e) => {
@@ -805,6 +863,7 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
     // Cada pantalla vuelve a enganchar su repo con los datos nuevos (o se queda sin él si ya no hay isla).
     for (const p of pantallas) if (p.repo) p.enganchar(grafoDe(p.repo));
     aplicarAgentes();
+    aplicarFallos(fallos); // las islas son nuevas: sin esto, sin rojo hasta el siguiente estado
     const recien = islasNuevas(antes, nombres);
     avisar(recien.length
       ? `New island${recien.length === 1 ? "" : "s"}: ${recien.join(", ")}`
@@ -954,10 +1013,19 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
   /** @param {Grafo3D} g3d @param {number} i */
   function fichaDe(g3d, i) {
     if (!ui.nodo) return;
-    mostrarNodo(ui.nodo, g3d.grafo, i, agentesDe.get(g3d.grafo.nombre)?.estado.agentes ?? []);
+    const id = g3d.grafo.nodos[i]?.id;
+    const suyos = fallosDe(g3d.grafo.nombre).filter((f) => f.fichero && g3d.grafo.nodos[nodoDeFichero(f.fichero, g3d.grafo.nodos.map((n) => n.id))]?.id === id);
+    mostrarNodo(ui.nodo, g3d.grafo, i, agentesDe.get(g3d.grafo.nombre)?.estado.agentes ?? [], suyos);
     encendido?.g3d.resaltar(null);
     g3d.resaltar(i);
     encendido = { g3d, i };
+  }
+  /** @param {typeof islas[number]} isla */
+  function fichaDeIsla(isla) {
+    if (!ui.nodo) return;
+    encendido?.g3d.resaltar(null);
+    encendido = null;
+    mostrarIsla(ui.nodo, isla.grafo, agentesDe.get(isla.grafo.nombre)?.estado.agentes ?? [], fallosDe(isla.grafo.nombre));
   }
   function cerrarFicha() {
     if (ui.nodo) ui.nodo.hidden = true;
@@ -974,6 +1042,7 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
   /** Un clic (sin arrastrar) en el fondo: la ficha del nodo apuntado, o se cierra. */
   function clicSuelto() {
     if (apuntado?.tipo === "nodo") fichaDe(apuntado.g3d, apuntado.i);
+    else if (apuntado?.tipo === "isla" && apuntado.base) fichaDeIsla(apuntado.isla);
     else if (apuntado?.tipo === "titular") abrirEnlace(apuntado.enlace);
     else cerrarFicha();
   }
@@ -1025,6 +1094,7 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
       ponerIslas(actuales);
       for (const p of pantallas) if (p.repo) p.enganchar(grafoDe(p.repo));
       aplicarAgentes();
+      aplicarFallos(fallos);
       avisar(verCarpetas ? "View: folder tree (T for galaxy-brain again)" : "View: galaxy-brain (dependencies)");
     }
     else if (codigo === "KeyH") ui.ayuda.hidden = !ui.ayuda.hidden;
@@ -1068,6 +1138,7 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
     if (apuntado?.tipo === "maestra") return abrirMaestra();
     // Clic con la mira en un nodo: su ficha. En el vacío: se cierra.
     if (apuntado?.tipo === "nodo") return fichaDe(apuntado.g3d, apuntado.i);
+    if (apuntado?.tipo === "isla" && apuntado.base) return fichaDeIsla(apuntado.isla);
     if (apuntado?.tipo === "titular") return void leer(apuntado.enlace);
     if (apuntado?.tipo === "consola") {
       const d = apuntado.consola.cartel.getWorldPosition(new THREE.Vector3()).distanceTo(camara.position);
@@ -1224,5 +1295,9 @@ function estadoDeDemostracion(repos) {
       { id: "b", repo: repos[1] ?? "repo", proveedor: "claude", tarea: "Add a README section about the architecture", rama: "agente/20260926-1150-add-a-readme-section", worktree: "", inicio: new Date(ahora - 30 * 60000).toISOString(), fin: new Date(ahora - 22 * 60000).toISOString(), estado: "hecho", cambios: 2, commit: true },
     ],
     uso: { claude: { trabajando: 1, hoy: 2, minutosHoy: 12 }, codex: { trabajando: 0, hoy: 0, minutosHoy: 0 }, gemini: { trabajando: 0, hoy: 0, minutosHoy: 0 } },
+    fallos: [
+      { id: "d1", repo: repos.includes("galaxy-brain") ? "galaxy-brain" : repos[0] ?? "repo", tipo: "NameError", mensaje: "name 're' is not defined", fichero: "src/galaxybrain/cli.py", linea: 2489, veces: 20, ultimo: new Date(ahora - 3600000).toISOString(), primero: new Date(ahora - 5 * 86400000).toISOString() },
+      { id: "d2", repo: repos[0] ?? "repo", tipo: "OSError", mensaje: "[Errno 22] Invalid argument", fichero: null, linea: null, veces: 38, ultimo: new Date(ahora - 7200000).toISOString(), primero: new Date(ahora - 20 * 86400000).toISOString() },
+    ],
   };
 }

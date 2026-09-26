@@ -423,3 +423,21 @@ export function comentariosReddit(xml) {
     .filter((c) => c.texto)
     .slice(0, MAX_COMENTARIOS);
 }
+
+/**
+ * El resumen sencillo de un README para la ficha de una isla: su primer párrafo de verdad (sin el
+ * título, las insignias ni los avisos de una línea) y, si se queda corto, el siguiente, hasta
+ * `max` caracteres. Sin párrafos, sus primeros puntos. Vacío si no hay nada que contar.
+ * @param {string} md @param {number} [max]
+ */
+export function resumenDeReadme(md, max = 420) {
+  const bloques = bloquesDeMarkdown(md, 20000);
+  const parrafos = bloques.filter((b) => b.t === "p" && b.x.length >= 40).map((b) => b.x);
+  let r = "";
+  for (const p of parrafos) {
+    r = r ? `${r} ${p}` : p;
+    if (r.length >= 160) break;
+  }
+  if (!r) r = bloques.filter((b) => b.t === "li").slice(0, 4).map((b) => `· ${b.x}`).join(" ");
+  return r.length > max ? `${r.slice(0, max).replace(/\s+\S*$/, "")}…` : r;
+}

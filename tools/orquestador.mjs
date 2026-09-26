@@ -7,6 +7,7 @@
 //   node tools/orquestador.mjs lanzar <claude|codex|gemini> <tarea en base64> <repo> [repo ...]
 //   node tools/orquestador.mjs descartar <id>     (borra su worktree y su rama)
 //   node tools/orquestador.mjs abrir <id>         (su worktree en una ventana nueva de VS Code)
+//   node tools/orquestador.mjs traza <id>         (la traza legible de un fallo capturado por gb)
 //
 // Los repos se nombran por su carpeta y tienen que estar en la carpeta de proyectos: quien llama
 // no elige rutas. Los agentes, uno por repo, con tools/agente.mjs en segundo plano.
@@ -17,6 +18,7 @@ import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { PROVEEDORES, esProveedor, estadoDeGit, nombreDeAgente, usoPorProveedor } from "../src/orquesta.js";
+import { fallosDeRepos, trazaLegible } from "../src/fallos.js";
 import { carpetaDeProyectos, reposEn } from "./proyectos.mjs";
 import { ENLAZADAS, WORKTREES, fichaDeAgente, leerAgentes } from "./orquestador-datos.mjs";
 
@@ -77,6 +79,23 @@ async function cuentas() {
   return r;
 }
 
+/** Los fallos que galaxy-brain ha capturado en tus repos (sin gb, ninguno). */
+async function fallos() {
+  const r = await correr("gb", ["list", "--json", "--all", "-n", "200"], { ms: 30000 });
+  if (!r.ok) return [];
+  try {
+    return fallosDeRepos(JSON.parse(r.salida.slice(r.salida.indexOf("["))), [...repos()].map(([nombre, ruta]) => ({ nombre, ruta })));
+  } catch { return []; }
+}
+
+/** La traza de un fallo (`gb show`), legible y sin variables locales. @param {string} id */
+async function traza(id) {
+  if (!/^[\w.-]+$/.test(id ?? "")) throw new Error("bad id");
+  const r = await correr("gb", ["show", id, "--json", "--all"], { ms: 30000 });
+  if (!r.ok) throw new Error(r.salida.trim().split("\n")[0] || "gb show failed");
+  return { id, traza: trazaLegible(JSON.parse(r.salida.slice(r.salida.indexOf("{")))) };
+}
+
 async function estado() {
   const todos = [...repos()];
   const lista = await Promise.all(todos.map(async ([nombre, ruta]) => {
@@ -90,6 +109,7 @@ async function estado() {
   return {
     carpeta: carpetaDeProyectos(),
     cuentas: await cuentas(),
+    fallos: await fallos(),
     proveedores: PROVEEDORES,
     repos: lista.sort((a, b) => a.nombre.localeCompare(b.nombre)),
     agentes: agentes.slice(0, 50).map(({ pid, ...a }) => a),
@@ -167,6 +187,7 @@ try {
     : orden === "lanzar" ? lanzar(resto[0], resto[1], resto.slice(2))
     : orden === "descartar" ? await descartar(resto[0])
     : orden === "abrir" ? abrir(resto[0])
+    : orden === "traza" ? await traza(resto[0])
     : (() => { throw new Error(`unknown order: ${orden ?? "(none)"}`); })();
   process.stdout.write(`${JSON.stringify({ ok: true, r })}\n`);
 } catch (e) {

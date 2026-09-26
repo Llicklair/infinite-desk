@@ -10,6 +10,25 @@ Cada medición real: qué se probó, qué salió, qué cambió por ello.
 
 ---
 
+## 2026-09-26 · fallos en rojo en su isla, pestaña Errors con "mandar un agente" y resumen del README — FUNCIONA sin manos
+
+Montaje: `gb list --json --all` y `gb show <id> --json --all` de verdad, más capturas del mundo
+real (aérea) y de la demo (`&maestra=errores`, `&isla=galaxy-brain`).
+
+- **Un fallo es del repo del fichero donde salta**, no del proyecto desde el que se corrió.
+  Medido: el `NameError: name 're' is not defined` de `galaxy-brain/cli.py:2489` (20 veces) salía
+  como de infinite-desk, porque gb se ejecutó desde allí. Lo de carpetas temporales queda fuera.
+- **Resultado:** 20 fallos repartidos por repo. galaxy-brain sale con "⚠ 8 errors" y sus módulos
+  en rojo; invest-ll, infinite-desk y repo-tour, con uno cada uno. Solo se pinta en la isla lo de
+  la última semana; lo anterior sigue en la consola.
+- **La traza, sin variables locales** (pueden llevar datos). El código de la línea que falla
+  viene de `source` con `is_fail`: el formato se había supuesto mal y se corrigió contra una
+  captura real.
+- **"Send an agent to fix it"** lanza un agente con la traza como tarea, en su rama. Sin probar
+  con manos.
+- **Resumen del README al hacer clic en la base de una isla:** su primer párrafo de verdad, sin
+  título ni insignias. 17 de las 19 islas tienen README.
+
 ## 2026-09-26 · Chispas y la consola maestra: agentes de Claude de verdad en worktrees — FUNCIONA sin manos, falta con manos
 
 **Chispas** (clic en la esfera del palantír), probado con `?vista=demo&chispas`, una ronda que se

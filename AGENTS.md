@@ -9,7 +9,7 @@ Alcance y criterio de terminado en [SCOPE.md](SCOPE.md); reglas en [ARCHITECTURE
 Lo de esta sección se EJECUTA, así que no puede pudrirse en silencio: si miente, falla.
 
 ```bash
-npm test                    # node --test, núcleo puro (datos, disposición, islas, vínculo, ambiente, noticias, juego, orquesta)
+npm test                    # node --test, núcleo puro (datos, disposición, islas, vínculo, ambiente, noticias, juego, orquesta, fallos)
 npm run tipos               # tsc --checkJs estricto sobre src/ y tools/
 npm run carpeta [-- ruta]   # la carpeta de proyectos de esta máquina (selector del sistema) -> infinite-desk.local.json
 npm run grafo [-- repo ...] # gb graph --json por repo -> wallpaper/grafos.js (por defecto: los repos de la carpeta de proyectos)
@@ -31,7 +31,8 @@ Vistas para comprobar sin manos: `index.html?vista=aerea` (todas las islas),
 `index.html?vista=demo&agentes` (dos agentes de mentira en galaxy-brain: halos, señales, cruce y consolas) e
 `index.html?vista=demo&leer=N` (el lector del palantír abierto en la tarjeta N: 0-11 titulares, 12-19 repos) y
 `index.html?vista=demo&chispas` (una ronda de Chispas, el minijuego del palantír, que se juega sola) y
-`index.html?vista=demo&maestra` (la consola maestra abierta con repos y agentes de mentira).
+`index.html?vista=demo&maestra` (la consola maestra abierta con repos y agentes de mentira) y
+`index.html?vista=demo&isla=<repo>` (la ficha de esa isla: el resumen de su README); `&maestra=errores` abre la consola en la pestaña Errors.
 
 ## Gates
 
@@ -49,7 +50,7 @@ Vistas para comprobar sin manos: `index.html?vista=aerea` (todas las islas),
 
 ## Arquitectura
 
-Núcleo puro (`datos`, `disposicion`, `islas`, `vinculo`, `ambiente`, `noticias`, `juego`, `orquesta`), probado en Node; `tools/exportar.mjs`
+Núcleo puro (`datos`, `disposicion`, `islas`, `vinculo`, `ambiente`, `noticias`, `juego`, `orquesta`, `fallos`), probado en Node; `tools/exportar.mjs`
 lo usa en tiempo de export. Mundo con Three.js: `grafo3d` (un grafo como objeto), `pantallas`
 (captura + grafo enganchado), `rotulo` (texto en el mundo), `decorado` (cielo por la hora, cristales por la vida del repo, faro de
 agentes), `palantir` (la esfera del centro: titulares de IA abajo, repos del mes arriba; clic en ella, `chispas`, el minijuego), `mundo` (cámara, islas, acciones);

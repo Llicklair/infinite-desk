@@ -195,3 +195,13 @@ test("comentarios: HN en su orden; Bluesky y Mastodon, los más votados, solo re
     `<entry><author><name>/u/fan</name></author><content type="html">${esc('<div class="md"><p>Nice &amp; clean</p></div>')}</content></entry></feed>`;
   assert.deepEqual(comentariosReddit(rss), [{ autor: "fan", texto: "Nice & clean" }], "Reddit: sin el propio post, sin /u/");
 });
+
+test("resumen de README: el primer párrafo de verdad, sin título ni insignias; corto se completa", async () => {
+  const { resumenDeReadme } = await import("../src/noticias.js");
+  const md = "# gb\n\n[![ci](https://x/ci.svg)](https://x)\n\n> beta\n\nMaps your code.\n\ngalaxy-brain reads a repo and draws its module graph, so you can see what depends on what.\n\nIt also tracks agents.\n\n## Install\n\npip install gb";
+  assert.equal(resumenDeReadme(md), "galaxy-brain reads a repo and draws its module graph, so you can see what depends on what.");
+  const largo = resumenDeReadme(`# x\n\n${"word ".repeat(200)}`, 60);
+  assert.ok(largo.length <= 61 && largo.endsWith("…"));
+  assert.equal(resumenDeReadme("# x\n\n- one feature here\n- another one"), "· one feature here · another one");
+  assert.equal(resumenDeReadme(""), "");
+});

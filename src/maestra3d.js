@@ -4,6 +4,7 @@
 // trabajan. Mira siempre hacia la cámara y sube y baja despacio. Clic: la consola entera (maestra.js).
 import * as THREE from "three";
 import { PROVEEDORES } from "./orquesta.js";
+import { fuerzaDeFallo } from "./fallos.js";
 
 /** @typedef {import("./maestra.js").EstadoMaestra} EstadoMaestra */
 
@@ -82,6 +83,9 @@ function pintar(e, aviso) {
     ctx.fillText(`${sinCommit} with uncommitted changes`, 36, 330);
     ctx.fillStyle = sinSubir ? "#ffb86b" : "#7dffa8";
     ctx.fillText(`${sinSubir} to push`, 36, 368);
+    const errores = (e.fallos ?? []).filter((f) => fuerzaDeFallo(f, Date.now()) > 0).length;
+    ctx.fillStyle = errores ? "#ff6b7d" : "#7dffa8";
+    ctx.fillText(errores ? `⚠ ${errores} errors this week` : "no errors this week", 36, 404);
     ctx.font = letra(32, 700);
     ctx.fillStyle = "#e8fbff";
     ctx.fillText("Agents", 560, 284);

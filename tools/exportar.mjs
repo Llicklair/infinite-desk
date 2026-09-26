@@ -5,11 +5,12 @@
 // como script clásico (ARCHITECTURE 3). Si gb no está instalado, falla o no ve módulos en un
 // repo, la isla es su árbol de carpetas (ADR 0003): quien no tenga gb también tiene mundo.
 import { execFileSync } from "node:child_process";
-import { existsSync, readdirSync, renameSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, renameSync, writeFileSync } from "node:fs";
 import { resolve, dirname, join, basename, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { desdeCarpetas, desdeGbGraph } from "../src/datos.js";
 import { disponer } from "../src/disposicion.js";
+import { resumenDeReadme } from "../src/noticias.js";
 import { carpetaDeProyectos, reposEn } from "./proyectos.mjs";
 
 const aqui = dirname(fileURLToPath(import.meta.url));
@@ -51,6 +52,12 @@ function ultimoCommit(repo) {
   } catch { return undefined; }
 }
 
+/** Lo que cuenta su README, en corto (la ficha de la isla: clic en su base). @param {string} repo */
+function resumen(repo) {
+  const readme = ["README.md", "readme.md", "Readme.md", "README.markdown"].map((n) => join(repo, n)).find((f) => existsSync(f));
+  try { return readme ? resumenDeReadme(readFileSync(readme, "utf8")) || undefined : undefined; } catch { return undefined; }
+}
+
 /** El grafo de gb, o por qué no lo hay. @param {string} repo */
 function deGb(repo) {
   try {
@@ -85,7 +92,7 @@ for (const repo of repos) {
   // Con gb, también el árbol de carpetas: la tecla T alterna entre los dos en el mundo.
   const carpetas = grafo.fuente === "gb" ? desdeCarpetas(repo, ficherosDe(repo)) : null;
   const alt = carpetas && carpetas.nodos.length >= 2 ? { ...carpetas, posiciones: disponer(carpetas) } : undefined;
-  grafos.push({ nombre, ...grafo, posiciones, alt, ultimoCommit: ultimoCommit(repo) });
+  grafos.push({ nombre, ...grafo, posiciones, alt, ultimoCommit: ultimoCommit(repo), resumen: resumen(repo) });
   const que = grafo.fuente === "carpetas"
     ? `${grafo.nodos.length} carpetas y ficheros (sin gb: ${gb.porque})`
     : `${grafo.nodos.length} módulos, ${grafo.aristas.length} aristas, ${grafo.ciclos} ciclos`;
