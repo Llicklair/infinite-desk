@@ -63,3 +63,10 @@ test("fusionar: las rehechas sustituyen a las suyas, las nuevas se añaden, en e
   assert.deepEqual(r, [{ nombre: "a", v: 1 }, { nombre: "b", v: 2 }, { nombre: "c", v: 1 }, { nombre: "d", v: 2 }]);
   assert.deepEqual(fusionarGrafos([], [{ nombre: "x" }, { nombre: "y" }], ["y"]).map((g) => g.nombre), ["y", "x"], "lo que no está en el orden, al final");
 });
+
+test("queHay: por tipo, de más a menos, sin ficheros sin extensión", async () => {
+  const { queHay } = await import("../src/datos.js");
+  assert.equal(queHay(["index.html", "privacy.html", "terms.html", "logo.png", "demo.gif", "LICENSE", ".gitignore"]), "3 HTML · 2 images");
+  assert.equal(queHay(["a/SKILL.md", "b.md", "c.json", "d.yml", "e.md"], 2), "3 Markdown · 1 JSON");
+  assert.equal(queHay([]), "");
+});

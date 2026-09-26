@@ -70,14 +70,21 @@ sealed class Regenerador(string raiz, Func<object, Task> difundir, Action alTerm
             psi.ArgumentList.Add(Path.Combine(raiz, "tools", "exportar.mjs"));
             foreach (var r in repos ?? []) psi.ArgumentList.Add(r);
             using var p = Process.Start(psi)!;
-            var salida = p.StandardOutput.ReadToEndAsync();
             var errores = p.StandardError.ReadToEndAsync();
+            // Línea a línea: cada isla que acaba ("  isla   nombre: …" o "  salto  nombre: …") se
+            // avisa al momento, y la pestaña Maps de la consola maestra la va marcando.
+            var ultima = "";
+            while (await p.StandardOutput.ReadLineAsync() is { } linea)
+            {
+                var l = linea.Trim();
+                if (l.Length > 0) ultima = l;
+                var m = System.Text.RegularExpressions.Regex.Match(l, @"^(isla|salto)\s+(.+?): (.*)$");
+                if (m.Success) await difundir(new { evento = "isla", repo = m.Groups[2].Value, ok = m.Groups[1].Value == "isla", texto = m.Groups[3].Value });
+            }
             await p.WaitForExitAsync();
             ok = p.ExitCode == 0;
             // La última línea de exportar.mjs: "N islas -> ...", o el error.
-            resumen = (await salida + await errores)
-                .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                .LastOrDefault() ?? "";
+            resumen = (await errores).Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).LastOrDefault() is { } error && !ok ? error : ultima;
         }
         catch (Exception e) { resumen = e.Message; }
 

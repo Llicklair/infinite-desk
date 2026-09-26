@@ -58,7 +58,11 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     console.error(`${elegida} is not a folder.`);
     process.exit(1);
   }
-  writeFileSync(FICHERO, JSON.stringify({ proyectos: elegida }, null, 2) + "\n");
+  /** @type {Record<string, unknown>} */
+  let datos = {};
+  try { datos = JSON.parse(readFileSync(FICHERO, "utf8")); } catch { /* sin fichero todavía */ }
+  // Sin borrar lo demás (la ruta de gb que apunta tools/gb.mjs).
+  writeFileSync(FICHERO, JSON.stringify({ ...datos, proyectos: elegida }, null, 2) + "\n");
   const repos = reposEn(elegida);
   console.log(`Projects folder: ${elegida} (${repos.length} repo${repos.length === 1 ? "" : "s"} with git)`);
   console.log(repos.length ? "Now run npm run grafo to rebuild the islands (the bridge does it on its own when you step in)."

@@ -30,8 +30,38 @@ static class Proyectos
     public static int Repos(string carpeta) =>
         Directory.Exists(carpeta) ? Directory.EnumerateDirectories(carpeta).Count(d => Path.Exists(Path.Combine(d, ".git"))) : 0;
 
-    public static void Guardar(string repo, string carpeta) =>
-        File.WriteAllText(Fichero(repo), JsonSerializer.Serialize(new { proyectos = carpeta }, new JsonSerializerOptions { WriteIndented = true }) + "\n");
+    /// <summary>Guarda la carpeta sin borrar lo demás del fichero (la ruta de gb, de tools/gb.mjs).</summary>
+    public static void Guardar(string repo, string carpeta)
+    {
+        var datos = new System.Text.Json.Nodes.JsonObject();
+        try
+        {
+            if (File.Exists(Fichero(repo)) && System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(Fichero(repo))) is System.Text.Json.Nodes.JsonObject o) datos = o;
+        }
+        catch (Exception) { /* roto: se rehace */ }
+        datos["proyectos"] = carpeta;
+        File.WriteAllText(Fichero(repo), datos.ToJsonString(new JsonSerializerOptions { WriteIndented = true }) + "\n");
+    }
+
+    /// <summary>
+    /// La orden para correr gb: la que encontró tools/gb.mjs (en una máquina limpia no suele estar
+    /// en el PATH) y apuntó en infinite-desk.local.json, o "gb" a secas si no hay nada apuntado.
+    /// </summary>
+    public static string[] Gb(string repo)
+    {
+        try
+        {
+            if (File.Exists(Fichero(repo))
+                && JsonDocument.Parse(File.ReadAllText(Fichero(repo))).RootElement.TryGetProperty("gb", out var gb)
+                && gb.ValueKind == JsonValueKind.Array)
+            {
+                var orden = gb.EnumerateArray().Select(x => x.GetString() ?? "").ToArray();
+                if (orden.Length > 0 && File.Exists(orden[0])) return orden;
+            }
+        }
+        catch (Exception) { /* roto: a secas */ }
+        return ["gb"];
+    }
 
     /// <summary>
     /// El selector de carpetas de Windows, en un hilo STA propio, o null si se cancela. Con un

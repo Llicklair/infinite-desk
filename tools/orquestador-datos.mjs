@@ -71,6 +71,18 @@ export function leerActividad(n) {
   return r.reverse();
 }
 
+const ARREGLADOS = join(DATOS, "fallos-arreglados.json");
+
+/** Los fallos marcados como arreglados: su clave (claveDeFallo) -> su `ultimo` al marcarlo. @returns {Record<string, string>} */
+export function leerArreglados() {
+  try { return JSON.parse(readFileSync(ARREGLADOS, "utf8")); } catch { return {}; }
+}
+/** @param {Record<string, string>} a */
+export function guardarArreglados(a) {
+  mkdirSync(DATOS, { recursive: true });
+  writeFileSync(ARREGLADOS, JSON.stringify(a));
+}
+
 /** @returns {{heads?: Record<string, string>, fallos?: string[]}} */
 export function leerVistos() {
   try { return JSON.parse(readFileSync(VISTOS, "utf8")); } catch { return {}; }

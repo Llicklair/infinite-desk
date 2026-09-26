@@ -1,18 +1,21 @@
 // La consola maestra (clic en su holograma, encima del palantír, o la tecla O): gestionar las
 // cuentas de IA (Anthropic, OpenAI, Google DeepMind), todos los repos a la vez y los agentes que
-// trabajan en ellos ("un mega orquestador", uso real). Cinco pestañas:
+// trabajan en ellos ("un mega orquestador", uso real). Seis pestañas:
 //   Accounts — quién tiene sesión, con qué plan, y el uso de hoy (lo que se puede contar: el cupo
 //              de una suscripción no se deja consultar por programa);
 //   Repos    — el estado git de cada repo; seleccionar varios y hacer fetch o pull, o mandarles agentes;
+//   Maps     — el mapa de cada repo (grafo de galaxy-brain o árbol de carpetas, y por qué), y
+//              construir o rehacer los elegidos o todos con gb, varios a la vez, viéndolos acabar;
 //   Agents   — lanzar un agente por repo (Claude Code, Codex o Gemini CLI) con una tarea, y ver,
 //              abrir en VS Code o descartar los que hay. Cada uno trabaja en su rama y su worktree,
 //              commitea ahí y NUNCA hace push: se revisa y se fusiona a mano;
 //   Errors   — lo que galaxy-brain ha capturado en tus repos (gb list) y los agentes que fallaron;
-//              clic, la traza, y "mandar un agente a arreglarlo" con ella como tarea;
+//              clic, la traza, y "mandar un agente a arreglarlo" con ella como tarea; los arreglados
+//              (a mano, o su fichero cambió después) aparte, y vuelven si saltan otra vez;
 //   Activity — qué pasó, cuándo y dónde en todos los repos (src/actividad.js), por días.
 // Todo va por el puente a tools/orquestador.mjs. Lo de fuera (nombres, ramas, tareas) se pone como texto.
 import { PROVEEDORES } from "./orquesta.js";
-import { fuerzaDeFallo, tareaDeArreglo } from "./fallos.js";
+import { claveDeFallo, fuerzaDeFallo, tareaDeArreglo } from "./fallos.js";
 import { GRUPOS, ICONOS, filtrarActividad, porDias } from "./actividad.js";
 
 /** @typedef {import("./orquesta.js").Proveedor} Proveedor */
@@ -20,8 +23,9 @@ import { GRUPOS, ICONOS, filtrarActividad, porDias } from "./actividad.js";
 /** @typedef {import("./orquesta.js").EstadoGit & {nombre: string, ultimoCommit: number | null}} Repo */
 /** @typedef {{instalado: boolean, sesion: boolean, cuenta?: string, plan?: string, detalle?: string}} Cuenta */
 /**
- * @typedef {{instalado: boolean, version?: string, origen?: string, python: string | null, avisoPython: string | null, local: string | null}} GalaxyBrain
- *   `origen`: la carpeta si está instalado en modo editable, o "pip"; `local`: tu carpeta de galaxy-brain, si está en la de proyectos
+ * @typedef {{instalado: boolean, version?: string, origen?: string, python: string | null, avisoPython: string | null, local: string | null, ruta?: string}} GalaxyBrain
+ *   `origen`: la carpeta si está instalado en modo editable, o "pip"; `local`: tu carpeta de galaxy-brain, si está en la de proyectos;
+ *   `ruta`: dónde se encontró gb (tools/gb.mjs: PATH, las carpetas Scripts de Python…)
  */
 /**
  * @typedef {{carpeta: string, cuentas: Record<Proveedor | "github", Cuenta>, repos: Repo[], agentes: Agente[],
@@ -57,12 +61,13 @@ function hace(seg) {
  * @param {(args: string[]) => Promise<{ok: boolean, datos?: any, error?: string}>} orquestador
  * @param {(e: EstadoMaestra) => void} alEstado cada vez que llega un estado nuevo (el holograma)
  * @param {() => void} alCerrar
- * @param {(repos?: string[]) => void} [regenerar] rehacer las islas: todas (tras instalar galaxy-brain) o unas ("Rebuild maps")
+ * @param {(repos?: string[]) => void} [regenerar] rehacer las islas: todas (tras instalar galaxy-brain) o unas (pestaña Maps)
+ * @param {() => import("./grafo3d.js").GrafoExportado[]} [islas] los mapas que hay ahora (window.GB_GRAFOS)
  */
-export function crearMaestra(panel, orquestador, alEstado, alCerrar, regenerar) {
+export function crearMaestra(panel, orquestador, alEstado, alCerrar, regenerar, islas) {
   /** @type {EstadoMaestra | null} */
   let estado = null;
-  /** @type {"cuentas" | "repos" | "agentes" | "errores" | "actividad"} */
+  /** @type {"cuentas" | "repos" | "mapas" | "agentes" | "errores" | "actividad"} */
   let pestana = "repos";
   /** @type {{repo: string | null, grupo: keyof typeof GRUPOS | null}} */
   const filtro = { repo: null, grupo: null };
@@ -77,6 +82,8 @@ export function crearMaestra(panel, orquestador, alEstado, alCerrar, regenerar) 
   let tarea = "";
   let mensaje = "";
   let ocupado = false;
+  /** @type {Map<string, {estado: "cola" | "ok" | "salto" | "error", texto?: string}>} lo que se está construyendo (pestaña Maps) */
+  const obras = new Map();
 
   async function refrescar() {
     const r = await orquestador(["estado"]);
@@ -148,11 +155,10 @@ export function crearMaestra(panel, orquestador, alEstado, alCerrar, regenerar) 
       el("span", "cuenta-sel", `${elegidos.size} selected`),
       boton("Fetch", () => void orden(["accion", "fetch", ...elegidos], `Fetching ${elegidos.size} repo(s)…`, (r) => resumenAccion(r))),
       boton("Pull", () => void orden(["accion", "pull", ...elegidos], `Pulling ${elegidos.size} repo(s)…`, (r) => resumenAccion(r))),
-      // Sus mapas con gb graph, varios a la vez (sin IA: gb es determinista y no gasta cupo).
-      boton("Rebuild maps", () => { regenerar?.([...elegidos]); mensaje = `Rebuilding ${elegidos.size} map(s) with galaxy-brain, several at once…`; pintar(); }),
+      boton("Maps →", () => { pestana = "mapas"; pintar(); }),
       boton("Send agents →", () => { pestana = "agentes"; pintar(); }, "principal"),
     );
-    for (const b of barra.querySelectorAll("button")) if (["Fetch", "Pull", "Rebuild maps", "Send agents →"].includes(b.textContent ?? "")) b.disabled = !elegidos.size || ocupado;
+    for (const b of barra.querySelectorAll("button")) if (["Fetch", "Pull", "Send agents →"].includes(b.textContent ?? "")) b.disabled = !elegidos.size || ocupado;
     const tabla = el("table");
     const cabeza = el("tr");
     for (const t of ["", "Repo", "Branch", "Uncommitted", "Push / pull", "Last commit"]) cabeza.append(el("th", undefined, t));
@@ -173,6 +179,80 @@ export function crearMaestra(panel, orquestador, alEstado, alCerrar, regenerar) 
       tabla.append(fila);
     }
     d.append(barra, tabla);
+    return d;
+  }
+
+  /** Construir con gb los mapas de estos repos (o de todos): sin IA, gb es determinista y no gasta cupo. @param {string[]} [lista] */
+  function construir(lista) {
+    const todos = lista ?? (estado?.repos ?? []).map((r) => r.nombre);
+    for (const n of todos) obras.set(n, { estado: "cola" });
+    regenerar?.(lista);
+    mensaje = `Building ${todos.length} map${todos.length === 1 ? "" : "s"} with galaxy-brain, 4 at a time… (you can close this and keep going)`;
+    pintar();
+  }
+
+  function mapas() {
+    const d = el("div", "mapas");
+    if (!estado) return d;
+    const gb = estado.galaxyBrain;
+    const cabeza = el("div", "gb");
+    if (gb?.instalado) {
+      cabeza.append(el("span", "bien", `galaxy-brain ${gb.version}`), el("span", "tenue", ` · ${gb.ruta ?? "on the PATH"}`));
+      if (gb.avisoPython) cabeza.append(el("span", "mal", ` · ${gb.avisoPython}`));
+    } else {
+      cabeza.append(el("span", "mal", "galaxy-brain isn't installed (or wasn't found): maps are folder trees. "),
+        boton("Install galaxy-brain", () => void orden(["instalarGb"], "Installing galaxy-brain with pip… (up to a few minutes)",
+          (r) => { construir(); return `galaxy-brain ${r.version} ready: building every map…`; }), "principal"));
+    }
+    const hay = new Map((islas?.() ?? []).map((g) => [g.nombre, g]));
+    const barra = el("div", "barra");
+    const construyendo = [...obras.values()].some((o) => o.estado === "cola");
+    // Los que no tienen código que gb lea ya tienen su mapa (el árbol de carpetas): no se eligen.
+    const conMapa = (/** @type {string} */ n) => hay.get(n)?.fuente === "gb" || Boolean(hay.get(n)?.sinCodigo);
+    barra.append(
+      boton("All", () => { for (const r of estado?.repos ?? []) elegidos.add(r.nombre); pintar(); }),
+      boton("Without a gb map", () => { elegidos.clear(); for (const r of estado?.repos ?? []) if (!conMapa(r.nombre)) elegidos.add(r.nombre); pintar(); }),
+      boton("None", () => { elegidos.clear(); pintar(); }),
+      el("span", "cuenta-sel", `${elegidos.size} selected`),
+    );
+    const elegidosB = /** @type {HTMLButtonElement} */ (boton(`Build selected (${elegidos.size})`, () => construir([...elegidos]), "principal"));
+    elegidosB.disabled = !elegidos.size;
+    barra.append(elegidosB, boton("Rebuild all", () => construir()));
+    if (construyendo) barra.append(el("span", "aviso", "● building…"));
+    const tabla = el("table");
+    const fila0 = el("tr");
+    for (const t of ["", "Repo", "Map", "Size", "Built", ""]) fila0.append(el("th", undefined, t));
+    tabla.append(fila0);
+    for (const r of estado.repos) {
+      const g = hay.get(r.nombre);
+      const obra = obras.get(r.nombre);
+      const fila = el("tr", elegidos.has(r.nombre) ? "elegido" : undefined);
+      const caja = /** @type {HTMLInputElement} */ (el("input"));
+      caja.type = "checkbox";
+      caja.checked = elegidos.has(r.nombre);
+      caja.addEventListener("change", () => { if (caja.checked) elegidos.add(r.nombre); else elegidos.delete(r.nombre); pintar(); });
+      const c0 = el("td");
+      c0.append(caja);
+      const tipo = !g ? el("td", "tenue", "no island") : g.fuente === "gb" ? el("td", "bien", "dependency graph")
+        : el("td", g.sinCodigo ? "tenue" : "aviso", g.sinCodigo ? "folder tree (no code)" : "folder tree");
+      const tamano = !g ? "—" : g.fuente === "gb"
+        ? `${g.nodos.length} modules · ${g.aristas.length} edges${g.ciclos ? ` · ${g.ciclos} cycle${g.ciclos === 1 ? "" : "s"}` : ""}`
+        : `${g.nodos.length} folders and files`;
+      // Lo último que se sabe: construyéndose, cómo acabó, o por qué es árbol de carpetas. Un repo sin
+      // código que gb lea no es un fallo: se dice qué tiene y que su mapa es ese (uso real: "no me
+      // deja buildear algunos mapas… pues que se lo diga la consola").
+      const nota = obra?.estado === "cola" ? el("td", "aviso", "● building…")
+        : obra && obra.estado !== "ok" ? el("td", "mal", `✗ ${obra.texto ?? ""}`)
+        : g?.sinCodigo ? el("td", "tenue", `ℹ ${g.porque ?? "no code for galaxy-brain here"}`)
+        : g?.fuente === "carpetas" ? el("td", "aviso", `⚠ ${g.porque ?? ""}`)
+        : obra ? el("td", "bien", "✓ rebuilt")
+        : el("td", "tenue", "");
+      fila.append(c0, el("td", "nombre", r.nombre), tipo, el("td", "tenue", tamano), el("td", "tenue", g?.generado ? `${hace(g.generado)} ago` : "—"), nota);
+      fila.addEventListener("click", (ev) => { if (ev.target !== caja) caja.click(); });
+      tabla.append(fila);
+    }
+    d.append(cabeza, barra, tabla,
+      el("p", "nota", "galaxy-brain reads 16 languages; a repo it can't read (or with too few modules) stays a folder tree. R on an island rebuilds just that one."));
     return d;
   }
 
@@ -250,15 +330,17 @@ export function crearMaestra(panel, orquestador, alEstado, alCerrar, regenerar) 
     const lista = el("div", "lista");
     const todos = estado.fallos ?? [];
     const ahora = Date.now();
-    lista.append(el("h3", undefined, `Captured by galaxy-brain (${todos.length})`));
-    if (!todos.length) lista.append(el("p", "nota", "Nothing captured in your repos (or gb isn't installed)."));
-    for (const f of todos) {
-      const fila = el("div", `fallo${fuerzaDeFallo(f, ahora) > 0 ? " reciente" : ""}${fallo?.id === f.id ? " abierto" : ""}`);
-      fila.append(
-        el("div", "que", `${f.tipo}: ${f.mensaje}`),
+    const abiertos = todos.filter((f) => !f.estado || f.estado === "abierto");
+    const cerrados = todos.filter((f) => f.estado && f.estado !== "abierto");
+    /** @param {import("./fallos.js").Fallo} f */
+    const fila = (f) => {
+      const cerrado = f.estado === "arreglado" ? " arreglado" : f.estado === "quizas" ? " quizas" : "";
+      const d = el("div", `fallo${fuerzaDeFallo(f, ahora) > 0 ? " reciente" : ""}${cerrado}${fallo?.id === f.id ? " abierto" : ""}`);
+      d.append(
+        el("div", "que", `${f.estado === "arreglado" ? "✔ " : f.estado === "quizas" ? "✔? " : ""}${f.tipo}: ${f.mensaje}`),
         el("div", "donde", `${f.repo}${f.fichero ? ` · ${f.fichero}${f.linea ? `:${f.linea}` : ""}` : ""} · ×${f.veces} · ${hace(Date.parse(f.ultimo) / 1000)} ago`),
       );
-      fila.addEventListener("click", () => {
+      d.addEventListener("click", () => {
         fallo = f;
         pintar();
         if (!trazas.has(f.id)) {
@@ -268,7 +350,15 @@ export function crearMaestra(panel, orquestador, alEstado, alCerrar, regenerar) 
           });
         }
       });
-      lista.append(fila);
+      return d;
+    };
+    lista.append(el("h3", undefined, `Open (${abiertos.length})`));
+    if (!abiertos.length) lista.append(el("p", "nota", todos.length ? "Nothing open: everything captured is fixed." : "Nothing captured in your repos (or gb isn't installed)."));
+    for (const f of abiertos) lista.append(fila(f));
+    if (cerrados.length) {
+      lista.append(el("h3", undefined, `Fixed (${cerrados.length})`),
+        el("p", "nota", "Marked as fixed, or its file changed after the last time it failed. Any of them comes back here if it fails again."));
+      for (const f of cerrados) lista.append(fila(f));
     }
     const fallidos = estado.agentes.filter((a) => a.estado === "fallo");
     if (fallidos.length) {
@@ -286,8 +376,21 @@ export function crearMaestra(panel, orquestador, alEstado, alCerrar, regenerar) 
       const f = fallo;
       const traza = trazas.get(f.id);
       detalle.append(el("h3", undefined, `${f.tipo} in ${f.repo}`), el("p", "mensaje-fallo", f.mensaje),
-        el("p", "nota", `${f.fichero ?? "(no file)"}${f.linea ? `:${f.linea}` : ""} · ${f.veces} time${f.veces === 1 ? "" : "s"} · first ${hace(Date.parse(f.primero) / 1000)} ago, last ${hace(Date.parse(f.ultimo) / 1000)} ago`),
-        el("pre", "traza", traza ?? "Reading the traceback…"));
+        el("p", "nota", `${f.fichero ?? "(no file)"}${f.linea ? `:${f.linea}` : ""} · ${f.veces} time${f.veces === 1 ? "" : "s"} · first ${hace(Date.parse(f.primero) / 1000)} ago, last ${hace(Date.parse(f.ultimo) / 1000)} ago`));
+      // Arreglado o no: lo dice, y se marca (o se reabre) a mano. Vuelve solo si salta otra vez.
+      const b64clave = btoa(String.fromCharCode(...new TextEncoder().encode(claveDeFallo(f))));
+      const marca = el("div", "marca-fallo");
+      if (f.estado === "arreglado") {
+        marca.append(el("span", "bien", "✔ Marked as fixed: it comes back if it fails again. "),
+          boton("Reopen", () => void orden(["reabrir", b64clave], "Reopening…", () => `Reopened: ${f.tipo} in ${f.repo}`)));
+      } else {
+        if (f.estado === "quizas") {
+          marca.append(el("span", "bien", f.desaparecido ? `✔? Probably fixed: ${f.fichero} doesn't exist any more. `
+            : `✔? Probably fixed: ${f.fichero} changed ${hace(Date.parse(f.tocado ?? "") / 1000)} ago, after the last time it failed. `));
+        }
+        marca.append(boton("Mark as fixed", () => void orden(["arreglado", b64clave], "Marking as fixed…", () => `Marked as fixed: ${f.tipo} in ${f.repo} (it comes back if it fails again)`)));
+      }
+      detalle.append(marca, el("pre", "traza", traza ?? "Reading the traceback…"));
       const listos = /** @type {Proveedor[]} */ (["claude", "codex", "gemini"]).filter((id) => estado?.cuentas[id]?.sesion);
       if (!listos.includes(proveedor) && listos.length) proveedor = listos[0];
       const provs = el("div", "proveedores");
@@ -330,7 +433,7 @@ export function crearMaestra(panel, orquestador, alEstado, alCerrar, regenerar) 
         fila.append(el("span", "hora", new Date(e.ts).toTimeString().slice(0, 5)), el("span", "icono", ICONOS[e.tipo] ?? "·"),
           el("span", "repo", e.repo), el("span", "texto", e.texto));
         // Un fallo lleva a su traza; un agente, a la lista de agentes.
-        if (e.tipo === "fallo") {
+        if (e.tipo === "fallo" || e.tipo === "arreglado") {
           fila.classList.add("enlace");
           fila.addEventListener("click", () => { fallo = (estado?.fallos ?? []).find((f) => f.id === e.ref) ?? null; pestana = "errores"; pintar(); });
         } else if (e.tipo.startsWith("agente")) {
@@ -348,14 +451,14 @@ export function crearMaestra(panel, orquestador, alEstado, alCerrar, regenerar) 
     cabeza.append(el("h2", undefined, "Master console"));
     const pestanas = el("div", "pestanas");
     const recientes = (estado?.fallos ?? []).filter((f) => fuerzaDeFallo(f, Date.now()) > 0).length;
-    for (const [id, nombre] of /** @type {const} */ ([["cuentas", "Accounts"], ["repos", "Repos"], ["agentes", "Agents"], ["errores", "Errors"], ["actividad", "Activity"]])) {
+    for (const [id, nombre] of /** @type {const} */ ([["cuentas", "Accounts"], ["repos", "Repos"], ["mapas", "Maps"], ["agentes", "Agents"], ["errores", "Errors"], ["actividad", "Activity"]])) {
       const etiqueta = id === "errores" && recientes ? `Errors (${recientes})` : nombre;
       pestanas.append(boton(etiqueta, () => { pestana = id; pintar(); }, `${pestana === id ? "activa" : ""}${id === "errores" && recientes ? " con-fallos" : ""}`.trim() || undefined));
     }
     cabeza.append(pestanas, boton("Refresh", () => { mensaje = "Refreshing…"; pintar(); void refrescar().then(() => { mensaje = ""; pintar(); }); }), boton("Close (Esc)", () => cerrar()));
     const cuerpo = el("div", "cuerpo");
     cuerpo.append(!estado ? el("p", "nota", mensaje || "Reading accounts and repos…")
-      : pestana === "cuentas" ? cuentas() : pestana === "repos" ? repos() : pestana === "errores" ? errores()
+      : pestana === "cuentas" ? cuentas() : pestana === "repos" ? repos() : pestana === "mapas" ? mapas() : pestana === "errores" ? errores()
       : pestana === "actividad" ? actividad() : agentes());
     const pie = el("p", "mensaje", mensaje);
     panel.replaceChildren(cabeza, cuerpo, pie);
@@ -369,14 +472,34 @@ export function crearMaestra(panel, orquestador, alEstado, alCerrar, regenerar) 
 
   return {
     get abierto() { return !panel.hidden; },
-    /** @param {string} [en] la pestaña: "cuentas", "repos", "agentes" o "errores" */
+    /** @param {string} [en] la pestaña: "cuentas", "repos", "mapas", "agentes", "errores" o "actividad" */
     abrir(en) {
-      if (en === "cuentas" || en === "repos" || en === "agentes" || en === "errores" || en === "actividad") pestana = en;
+      if (en === "cuentas" || en === "repos" || en === "mapas" || en === "agentes" || en === "errores" || en === "actividad") pestana = en;
       panel.hidden = false;
       pintar();
       void refrescar();
     },
     cerrar,
     refrescar,
+    /** Una isla acabó de regenerarse (evento del puente): se marca en la pestaña Maps. @param {{repo: string, ok: boolean, texto: string}} m */
+    islaHecha(m) {
+      obras.set(m.repo, { estado: m.ok ? "ok" : "salto", texto: m.texto });
+      if (!panel.hidden && pestana === "mapas") pintar();
+    },
+    /** Acabó la regeneración entera (y el mundo ya releyó los grafos). @param {boolean} ok @param {string} resumen */
+    grafosHechos(ok, resumen) {
+      let quedaban = 0;
+      for (const [n, o] of obras) if (o.estado === "cola") { quedaban++; obras.set(n, { estado: "error", texto: ok ? "not rebuilt" : resumen }); }
+      // Cuántos salieron con grafo de gb y cuántos se quedan en carpetas (y por qué, en su fila).
+      const hay = new Map((islas?.() ?? []).map((g) => [g.nombre, g]));
+      const hechos = [...obras.keys()].filter((n) => obras.get(n)?.estado === "ok");
+      const sinCodigo = hechos.filter((n) => hay.get(n)?.sinCodigo).length;
+      const graficos = hechos.filter((n) => hay.get(n)?.fuente === "gb").length;
+      if (obras.size) {
+        mensaje = !ok ? `Building failed: ${resumen}`
+          : `Done: ${graficos} dependency graph${graficos === 1 ? "" : "s"}${sinCodigo ? ` · ${sinCodigo} with no code for galaxy-brain (their map is the folder tree)` : ""}${quedaban ? ` · ${quedaban} not rebuilt` : ""}`;
+      }
+      if (!panel.hidden) pintar();
+    },
   };
 }

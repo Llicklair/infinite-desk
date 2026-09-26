@@ -7,9 +7,37 @@
 
 /**
  * @typedef {{id: string, repo: string, tipo: string, mensaje: string, fichero: string | null, linea: number | null,
- *   veces: number, ultimo: string, primero: string}} Fallo
- *   `id`: el de su última captura (para `gb show`); `fichero`: relativo al repo, con "/"
+ *   veces: number, ultimo: string, primero: string, tocado?: string, desaparecido?: boolean, estado?: EstadoFallo}} Fallo
+ *   `id`: el de su última captura (para `gb show`); `fichero`: relativo al repo, con "/";
+ *   `tocado`: la última vez que cambió su fichero (ISO: su último commit o, si git no lo sigue, cuándo se
+ *   guardó); `desaparecido`: su fichero ya no existe; `estado`: lo pone el orquestador (estadoDeFallo)
+ * @typedef {"abierto" | "arreglado" | "quizas"} EstadoFallo
  */
+
+/**
+ * Quién es un fallo entre capturas (el id cambia con cada una): su repo, su tipo y dónde salta. El
+ * mensaje no: suele llevar valores que cambian ("name 'x' is not defined").
+ * @param {Fallo} f
+ */
+export function claveDeFallo(f) {
+  return `${f.repo}|${f.tipo}|${f.fichero ?? ""}|${f.linea ?? ""}`;
+}
+
+/**
+ * ¿Sigue abierto? "arreglado": se marcó (a mano) y no ha vuelto a saltar desde entonces; "quizas":
+ * su fichero cambió después de la última vez que saltó, o ya no existe. Si vuelve a saltar, abierto otra
+ * vez: lo que sigue roto no se esconde (uso real: "si arreglamos los errores, ¿dejan de aparecer?").
+ * @param {Fallo} f
+ * @param {Record<string, string>} marcados clave -> `ultimo` del fallo cuando se marcó
+ * @returns {EstadoFallo}
+ */
+export function estadoDeFallo(f, marcados) {
+  const marcado = marcados[claveDeFallo(f)];
+  const ultimo = Date.parse(f.ultimo);
+  if (marcado && !(ultimo > Date.parse(marcado))) return "arreglado";
+  if (f.desaparecido || (f.tocado && Date.parse(f.tocado) > ultimo)) return "quizas";
+  return "abierto";
+}
 
 /** @param {string} ruta */
 const normal = (ruta) => ruta.replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
@@ -93,10 +121,11 @@ export function nodoDeFichero(fichero, ids) {
 
 /**
  * Cuánto pesa un fallo para pintarlo (0..1): reciente y repetido, más. Pasada una semana sin
- * repetirse, nada: ya no se enseña en la isla (sigue en la consola).
+ * repetirse, o arreglado, nada: ya no se enseña en la isla (sigue en la consola).
  * @param {Fallo} f @param {number} ahora ms
  */
 export function fuerzaDeFallo(f, ahora) {
+  if (f.estado && f.estado !== "abierto") return 0; // arreglado (o su fichero cambió después): ni rojo ni cuenta
   const dias = (ahora - Date.parse(f.ultimo)) / 86400000;
   if (!(dias >= 0) || dias > 7) return dias < 0 ? 1 : 0;
   return Math.min(1, (1 - dias / 7) * (0.5 + Math.min(f.veces, 20) / 40));

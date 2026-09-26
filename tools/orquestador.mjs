@@ -13,16 +13,17 @@
 // Los repos se nombran por su carpeta y tienen que estar en la carpeta de proyectos: quien llama
 // no elige rutas. Los agentes, uno por repo, con tools/agente.mjs en segundo plano.
 import { execFile, spawn } from "node:child_process";
-import { existsSync, lstatSync, rmSync, rmdirSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, rmSync, rmdirSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { PROVEEDORES, esProveedor, estadoDeGit, nombreDeAgente, usoPorProveedor } from "../src/orquesta.js";
-import { fallosDeRepos, trazaLegible } from "../src/fallos.js";
+import { claveDeFallo, estadoDeFallo, fallosDeRepos, trazaLegible } from "../src/fallos.js";
 import { FORMATO_LOG, commitsDeLog, fallosNuevos } from "../src/actividad.js";
 import { carpetaDeProyectos, reposEn } from "./proyectos.mjs";
-import { ENLAZADAS, WORKTREES, anotar, fichaDeAgente, guardarVistos, leerActividad, leerAgentes, leerVistos } from "./orquestador-datos.mjs";
+import { buscarGb } from "./gb.mjs";
+import { ENLAZADAS, WORKTREES, anotar, fichaDeAgente, guardarArreglados, guardarVistos, leerActividad, leerAgentes, leerArreglados, leerVistos } from "./orquestador-datos.mjs";
 
 const aqui = dirname(fileURLToPath(import.meta.url));
 const WIN = process.platform === "win32";
@@ -42,6 +43,15 @@ async function correr(programa, args, op = {}) {
     const err = /** @type {any} */ (e);
     return { ok: false, salida: `${err.stdout ?? ""}${err.stderr ?? ""}${err.code === "ENOENT" ? "not installed" : ""}` || String(err.message) };
   }
+}
+
+/**
+ * gb, esté donde esté (tools/gb.mjs: en una máquina limpia no suele estar en el PATH).
+ * @param {string[]} args @param {{cwd?: string, ms?: number}} [op]
+ */
+async function correrGb(args, op = {}) {
+  const gb = buscarGb().orden;
+  return gb ? correr(gb[0], [...gb.slice(1), ...args], op) : { ok: false, salida: "not installed" };
 }
 
 /** Los repos de la carpeta de proyectos, por nombre. */
@@ -83,17 +93,33 @@ async function cuentas() {
 
 /** Los fallos que galaxy-brain ha capturado en tus repos (sin gb, ninguno). */
 async function fallos() {
-  const r = await correr("gb", ["list", "--json", "--all", "-n", "200"], { ms: 30000 });
+  const r = await correrGb(["list", "--json", "--all", "-n", "200"], { ms: 30000 });
   if (!r.ok) return [];
   try {
-    return fallosDeRepos(JSON.parse(r.salida.slice(r.salida.indexOf("["))), [...repos()].map(([nombre, ruta]) => ({ nombre, ruta })));
+    const todos = repos();
+    const lista = fallosDeRepos(JSON.parse(r.salida.slice(r.salida.indexOf("["))), [...todos].map(([nombre, ruta]) => ({ nombre, ruta })));
+    // Cuándo cambió por última vez el fichero de cada uno: su último commit, o si git no lo sigue (un
+    // .scratch/, el worktree de un agente) cuándo se guardó; si ya no existe, desaparecido. Cambiado
+    // después de la última vez que saltó: "quizás arreglado". Lo marcado a mano, arreglado hasta que vuelva a saltar.
+    const marcados = leerArreglados();
+    await Promise.all(lista.map(async (f) => {
+      const ruta = todos.get(f.repo);
+      if (f.fichero && ruta) {
+        const log = await correr("git", ["log", "-1", "--format=%cI", "--", f.fichero], { cwd: ruta });
+        if (log.ok && log.salida.trim()) f.tocado = log.salida.trim();
+        else if (!existsSync(join(ruta, f.fichero))) f.desaparecido = true;
+        else f.tocado = statSync(join(ruta, f.fichero)).mtime.toISOString();
+      }
+      f.estado = estadoDeFallo(f, marcados);
+    }));
+    return lista;
   } catch { return []; }
 }
 
 /** La traza de un fallo (`gb show`), legible y sin variables locales. @param {string} id */
 async function traza(id) {
   if (!/^[\w.-]+$/.test(id ?? "")) throw new Error("bad id");
-  const r = await correr("gb", ["show", id, "--json", "--all"], { ms: 30000 });
+  const r = await correrGb(["show", id, "--json", "--all"], { ms: 30000 });
   if (!r.ok) throw new Error(r.salida.trim().split("\n")[0] || "gb show failed");
   return { id, traza: trazaLegible(JSON.parse(r.salida.slice(r.salida.indexOf("{")))) };
 }
@@ -118,7 +144,7 @@ async function python() {
 
 /** ¿Está galaxy-brain? Su versión, desde dónde (tu carpeta o pip) y con qué Python. */
 async function galaxyBrain() {
-  const [gb, py] = await Promise.all([correr("gb", ["--version"]), python()]);
+  const [gb, py] = await Promise.all([correrGb(["--version"]), python()]);
   const version = /galaxy-brain\s+(\S+)/.exec(gb.salida)?.[1];
   let origen;
   if (py) {
@@ -127,7 +153,7 @@ async function galaxyBrain() {
   }
   const [mayor, menor] = (py?.version ?? "0.0").split(".").map(Number);
   return {
-    instalado: gb.ok && Boolean(version), version, origen, python: py?.version ?? null,
+    instalado: gb.ok && Boolean(version), version, origen, python: py?.version ?? null, ruta: buscarGb().como,
     // Con Python < 3.12, gb no lee la sintaxis nueva de Python (def f[T], medido en invest-ll).
     avisoPython: py && (mayor < 3 || (mayor === 3 && menor < 12)) ? `Python ${py.version}: repos using Python 3.12+ syntax may not parse` : null,
     local: repos().get("galaxy-brain") ?? null,
@@ -144,10 +170,27 @@ async function instalarGb() {
   const args = [...py.pre, "-m", "pip", "install", "--upgrade", ...(WIN ? [] : ["--user"]), ...desde];
   const r = await correr(py.cmd, args, { ms: 10 * 60000 });
   if (!r.ok) throw new Error(`pip failed: ${r.salida.trim().split("\n").slice(-2).join(" ").slice(0, 300)}`);
+  buscarGb({ otraVez: true }); // recién instalado: no hace falta que esté en el PATH, se busca donde lo dejó pip
   const gb = await galaxyBrain();
-  if (!gb.instalado) throw new Error("installed, but `gb` isn't on the PATH yet: open a new terminal (or add Python's Scripts folder to the PATH)");
+  if (!gb.instalado) throw new Error(`pip says it installed, but gb doesn't answer (${buscarGb().como})`);
   anotar([{ ts: new Date().toISOString(), tipo: "instalacion", repo: "galaxy-brain", texto: `galaxy-brain ${gb.version} installed (${desde[0] === "-e" ? "editable, from your folder" : "from GitHub"})` }]);
   return gb;
+}
+
+/**
+ * Marca un fallo como arreglado (o lo reabre). Se guarda con la fecha de su última captura: si
+ * vuelve a saltar después, está abierto otra vez.
+ * @param {string} b64 su clave (claveDeFallo), en base64 @param {boolean} si
+ */
+async function marcarArreglado(b64, si) {
+  const clave = Buffer.from(String(b64 ?? ""), "base64").toString("utf8");
+  const f = (await fallos()).find((x) => claveDeFallo(x) === clave);
+  if (!f) throw new Error("that error isn't in galaxy-brain's list any more");
+  const marcados = leerArreglados();
+  if (si) marcados[clave] = f.ultimo; else delete marcados[clave];
+  guardarArreglados(marcados);
+  anotar([{ ts: new Date().toISOString(), tipo: si ? "arreglado" : "fallo", repo: f.repo, texto: `${si ? "marked as fixed" : "reopened"}: ${f.tipo} (${f.fichero ?? "?"}${f.linea ? `:${f.linea}` : ""})`, ref: f.id }]);
+  return { clave, estado: si ? "arreglado" : estadoDeFallo(f, marcados) };
 }
 
 async function estado() {
@@ -279,6 +322,8 @@ try {
     : orden === "abrir" ? abrir(resto[0])
     : orden === "traza" ? await traza(resto[0])
     : orden === "instalarGb" ? await instalarGb()
+    : orden === "arreglado" ? await marcarArreglado(resto[0], true)
+    : orden === "reabrir" ? await marcarArreglado(resto[0], false)
     : (() => { throw new Error(`unknown order: ${orden ?? "(none)"}`); })();
   process.stdout.write(`${JSON.stringify({ ok: true, r })}\n`);
 } catch (e) {

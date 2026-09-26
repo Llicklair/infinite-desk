@@ -74,3 +74,27 @@ test("tarea de arreglo: qué, dónde, cuántas veces, la traza y cómo trabajar"
   assert.match(t, /TRAZA/);
   assert.match(t, /smallest correct fix/);
 });
+
+test("arreglado: la clave no depende del id ni del mensaje (cambian con cada captura)", async () => {
+  const { claveDeFallo } = await import("../src/fallos.js");
+  const f = { id: "a1", repo: "gb", tipo: "NameError", mensaje: "name 'x' is not defined", fichero: "cli.py", linea: 10, veces: 1, ultimo: "2026-09-20T10:00:00Z", primero: "2026-09-20T10:00:00Z" };
+  assert.equal(claveDeFallo(f), claveDeFallo({ ...f, id: "b2", mensaje: "name 'y' is not defined" }));
+  assert.notEqual(claveDeFallo(f), claveDeFallo({ ...f, linea: 11 }));
+});
+
+test("arreglado: a mano hasta que vuelve a saltar; con commit en su fichero después, quizás; si no, abierto", async () => {
+  const { claveDeFallo, estadoDeFallo, fuerzaDeFallo } = await import("../src/fallos.js");
+  const f = { id: "a1", repo: "gb", tipo: "NameError", mensaje: "m", fichero: "cli.py", linea: 10, veces: 3, ultimo: "2026-09-20T10:00:00Z", primero: "2026-09-19T10:00:00Z" };
+  const marcados = { [claveDeFallo(f)]: f.ultimo };
+  assert.equal(estadoDeFallo(f, {}), "abierto");
+  assert.equal(estadoDeFallo(f, marcados), "arreglado");
+  assert.equal(estadoDeFallo({ ...f, ultimo: "2026-09-21T10:00:00Z" }, marcados), "abierto", "saltó otra vez después de marcarlo");
+  assert.equal(estadoDeFallo({ ...f, tocado: "2026-09-20T13:00:00+02:00" }, {}), "quizas");
+  assert.equal(estadoDeFallo({ ...f, tocado: "2026-09-20T12:00:00+02:00" }, {}), "abierto", "a la vez (otra zona horaria) no es después");
+  assert.equal(estadoDeFallo({ ...f, desaparecido: true }, {}), "quizas", "su fichero ya no existe (un worktree borrado)");
+  assert.equal(estadoDeFallo({ ...f, tocado: "2026-09-19T12:00:00Z" }, {}), "abierto", "el commit es de antes del fallo");
+  const ahora = Date.parse("2026-09-20T12:00:00Z");
+  assert.ok(fuerzaDeFallo(f, ahora) > 0);
+  assert.equal(fuerzaDeFallo({ ...f, estado: "arreglado" }, ahora), 0);
+  assert.equal(fuerzaDeFallo({ ...f, estado: "quizas" }, ahora), 0);
+});

@@ -119,3 +119,29 @@ export function fusionarGrafos(viejos, nuevos, orden) {
   const pos = new Map(orden.map((n, i) => [n, i]));
   return [...porNombre.values()].sort((a, b) => (pos.get(a.nombre) ?? Infinity) - (pos.get(b.nombre) ?? Infinity));
 }
+
+/** Cómo se llama cada tipo de fichero para una persona (lo demás, su extensión en mayúsculas). */
+const TIPOS = /** @type {Record<string, string>} */ ({
+  html: "HTML", htm: "HTML", md: "Markdown", markdown: "Markdown", mdx: "Markdown", json: "JSON", yml: "YAML", yaml: "YAML",
+  css: "CSS", scss: "CSS", txt: "text", png: "images", jpg: "images", jpeg: "images", gif: "images", svg: "images", webp: "images", ico: "images",
+  pdf: "PDF", csv: "CSV", xml: "XML", toml: "TOML",
+});
+
+/**
+ * Qué hay en un repo, por tipo de fichero y de más a menos: "3 HTML · 2 images". Para decir por qué
+ * galaxy-brain no le hace mapa (solo lee código) en vez de un "0 módulos" que no explica nada.
+ * @param {string[]} ficheros rutas relativas @param {number} [tope] cuántos tipos como mucho
+ */
+export function queHay(ficheros, tope = 4) {
+  /** @type {Map<string, number>} */
+  const cuenta = new Map();
+  for (const f of ficheros) {
+    const nombre = f.split("/").pop() ?? "";
+    const punto = nombre.lastIndexOf(".");
+    if (punto <= 0) continue; // LICENSE, .gitignore: no dicen de qué va el repo
+    const ext = nombre.slice(punto + 1).toLowerCase();
+    const tipo = TIPOS[ext] ?? ext.toUpperCase();
+    cuenta.set(tipo, (cuenta.get(tipo) ?? 0) + 1);
+  }
+  return [...cuenta].sort((a, b) => b[1] - a[1]).slice(0, tope).map(([t, n]) => `${n} ${t}`).join(" · ");
+}

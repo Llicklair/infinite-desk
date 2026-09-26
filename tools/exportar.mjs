@@ -9,10 +9,11 @@ import { promisify } from "node:util";
 import { existsSync, readFileSync, readdirSync, renameSync, writeFileSync } from "node:fs";
 import { resolve, dirname, join, basename, relative } from "node:path";
 import { fileURLToPath } from "node:url";
-import { desdeCarpetas, desdeGbGraph, fusionarGrafos } from "../src/datos.js";
+import { desdeCarpetas, desdeGbGraph, fusionarGrafos, queHay } from "../src/datos.js";
 import { disponer } from "../src/disposicion.js";
 import { resumenDeReadme } from "../src/noticias.js";
 import { carpetaDeProyectos, reposEn } from "./proyectos.mjs";
+import { buscarGb } from "./gb.mjs";
 
 const aqui = dirname(fileURLToPath(import.meta.url));
 const proyecto = resolve(aqui, "..");
@@ -33,6 +34,8 @@ const repos = parcial
 // Varios a la vez: gb graph de un repo grande tarda (TTS pro, ~30 s) y los demás no tienen por qué esperar.
 const A_LA_VEZ = Math.max(1, Number(process.env.GRAFOS_A_LA_VEZ) || 4);
 const correrGb = promisify(execFile);
+// Dónde está gb en esta máquina (tools/gb.mjs): en una limpia no suele estar en el PATH.
+const GB = buscarGb().orden;
 /** @type {any[]} */
 const grafos = [];
 
@@ -76,8 +79,9 @@ function resumen(repo) {
 
 /** El grafo de gb, o por qué no lo hay. @param {string} repo */
 async function deGb(repo) {
+  if (!GB) return { porque: "galaxy-brain isn't installed" };
   try {
-    const { stdout: salida } = await correrGb("gb", ["graph", "--json", repo], {
+    const { stdout: salida } = await correrGb(GB[0], [...GB.slice(1), "graph", "--json", repo], {
       encoding: "utf8",
       env: { ...process.env, PYTHONUTF8: "1" },
       maxBuffer: 256 * 1024 * 1024,
@@ -85,10 +89,15 @@ async function deGb(repo) {
       windowsHide: true,
     });
     const grafo = desdeGbGraph(JSON.parse(salida.replace(/^﻿/, "")));
-    return grafo.nodos.length >= 2 ? { grafo } : { porque: `gb ve ${grafo.nodos.length} módulo(s)` };
+    // Ninguno: el repo no tiene código que gb lea (HTML, Markdown…); se dice qué tiene, más abajo.
+    return grafo.nodos.length >= 2 ? { grafo }
+      : grafo.nodos.length === 0 ? { porque: "", sinCodigo: true }
+      : { porque: "just 1 module: too small for a dependency graph" };
   } catch (e) {
     const err = /** @type {NodeJS.ErrnoException} */ (e);
-    return { porque: err.code === "ENOENT" ? "galaxy-brain no está instalado" : `gb falló (${err.message.split("\n")[0]})` };
+    const e2 = /** @type {any} */ (err);
+    const motivo = String(e2.stderr ?? "").trim().split("\n").pop() || err.message.split("\n")[0];
+    return { porque: err.code === "ENOENT" ? "galaxy-brain isn't installed" : e2.killed ? "gb took over 2 minutes" : `gb failed: ${motivo.slice(0, 200)}` };
   }
 }
 
@@ -98,10 +107,15 @@ async function isla(repo) {
   const t0 = Date.now();
   const gb = await deGb(repo);
   let grafo = gb.grafo;
+  /** @type {string | undefined} */
+  let porque = gb.porque;
   if (!grafo) {
-    grafo = desdeCarpetas(repo, ficherosDe(repo));
+    const ficheros = ficherosDe(repo);
+    // Que la consola maestra lo diga claro: no es un fallo, es que no hay código que mapear.
+    if (gb.sinCodigo) porque = `no code for galaxy-brain here (${queHay(ficheros) || "no files"}): its map is the folder tree`;
+    grafo = desdeCarpetas(repo, ficheros);
     if (grafo.nodos.length < 2) {
-      console.log(`  salto  ${nombre}: ${gb.porque} y no tiene ficheros que dibujar`);
+      console.log(`  salto  ${nombre}: ${porque} y no tiene ficheros que dibujar`);
       return;
     }
   }
@@ -109,9 +123,11 @@ async function isla(repo) {
   // Con gb, también el árbol de carpetas: la tecla T alterna entre los dos en el mundo.
   const carpetas = grafo.fuente === "gb" ? desdeCarpetas(repo, ficherosDe(repo)) : null;
   const alt = carpetas && carpetas.nodos.length >= 2 ? { ...carpetas, posiciones: disponer(carpetas) } : undefined;
-  grafos.push({ nombre, ...grafo, posiciones, alt, ultimoCommit: ultimoCommit(repo), resumen: resumen(repo) });
+  // `generado` y `porque` (por qué es árbol de carpetas): la pestaña Maps de la consola maestra.
+  grafos.push({ nombre, ...grafo, posiciones, alt, ultimoCommit: ultimoCommit(repo), resumen: resumen(repo),
+    generado: Math.floor(Date.now() / 1000), ...(grafo.fuente === "carpetas" ? { porque, ...(gb.sinCodigo ? { sinCodigo: true } : {}) } : {}) });
   const que = grafo.fuente === "carpetas"
-    ? `${grafo.nodos.length} carpetas y ficheros (sin gb: ${gb.porque})`
+    ? `${grafo.nodos.length} carpetas y ficheros (sin gb: ${porque})`
     : `${grafo.nodos.length} módulos, ${grafo.aristas.length} aristas, ${grafo.ciclos} ciclos`;
   console.log(`  isla   ${nombre}: ${que} (${Date.now() - t0} ms)`);
 }

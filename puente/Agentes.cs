@@ -100,8 +100,10 @@ sealed class Agentes(string mundo, Func<object, Task> difundir)
         await uno.WaitAsync();
         try
         {
-            var psi = new ProcessStartInfo("gb") { UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true };
-            foreach (var a in new[] { "who", "--json", raiz }) psi.ArgumentList.Add(a);
+            // Donde lo encontró tools/gb.mjs: en una máquina limpia gb no suele estar en el PATH.
+            var gb = Proyectos.Gb(Path.GetDirectoryName(Path.TrimEndingDirectorySeparator(Path.GetFullPath(mundo)))!);
+            var psi = new ProcessStartInfo(gb[0]) { UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true };
+            foreach (var a in gb.Skip(1).Concat(["who", "--json", raiz])) psi.ArgumentList.Add(a);
             psi.Environment["PYTHONUTF8"] = "1";
             using var p = Process.Start(psi)!;
             var salida = await p.StandardOutput.ReadToEndAsync();

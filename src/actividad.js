@@ -5,20 +5,20 @@
 // vuelca la historia entera: solo lo que pasa desde entonces.
 
 /**
- * @typedef {"agente" | "agente-hecho" | "agente-fallo" | "agente-descartado" | "commit" | "fallo" | "pull" | "instalacion"} TipoEvento
+ * @typedef {"agente" | "agente-hecho" | "agente-fallo" | "agente-descartado" | "commit" | "fallo" | "arreglado" | "pull" | "instalacion"} TipoEvento
  * @typedef {{ts: string, tipo: TipoEvento, repo: string, texto: string, ref?: string}} Evento
  *   `ts`: ISO; `texto`: lo que se lee; `ref`: el id del agente, del fallo o del commit
  */
 
 export const ICONOS = /** @type {Record<TipoEvento, string>} */ ({
-  agente: "🤖", "agente-hecho": "✅", "agente-fallo": "✗", "agente-descartado": "🗑", commit: "⎇", fallo: "⚠", pull: "⇣", instalacion: "📦",
+  agente: "🤖", "agente-hecho": "✅", "agente-fallo": "✗", "agente-descartado": "🗑", commit: "⎇", fallo: "⚠", arreglado: "✔", pull: "⇣", instalacion: "📦",
 });
 
 /** Los grupos de tipos para filtrar (la pestaña Activity). */
 export const GRUPOS = /** @type {const} */ ({
   agentes: ["agente", "agente-hecho", "agente-fallo", "agente-descartado"],
   commits: ["commit"],
-  fallos: ["fallo"],
+  fallos: ["fallo", "arreglado"],
   pulls: ["pull", "instalacion"],
 });
 
