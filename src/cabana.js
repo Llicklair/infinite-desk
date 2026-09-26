@@ -11,12 +11,59 @@ import { madera as texMadera, piedra as texPiedra, tejas as texTejas, tela as te
 
 /** @typedef {import("./andar.js").Caja} Caja */
 /**
- * @typedef {{objeto: THREE.Object3D, texto: () => string, accion: (z: Acciones) => void}} Interactivo
+ * @typedef {{objeto: THREE.Object3D, texto: () => string, accion: (z: Acciones) => void, asiento?: boolean}} Interactivo
+ *   `asiento`: se sienta uno en él (también con la taza en la mano)
  * @typedef {{sentarse: (pos: THREE.Vector3, mirar: THREE.Vector3) => void, avisar: (t: string) => void, sonar: (que: "chispa" | "sorbo" | "puerta") => void}} Acciones
  *   lo que la zona pone a disposición de los objetos (posiciones en coordenadas de la zona)
  */
 
 const SUELO = 0.5; // la altura del suelo de dentro sobre el terreno
+
+const RUIDO_GLSL = /* glsl */ `
+  float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+  float ruido(vec2 p) {
+    vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+    return mix(mix(hash(i), hash(i + vec2(1, 0)), f.x), mix(hash(i + vec2(0, 1)), hash(i + vec2(1, 1)), f.x), f.y);
+  }
+  float fbm(vec2 p) { float v = 0.0, a = 0.5; for (int i = 0; i < 4; i++) { v += a * ruido(p); p *= 2.03; a *= 0.5; } return v; }`;
+const LLAMA_VERTICE = /* glsl */ `
+  varying vec2 vUv;
+  void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`;
+const LLAMA_FRAGMENTO = /* glsl */ `
+  uniform float uTiempo, uAvivado, uSemilla;
+  varying vec2 vUv;
+  ${RUIDO_GLSL}
+  void main() {
+    vec2 uv = vUv;
+    // El ruido sube (la llama "corre" hacia arriba) y tuerce más cuanto más alto.
+    float n = fbm(vec2(uv.x * 3.0 + uSemilla, uv.y * 2.6 - uTiempo * 2.4));
+    float x = (uv.x - 0.5) * 2.0 + (n - 0.5) * 0.9 * uv.y;
+    float alto = 0.72 + uAvivado * 0.25;
+    // Forma de lágrima: ancha abajo, en punta arriba, con la base suave.
+    float ancho = (1.0 - smoothstep(0.0, alto, uv.y)) * 0.75 + 0.05;
+    float forma = (1.0 - smoothstep(ancho * 0.45, ancho, abs(x))) * smoothstep(0.0, 0.1, uv.y);
+    float calor = clamp(forma * (1.15 - uv.y / alto) + (n - 0.45) * 0.5 * forma, 0.0, 1.0);
+    vec3 c = mix(vec3(0.75, 0.12, 0.02), vec3(1.0, 0.5, 0.08), smoothstep(0.1, 0.45, calor));
+    c = mix(c, vec3(1.0, 0.9, 0.55), smoothstep(0.55, 0.95, calor));
+    float a = smoothstep(0.03, 0.3, calor);
+    gl_FragColor = vec4(c * a * 1.5, a);
+  }`;
+const BRASAS_VERTICE = /* glsl */ `
+  varying vec3 vPos;
+  void main() { vPos = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`;
+const BRASAS_FRAGMENTO = /* glsl */ `
+  uniform float uTiempo, uAvivado;
+  varying vec3 vPos;
+  ${RUIDO_GLSL}
+  void main() {
+    // Carbones: celdas de ruido fino; las grietas entre ellos, oscuras; lo de dentro, respirando.
+    float n = fbm(vPos.xz * 9.0 + vec2(0.0, uTiempo * 0.15));
+    float pulso = 0.75 + 0.25 * sin(uTiempo * 1.3 + n * 9.0) + uAvivado * 0.4;
+    float brillo = smoothstep(0.35, 0.8, n) * pulso;
+    vec3 c = mix(vec3(0.08, 0.03, 0.02), vec3(0.9, 0.18, 0.03), brillo);
+    c = mix(c, vec3(1.0, 0.6, 0.15), smoothstep(0.75, 1.1, brillo));
+    gl_FragColor = vec4(c, 1.0);
+  }`;
 const ALTO = 3; // de las paredes
 const ANCHO = 7, FONDO = 6;
 
@@ -223,31 +270,72 @@ export function crearCabana(donde) {
   pieza(caja(2.4, 1.7, 0.7, 0.08), piedra, chimeneaX, SUELO + 0.85, zc);
   pieza(caja(2.7, 0.18, 0.85, 0.05), maderaOscura, chimeneaX, SUELO + 1.75, zc + 0.05); // la repisa
   solido(chimeneaX - 1.2, chimeneaX + 1.2, SUELO, SUELO + 1.7, -zf, zc + 0.35);
-  const hueco = new THREE.Mesh(caja(1.3, 0.9, 0.12, 0.04), new THREE.MeshBasicMaterial({ color: "#1b120d" }));
-  hueco.position.set(chimeneaX, SUELO + 0.55, zc + 0.3);
+  // El marco de la boca: dos jambas y un dintel de madera, y delante el hogar, una losa de piedra.
+  for (const dx of [-0.78, 0.78]) pieza(caja(0.3, 1.15, 0.22, 0.05), piedra, chimeneaX + dx, SUELO + 0.575, zc + 0.42);
+  pieza(caja(1.95, 0.24, 0.26, 0.05), maderaOscura, chimeneaX, SUELO + 1.24, zc + 0.43);
+  pieza(caja(2.3, 0.1, 0.8, 0.04), piedra, chimeneaX, SUELO + 0.05, zc + 0.7);
+  solido(chimeneaX - 0.7, chimeneaX + 0.7, SUELO, SUELO + 0.6, zc + 0.35, zc + 0.95); // no se anda por el fuego
+  // El fondo de la boca: hollín, y el resplandor del fuego en él (más cuanto más arde).
+  const matHueco = new THREE.MeshStandardMaterial({ color: "#120b07", roughness: 1, emissive: "#ff5a1a", emissiveIntensity: 0.05 });
+  const hueco = new THREE.Mesh(caja(1.3, 1.0, 0.1, 0.03), matHueco);
+  hueco.position.set(chimeneaX, SUELO + 0.6, zc + 0.33);
   grupo.add(hueco);
-  for (const dx of [-0.25, 0.2]) {
-    const tronco = pieza(new THREE.CylinderGeometry(0.08, 0.08, 0.9, 8), maderaOscura, chimeneaX + dx, SUELO + 0.2, zc + 0.36);
-    tronco.rotation.z = Math.PI / 2;
-    tronco.rotation.y = dx * 1.5;
+  // La leña: cuatro troncos en cruz sobre la cama de brasas; la corteza oscura, el corte brillando.
+  const corteza = new THREE.MeshStandardMaterial({ color: "#3b2619", roughness: 1, emissive: "#ff4a10", emissiveIntensity: 0 });
+  const troncos = new THREE.Group();
+  troncos.position.set(chimeneaX, SUELO + 0.1, zc + 0.62);
+  grupo.add(troncos);
+  for (const [giro, alto, dx] of [[0.35, 0.1, -0.05], [-0.4, 0.1, 0.05], [1.35, 0.22, 0], [-1.2, 0.24, 0.02]]) {
+    const t = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.085, 0.75, 9), corteza);
+    t.rotation.set(0, giro, Math.PI / 2);
+    t.position.set(dx, alto, 0);
+    troncos.add(t);
   }
-  // Las llamas: conos que tiemblan, de fuera (naranja) a dentro (amarillo), sin sombra.
-  const llamas = [
-    ["#ff6a1a", 0.26, 0.7, 0], ["#ff9a2e", 0.2, 0.55, -0.18], ["#ffb740", 0.18, 0.5, 0.2], ["#ffe07a", 0.11, 0.35, 0.02],
-  ].map(([col, r, h, dx]) => {
-    const m = new THREE.Mesh(new THREE.ConeGeometry(/** @type {number} */ (r), /** @type {number} */ (h), 10), new THREE.MeshBasicMaterial({ color: /** @type {string} */ (col), transparent: true, opacity: 0.9 }));
-    m.position.set(chimeneaX + /** @type {number} */ (dx), SUELO + 0.25 + /** @type {number} */ (h) / 2, zc + 0.36);
+  // Las brasas: un montón bajo que respira (ruido que se mueve despacio, del rojo oscuro al naranja).
+  const uBrasas = { uTiempo: { value: 0 }, uAvivado: { value: 0 } };
+  const brasas = new THREE.Mesh(new THREE.SphereGeometry(0.45, 24, 10, 0, Math.PI * 2, 0, Math.PI / 2),
+    new THREE.ShaderMaterial({ uniforms: uBrasas, vertexShader: BRASAS_VERTICE, fragmentShader: BRASAS_FRAGMENTO }));
+  brasas.scale.set(1, 0.28, 0.6);
+  brasas.position.set(chimeneaX, SUELO + 0.1, zc + 0.62);
+  grupo.add(brasas);
+  // Las llamas: tres láminas cruzadas con un shader de llama (ruido que sube, forma de lágrima, del
+  // blanco del centro al rojo del borde), sumando luz. Antes eran conos lisos.
+  const uLlama = { uTiempo: { value: 0 }, uAvivado: { value: 0 } };
+  /** @type {THREE.Mesh[]} */
+  const llamas = [];
+  for (const [giro, ancho, alto, semilla] of [[0, 1.1, 1.2, 0], [Math.PI / 3, 0.85, 1.0, 3.1], [-Math.PI / 3, 0.9, 1.05, 7.3]]) {
+    const g = new THREE.PlaneGeometry(ancho, alto);
+    g.translate(0, alto / 2, 0);
+    const m = new THREE.Mesh(g, new THREE.ShaderMaterial({
+      uniforms: { ...uLlama, uSemilla: { value: semilla } }, vertexShader: LLAMA_VERTICE, fragmentShader: LLAMA_FRAGMENTO,
+      transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+    }));
+    m.position.set(chimeneaX, SUELO + 0.12, zc + 0.62);
+    m.rotation.y = giro;
+    m.renderOrder = 2;
     grupo.add(m);
-    return { m, h: /** @type {number} */ (h) };
-  });
+    llamas.push(m);
+  }
+  // Chispas: suben girando y se apagan; al avivar el fuego, salen muchas más.
+  const NCH = 48;
+  const chPos = new Float32Array(NCH * 3), chVida = new Float32Array(NCH).map((_, i) => i / NCH);
+  const chispas = new THREE.Points(new THREE.BufferGeometry().setAttribute("position", new THREE.BufferAttribute(chPos, 3)),
+    new THREE.PointsMaterial({ color: "#ffb24a", size: 0.035, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
+  chispas.position.set(chimeneaX, SUELO + 0.25, zc + 0.62);
+  chispas.frustumCulled = false;
+  grupo.add(chispas);
   const fuego = new THREE.PointLight("#ff9147", 6, 10, 1.4);
-  fuego.position.set(chimeneaX, SUELO + 0.8, zc + 0.9);
+  fuego.position.set(chimeneaX, SUELO + 0.8, zc + 1.1);
   grupo.add(fuego);
+  // Y un resplandor bajo, rojizo, en el suelo y la alfombra.
+  const rescoldo = new THREE.PointLight("#ff5a24", 1.5, 3.5, 1.8);
+  rescoldo.position.set(chimeneaX, SUELO + 0.25, zc + 0.95);
+  grupo.add(rescoldo);
   let avivado = 0;
   interactivos.push({
     objeto: hueco,
     texto: () => "E: stoke the fire",
-    accion: (a) => { avivado = 1; a.sonar("chispa"); a.avisar("The fire crackles"); },
+    accion: (a) => { avivado = 1; a.sonar("chispa"); a.avisar("You stoke the fire: it crackles and sparks fly"); },
   });
   // Una alfombra redonda, en dos tonos.
   const alfombra = new THREE.Mesh(new THREE.CircleGeometry(1.6, 40), new THREE.MeshStandardMaterial({ color: "#9b3d3a", roughness: 1 }));
@@ -273,6 +361,7 @@ export function crearCabana(donde) {
   interactivos.push({
     objeto: sillon,
     texto: () => "E: sit in the armchair",
+    asiento: true,
     accion: (a) => a.sentarse(aZona(chimeneaX + 0.2, SUELO + 1.35, 0.3), aZona(chimeneaX, SUELO + 0.9, zc)),
   });
   // La mesita, con la taza.
@@ -331,6 +420,7 @@ export function crearCabana(donde) {
   interactivos.push({
     objeto: silla,
     texto: () => "E: sit on the porch chair",
+    asiento: true,
     accion: (a) => a.sentarse(aZona(2.3, SUELO + 1.25, zf + 1.0), aZona(2.3, SUELO + 1.0, zf + 12)),
   });
   const farol = new THREE.Group();
@@ -383,11 +473,24 @@ export function crearCabana(donde) {
       avivado = Math.max(0, avivado - dt / 5);
       const baile = Math.sin(t * 13) * 0.5 + Math.sin(t * 7.3) * 0.3 + Math.sin(t * 23) * 0.2;
       fuego.intensity = (4.2 + baile * 1) * (1 + avivado * 0.8);
-      llamas.forEach((l, i) => {
-        const s = 1 + Math.sin(t * (9 + i * 3) + i) * 0.12 + avivado * 0.5;
-        l.m.scale.set(1 + Math.sin(t * 5 + i) * 0.08, s, 1);
-        l.m.position.y = SUELO + 0.25 + (l.h * s) / 2;
-      });
+      rescoldo.intensity = (1.5 + Math.sin(t * 1.7) * 0.3) * (1 + avivado * 0.5);
+      uLlama.uTiempo.value = t;
+      uLlama.uAvivado.value = avivado;
+      uBrasas.uTiempo.value = t;
+      uBrasas.uAvivado.value = avivado;
+      corteza.emissiveIntensity = 0.12 + (Math.sin(t * 2.3) * 0.5 + 0.5) * 0.1 + avivado * 0.3;
+      matHueco.emissiveIntensity = 0.06 + baile * 0.02 + avivado * 0.1;
+      llamas.forEach((l, i) => l.scale.set(1, 1 + avivado * 0.45 + Math.sin(t * (4 + i) + i) * 0.05, 1));
+      // Las chispas: cada una sube en espiral lo que dura su vida y vuelve a nacer abajo.
+      for (let i = 0; i < NCH; i++) {
+        chVida[i] += dt * (0.35 + (i % 5) * 0.06) * (1 + avivado * 1.5);
+        if (chVida[i] > 1) chVida[i] -= 1;
+        const v = chVida[i], vivas = i < NCH * (0.35 + avivado * 0.65); // pocas en calma, todas al avivarlo
+        const a = i * 2.4 + v * 5;
+        const r = 0.08 + v * 0.18;
+        chPos.set(vivas ? [Math.cos(a) * r, v * (1.1 + avivado * 0.6), Math.sin(a) * r * 0.6] : [0, -5, 0], i * 3);
+      }
+      chispas.geometry.attributes.position.needsUpdate = true;
       taza.tick(t, dt);
     },
   };

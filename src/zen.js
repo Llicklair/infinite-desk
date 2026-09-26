@@ -1150,6 +1150,7 @@ export function crearZen(escena, mundo) {
     {
       objeto: banco,
       texto: () => "E: sit on the bench",
+      asiento: true,
       accion: (a) => a.sentarse(new THREE.Vector3(-8, 2.45, R_LAGO + 6.1), new THREE.Vector3(0, 1.5, 0)),
     },
   ];
@@ -1159,12 +1160,13 @@ export function crearZen(escena, mundo) {
     avisar: (t) => mundo.avisar(t),
     sonar: (que) => (que === "chispa" ? sonido.chispa(0.14) : que === "sorbo" ? sonido.sorbo() : sonido.puerta()),
   };
-  /** Lo que se tiene delante (a mano: menos de 3,6 m), si se puede tocar. @param {THREE.Camera} camara */
+  /** Lo que se tiene delante (a mano: menos de 4,2 m), si se puede tocar. @param {THREE.Camera} camara */
   function delante(camara) {
     camara.updateMatrixWorld(); // con la de este momento, no la del último fotograma pintado
     rayo.setFromCamera(new THREE.Vector2(0, 0), camara);
     let mejor = null, distancia = Infinity;
     for (const i of interactivos) {
+      if (i.objeto === cabana.taza.grupo && cabana.taza.enMano) continue; // la de la mano no tapa lo de delante
       const h = rayo.intersectObject(i.objeto, true)[0];
       if (h && h.distance < distancia) { mejor = i; distancia = h.distance; }
     }
@@ -1214,18 +1216,31 @@ export function crearZen(escena, mundo) {
     },
     /** Lo que diría el cartel de info: qué se puede hacer con lo que se tiene delante. @param {THREE.Camera} camara */
     pista(camara) {
-      if (sentado) return "E or Space: stand up";
-      if (cabana.taza.enMano) return cabana.taza.nivel > 0.02 ? "Click: a sip · E: leave it on the table" : "Empty · E: leave it on the table to refill it";
-      return delante(camara)?.texto() ?? "";
+      const d = delante(camara);
+      const levantarse = sentado ? " · Space: stand up" : "";
+      if (cabana.taza.enMano) {
+        const sorbo = cabana.taza.nivel > 0.02 ? "Click: a sip" : "Empty";
+        if (!sentado && d?.asiento) return `${sorbo} · ${d.texto()} (with your hot chocolate)`;
+        return `${sorbo} · E: leave it on the table${cabana.taza.nivel > 0.02 ? "" : " to refill it"}${levantarse}`;
+      }
+      if (sentado) return d?.objeto === cabana.taza.grupo ? `E: take the hot chocolate${levantarse}` : "E or Space: stand up";
+      return d?.texto() ?? "";
     },
     /** E: tocar lo que se tiene delante (o levantarse, o dejar la taza). @param {THREE.Camera} camara @returns {boolean} si hizo algo */
+    // Sentarse y beber a la vez (uso real: "necesito poder sentarme y beber el chocolate"): con la
+    // taza en la mano, E sobre un asiento sienta sin soltarla; sentado, E sobre la taza la coge sin
+    // levantarse. Lo demás: con la taza, E la deja; sentado, E (o Espacio) levanta.
     interactuar(camara) {
-      if (sentado) { levantarse(); return true; }
+      const i = delante(camara);
       if (cabana.taza.enMano) {
-        mundo.avisar(cabana.taza.dejar() ? "Back on the table, and freshly refilled" : "Back on the table");
+        if (sentado || !i?.asiento) {
+          mundo.avisar(cabana.taza.dejar() ? "Back on the table, and freshly refilled" : "Back on the table");
+          return true;
+        }
+      } else if (sentado && i?.objeto !== cabana.taza.grupo) {
+        levantarse();
         return true;
       }
-      const i = delante(camara);
       if (!i) return false;
       if (i.objeto === cabana.taza.grupo) cabana.taza.coger(camara);
       i.accion(acciones);
@@ -1235,6 +1250,16 @@ export function crearZen(escena, mundo) {
         camara.lookAt(mirar.clone().add(CENTRO_ZEN));
       }
       return true;
+    },
+    /**
+     * Para las pruebas sin manos: dónde está (en la zona) lo tocable cuyo texto dice `que`.
+     * @param {string} que @returns {number[] | null}
+     */
+    dondeEsta(que) {
+      const i = interactivos.find((x) => x.texto().includes(que));
+      if (!i) return null;
+      const v = new THREE.Box3().setFromObject(i.objeto).getCenter(new THREE.Vector3()).sub(CENTRO_ZEN);
+      return [v.x, v.y, v.z];
     },
     /** Para las pruebas sin manos: el estado de lo que se toca. */
     get estado() { return { sentado: Boolean(sentado), tazaEnMano: cabana.taza.enMano, nivel: cabana.taza.nivel, pies: cuerpo.pies, enSuelo: cuerpo.enSuelo }; },

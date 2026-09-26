@@ -96,6 +96,37 @@ comprobar("click takes a sip (the level goes down)", despues < antes, `${antes} 
 await ev("__zen.zen.interactuar(__zen.camara)");
 comprobar("E leaves it on the table", !(await ev("__zen.zen.estado.tazaEnMano")), "");
 
+console.log("sit by the fire and drink");
+await ev("(() => { const l = __zen.zen.llegada(true); __zen.camara.position.copy(l.posicion); for (let i = 0; i < 60; i++) __anda(0, 0, 1); return 1; })()");
+const sillon = await ev('__zen.zen.dondeEsta("armchair")');
+const hogar = await ev('__zen.zen.dondeEsta("stoke the fire")');
+// Desde entre el fuego y el sillón (desde la puerta, la taza de la mesita tapa el sillón).
+const frenteSillon = [(sillon[0] + hogar[0]) / 2, (sillon[2] + hogar[2]) / 2];
+await ev(`__en(${frenteSillon[0]}, 3, ${frenteSillon[1]})`);
+await ev(`__mira(${sillon.join(",")})`);
+await ev("__zen.zen.interactuar(__zen.camara)");
+comprobar("E sits you in the armchair", await ev("__zen.zen.estado.sentado"), "");
+const taza = await ev('__zen.zen.dondeEsta("hot chocolate")');
+await ev(`__mira(${taza.join(",")})`);
+const pistaSentado = await ev("__zen.zen.pista(__zen.camara)");
+comprobar("sitting, aiming at the mug offers to take it", /take the hot chocolate/.test(pistaSentado), JSON.stringify(pistaSentado));
+await ev("__zen.zen.interactuar(__zen.camara)");
+comprobar("E takes the mug and you stay seated", (await ev("__zen.zen.estado.tazaEnMano")) && (await ev("__zen.zen.estado.sentado")), "");
+const antes2 = await ev("__zen.zen.estado.nivel");
+await ev("__zen.zen.clic()");
+let despues2 = antes2;
+for (let t = 0; t < 30 && despues2 >= antes2; t++) { await esp(200); despues2 = await ev("__zen.zen.estado.nivel"); }
+comprobar("seated, a click takes a sip", despues2 < antes2, `${antes2.toFixed(2)} -> ${despues2.toFixed(2)}`);
+await ev("__zen.zen.saltar()");
+comprobar("Space stands you up, mug still in hand", !(await ev("__zen.zen.estado.sentado")) && (await ev("__zen.zen.estado.tazaEnMano")), "");
+await ev(`__en(${frenteSillon[0]}, 3, ${frenteSillon[1]})`);
+await ev(`__mira(${sillon.join(",")})`);
+const pistaConTaza = await ev("__zen.zen.pista(__zen.camara)");
+await ev("__zen.zen.interactuar(__zen.camara)");
+comprobar("with the mug, E on the armchair sits you down without leaving it", (await ev("__zen.zen.estado.sentado")) && (await ev("__zen.zen.estado.tazaEnMano")), JSON.stringify(pistaConTaza));
+await ev("__zen.zen.saltar()");
+await ev("__zen.zen.interactuar(__zen.camara)");
+
 console.log(errores.length ? `JS ERRORS: ${errores.join(" | ")}` : "no JavaScript errors");
 console.log(fallos.length ? `${fallos.length} failed` : "all good");
 ws.close();
