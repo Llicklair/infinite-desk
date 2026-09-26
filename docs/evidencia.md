@@ -10,6 +10,47 @@ Cada medición real: qué se probó, qué salió, qué cambió por ello.
 
 ---
 
+## 2026-09-26 · Chispas y la consola maestra: agentes de Claude de verdad en worktrees — FUNCIONA sin manos, falta con manos
+
+**Chispas** (clic en la esfera del palantír), probado con `?vista=demo&chispas`, una ronda que se
+juega sola: racha ×10 con el marcador en "fuego", 170 puntos, el hito avisado y el palantír
+avivado. Sin errores de JavaScript.
+
+**Consola maestra.** Los proveedores son Anthropic, OpenAI y Google DeepMind (Ollama no, decisión
+del uso real). Qué dejan consultar por programa:
+
+- `claude auth status` da JSON con sesión, correo y plan (max).
+- `codex login status` dice si hay sesión.
+- Gemini CLI no está instalado.
+- `gh auth status`, la cuenta de GitHub.
+- El cupo de una suscripción no se puede leer: se cuentan los agentes y los minutos lanzados desde
+  aquí.
+
+Un agente de Claude de verdad, con una tarea inofensiva sobre infinite-desk:
+
+- En 12 s creó su worktree y su rama, escribió el fichero, su consola salió en el formato de
+  galaxy-brain y `gb who` lo listó con sus 6 líneas de consola.
+- **El commit falló**: el hook de pre-commit corre `tsc` y el worktree no tenía `node_modules`.
+  Además, la consola decía "Committed" igualmente.
+  - Arreglo, sin saltarse el hook: el agente enlaza `node_modules` y `.venv` del repo principal
+    (uniones, no copias) y el hook pasa (50 tests y gate).
+  - Si aun así no se puede commitear, lo dice y deja los cambios en el worktree.
+- **Al descartarlo, git dejó atrás la unión a `node_modules`.** Un borrado recursivo que entrara
+  por ella habría vaciado el `node_modules` real. Ahora se quita primero la unión, sin seguirla,
+  y la carpeta solo si queda vacía. Comprobado: `node_modules` intacto.
+
+Por el puente (operación `orquestador`, en segundo plano), `estado` tarda 1,3 s. Se rechazan:
+
+- una orden fuera de la lista;
+- un repo fuera de la carpeta de proyectos;
+- un proveedor que no es de los tres.
+
+Además, los envíos del puente van con un cerrojo por conexión: un WebSocket no admite dos a la
+vez, y las respuestas de fondo se cruzaban con los avisos de agentes.
+
+Sin probar con manos: lanzar desde el panel, pull en masa y Codex (sin sesión) o Gemini (sin
+instalar).
+
 ## 2026-09-26 · leer dentro del mundo: el post, el artículo, las respuestas o el README — FUNCIONA sin manos
 
 Montaje: `npm run noticias` contra las redes de verdad, y capturas con `?vista=demo&leer=N`, que

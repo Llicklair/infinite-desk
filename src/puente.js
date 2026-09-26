@@ -30,6 +30,7 @@ const REINTENTO_MS = 3000;
  *   escritorio(): Promise<import("./ficheros.js").Cosa[]>,
  *   abrir(que: {ruta?: string, especial?: "explorador" | "navegador"}): Promise<string | null>,
  *   abrirUrl(url: string): Promise<string | null>,
+ *   orquestador(args: string[]): Promise<{ok: boolean, datos?: any, error?: string}>,
  *   alAgentes(f: (m: EstadoAgentes) => void): void,
  *   alLista(f: (titulo: string) => void): void,
  * }} Puente
@@ -180,6 +181,14 @@ export function crearPuente(tituloMundo) {
     async abrir(que) {
       const r = await pedir({ op: "abrir", ...que });
       return r.ok ? null : r.error ?? "unknown error";
+    },
+    /**
+     * La consola maestra (tools/orquestador.mjs, por el puente): "estado", "accion", "lanzar",
+     * "descartar" o "abrir", con sus argumentos. Puede tardar (un pull en masa): no hay límite.
+     */
+    async orquestador(args) {
+      const r = await pedir({ op: "orquestador", args });
+      return { ok: Boolean(r.ok), datos: r.datos, error: r.error };
     },
     /** Un enlace (http/https, un titular del palantír) en una ventana nueva del navegador; el error, o null. */
     async abrirUrl(url) {

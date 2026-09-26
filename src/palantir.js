@@ -205,7 +205,10 @@ function tarjetaDeRepo(r) {
  *   círculo de islas (si no, desde la órbita era una mota en medio)
  * @returns {{
  *   objeto: THREE.Group,
+ *   esfera: THREE.Mesh,
+ *   cima: number,
  *   tarjetas: THREE.Mesh[],
+ *   avivar(): void,
  *   actualizar(noticias: Noticias | undefined, ahora: number): void,
  *   enlaceDe(s: THREE.Object3D): Enlace | null,
  *   resaltar(s: THREE.Object3D | null): void,
@@ -277,7 +280,12 @@ export function crearPalantir(escala = 1) {
 
   return {
     objeto,
+    esfera,
+    /** La altura (en el mundo) del borde de arriba del anillo de arriba: encima flota la consola maestra. */
+    cima: (ALTURA + HUECO + ALTO_TARJETA / 2) * escala,
     tarjetas,
+    /** El fuego se aviva un momento (algo nuevo, o una racha en Chispas). */
+    avivar() { uniformes.uDestello.value = 1; },
     actualizar(noticias, ahora) {
       for (const s of tarjetas) {
         s.parent?.remove(s);

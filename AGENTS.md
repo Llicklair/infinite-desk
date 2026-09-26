@@ -9,11 +9,12 @@ Alcance y criterio de terminado en [SCOPE.md](SCOPE.md); reglas en [ARCHITECTURE
 Lo de esta sección se EJECUTA, así que no puede pudrirse en silencio: si miente, falla.
 
 ```bash
-npm test                    # node --test, núcleo puro (datos, disposición, islas, vínculo, ambiente, noticias)
+npm test                    # node --test, núcleo puro (datos, disposición, islas, vínculo, ambiente, noticias, juego, orquesta)
 npm run tipos               # tsc --checkJs estricto sobre src/ y tools/
 npm run carpeta [-- ruta]   # la carpeta de proyectos de esta máquina (selector del sistema) -> infinite-desk.local.json
 npm run grafo [-- repo ...] # gb graph --json por repo -> wallpaper/grafos.js (por defecto: los repos de la carpeta de proyectos)
 npm run noticias            # lo último sobre IA en Bluesky, Reddit, HN y Mastodon + top de GitHub del mes -> wallpaper/noticias.js (el palantír; el puente lo corre cada 30 min)
+node tools/orquestador.mjs estado # la consola maestra por debajo: cuentas (Claude, Codex, Gemini, gh), repos y agentes (también accion/lanzar/descartar/abrir)
 npm run build               # esbuild -> wallpaper/infinite-desk.js (script clásico, sin módulos)
 npm run terminado           # todo lo anterior + tools/comprobar.mjs + tools/humo.mjs (el mundo corre sin errores de JS): el criterio
 npm run mundo               # servidor en localhost (solo si el navegador no captura desde file://)
@@ -28,7 +29,9 @@ npm run probar-puente       # pruebas de extremo a extremo con el puente y el mu
 Vistas para comprobar sin manos: `index.html?vista=aerea` (todas las islas),
 `index.html?vista=demo` (una pantalla falsa de VS Code enganchada a galaxy-brain) y
 `index.html?vista=demo&agentes` (dos agentes de mentira en galaxy-brain: halos, señales, cruce y consolas) e
-`index.html?vista=demo&leer=N` (el lector del palantír abierto en la tarjeta N: 0-11 titulares, 12-19 repos).
+`index.html?vista=demo&leer=N` (el lector del palantír abierto en la tarjeta N: 0-11 titulares, 12-19 repos) y
+`index.html?vista=demo&chispas` (una ronda de Chispas, el minijuego del palantír, que se juega sola) y
+`index.html?vista=demo&maestra` (la consola maestra abierta con repos y agentes de mentira).
 
 ## Gates
 
@@ -46,14 +49,14 @@ Vistas para comprobar sin manos: `index.html?vista=aerea` (todas las islas),
 
 ## Arquitectura
 
-Núcleo puro (`datos`, `disposicion`, `islas`, `vinculo`, `ambiente`, `noticias`), probado en Node; `tools/exportar.mjs`
+Núcleo puro (`datos`, `disposicion`, `islas`, `vinculo`, `ambiente`, `noticias`, `juego`, `orquesta`), probado en Node; `tools/exportar.mjs`
 lo usa en tiempo de export. Mundo con Three.js: `grafo3d` (un grafo como objeto), `pantallas`
 (captura + grafo enganchado), `rotulo` (texto en el mundo), `decorado` (cielo por la hora, cristales por la vida del repo, faro de
-agentes), `palantir` (la esfera del centro: titulares de IA abajo, repos del mes arriba), `mundo` (cámara, islas, acciones);
+agentes), `palantir` (la esfera del centro: titulares de IA abajo, repos del mes arriba; clic en ella, `chispas`, el minijuego), `mundo` (cámara, islas, acciones);
 `main` lo monta con `window.GB_GRAFOS`. `wallpaper/` es el mundo construido. `puente/` (C#, ADR 0002)
 es lo nativo: activa y pasa el ratón a la ventana de una pantalla, regenera grafos, abre lo del
 escritorio y pregunta `gb who` por los agentes; `src/puente.js` le habla. `consola3d` (la terminal
-flotante de cada agente de gb) va en el mundo; `nodo` (ficha al hacer clic), `ficheros` (panel F) y `lector` (el post, artículo o README entero de una tarjeta del palantír) son DOM. Sin gb, islas de carpetas (ADR 0003).
+flotante de cada agente de gb) va en el mundo; `nodo` (ficha al hacer clic), `ficheros` (panel F) `lector` (el post, artículo o README entero de una tarjeta del palantír) y `maestra` (la consola maestra: cuentas de IA, repos en masa y agentes; su holograma, `maestra3d`, flota sobre el palantír) son DOM. Los agentes (`tools/agente.mjs`) son worktrees en su rama, fuera de la carpeta de proyectos, que commitean ahí y nunca hacen push; `gb who` los ve y su consola es `<worktree>.consola.log`. Sin gb, islas de carpetas (ADR 0003).
 
 ## Convenciones de commit y PR
 

@@ -74,6 +74,7 @@ app.Map("/", async (HttpContext ctx) =>
     finally
     {
         sockets.TryRemove(ws, out _);
+        Envios.Olvidar(ws);
         // El mundo se cerró o recargó a mitad: que la ventana no se quede aparcada fuera, y lo
         // escondido al minimizarlo se minimiza de verdad. Si queda otro mundo conectado, ese.
         // Solo si la conexión que se cierra ERA un mundo: cualquier otra (una prueba, una
@@ -218,6 +219,18 @@ object? Responder(JsonElement m, WebSocket ws)
             if (sinUrl == null) Ventanas.QueNoNazcanMinimizadas(antesDeUrl, t => _ = Difundir(new { evento = "lista", titulo = t }));
             Registro.Anotar($"abrir enlace {Texto(m, "url")}: {sinUrl ?? "ok"}");
             return new { id, ok = sinUrl == null, error = sinUrl };
+        case "orquestador":
+            // La consola maestra: en segundo plano, y contesta cuando acaba.
+            var ordenes = m.TryGetProperty("args", out var aa) && aa.ValueKind == JsonValueKind.Array
+                ? aa.EnumerateArray().Select(x => x.GetString() ?? "").ToArray() : [];
+            _ = Task.Run(async () =>
+            {
+                var (okO, datos, errorO) = await Orquestador.Correr(repo, ordenes);
+                if (ordenes.FirstOrDefault() is "lanzar" or "descartar" or "accion")
+                    Registro.Anotar($"orquestador {string.Join(' ', ordenes.Take(2))}{(ordenes.Length > 2 ? $" ({ordenes.Length - 2} repo(s))" : "")}: {errorO ?? "ok"}");
+                await Enviar(ws, new { id, ok = okO, datos, error = errorO });
+            });
+            return null;
         case "agentes":
             return new { id, ok = true, repos = agentes.Foto() };
         case "regenerar":
@@ -248,8 +261,16 @@ object? Responder(JsonElement m, WebSocket ws)
 static int Num(JsonElement m, string k) => m.TryGetProperty(k, out var v) ? v.GetInt32() : 0;
 static string? Texto(JsonElement m, string k) => m.TryGetProperty(k, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
 
-static Task Enviar(WebSocket ws, object o) =>
-    ws.SendAsync(JsonSerializer.SerializeToUtf8Bytes(o), WebSocketMessageType.Text, true, CancellationToken.None);
+// Un envío a la vez por conexión: un WebSocket no admite dos SendAsync en marcha, y las respuestas
+// (algunas ya desde otro hilo, como las del orquestador) se cruzan con los avisos de agentes.
+static async Task Enviar(WebSocket ws, object o)
+{
+    var cerrojo = Envios.De(ws);
+    await cerrojo.WaitAsync();
+    try { await ws.SendAsync(JsonSerializer.SerializeToUtf8Bytes(o), WebSocketMessageType.Text, true, CancellationToken.None); }
+    catch (WebSocketException) { /* se cerró mientras tanto */ }
+    finally { cerrojo.Release(); }
+}
 
 Task Difundir(object o) => Task.WhenAll(sockets.Keys.Where(s => s.State == WebSocketState.Open).Select(s => Enviar(s, o)));
 

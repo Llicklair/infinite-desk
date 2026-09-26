@@ -66,3 +66,57 @@ body[data-escribiendo] #mira { display: none; }
 #lector .texto::-webkit-scrollbar { width: 10px; }
 #lector .texto::-webkit-scrollbar-thumb { background: #3a4480; border-radius: 5px; }
 #lector .texto::-webkit-scrollbar-track { background: transparent; }
+/* Chispas (clic en el palantír): la racha en grande, los puntos y lo que queda de ronda. */
+#juego { position: fixed; top: 70px; left: 50%; transform: translateX(-50%); z-index: 6; text-align: center; pointer-events: none; }
+#juego .racha { min-height: 64px; font-size: 56px; font-weight: 800; color: #ffd36a; text-shadow: 0 0 18px rgba(255, 180, 60, 0.8); animation: latido 0.25s ease-out; }
+#juego .racha.fuego { color: #ff6ad5; text-shadow: 0 0 24px rgba(255, 90, 200, 0.9), 0 0 48px rgba(120, 90, 255, 0.7); }
+#juego .puntos { font-size: 18px; font-weight: 600; color: #dfe4ff; }
+#juego .tiempo { height: 4px; margin: 8px auto 0; background: linear-gradient(90deg, #5a6cff, #ff6ad5); border-radius: 2px; transition: width 0.2s linear; }
+@keyframes latido { from { transform: scale(1.35); } to { transform: scale(1); } }
+/* Consola maestra (clic en el holograma sobre el palantír, o O): cuentas de IA, repos y agentes. */
+#maestra { position: fixed; inset: 5vh 10vw; z-index: 10; display: flex; flex-direction: column; padding: 16px 22px; background: rgba(8, 22, 34, 0.96); border: 1px solid #2f9fb0; border-radius: 10px; color: #dff7ff; }
+#maestra .cabecera { display: flex; gap: 10px; align-items: center; }
+#maestra h2 { margin: 0 12px 0 0; font-size: 18px; font-weight: 700; color: #6ff3ff; letter-spacing: .04em; }
+#maestra .pestanas { display: flex; gap: 6px; flex: 1; }
+#maestra button { padding: 6px 12px; background: rgba(40, 110, 130, 0.35); border: 1px solid #2f9fb0; border-radius: 7px; color: #dff7ff; font: inherit; font-size: 13px; cursor: pointer; }
+#maestra button:hover:not(:disabled) { background: rgba(60, 150, 170, 0.5); }
+#maestra button:disabled { opacity: 0.45; cursor: default; }
+#maestra button.activa, #maestra button.elegido { background: rgba(111, 243, 255, 0.25); border-color: #6ff3ff; }
+#maestra button.principal { background: rgba(111, 243, 255, 0.3); border-color: #6ff3ff; font-weight: 600; }
+#maestra .cuerpo { flex: 1; overflow: auto; margin-top: 14px; }
+#maestra .cuerpo::-webkit-scrollbar { width: 10px; }
+#maestra .cuerpo::-webkit-scrollbar-thumb { background: #2f7f90; border-radius: 5px; }
+#maestra .mensaje { margin: 10px 0 0; min-height: 18px; font-size: 13px; color: #9fdfe8; }
+#maestra .nota { color: #8fb8c4; font-size: 13px; }
+#maestra .cuentas { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
+#maestra .cuenta { padding: 12px 14px; background: rgba(20, 60, 80, 0.4); border: 1px solid #2a6b7a; border-radius: 8px; }
+#maestra .cuenta .empresa { font-size: 12px; color: #8fb8c4; }
+#maestra .cuenta h3 { margin: 2px 0 8px; font-size: 16px; }
+#maestra .cuenta p { margin: 4px 0; font-size: 13px; }
+#maestra .cuenta code { display: block; margin: 6px 0; padding: 6px 8px; background: rgba(0, 0, 0, 0.35); border-radius: 5px; font-size: 12px; }
+#maestra .bien { color: #7dffa8; }
+#maestra .mal { color: #ffb86b; }
+#maestra .uso { color: #cfefff; }
+#maestra .cuentas .nota { grid-column: 1 / -1; }
+#maestra .barra { display: flex; gap: 6px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }
+#maestra .cuenta-sel { margin: 0 8px; font-size: 13px; color: #9fdfe8; }
+#maestra table { width: 100%; border-collapse: collapse; font-size: 13px; }
+#maestra th { text-align: left; padding: 6px 8px; color: #8fb8c4; font-weight: 600; border-bottom: 1px solid #2a6b7a; }
+#maestra td { padding: 5px 8px; border-bottom: 1px solid #16404c; }
+#maestra tr:not(:first-child) { cursor: pointer; }
+#maestra tr.elegido td { background: rgba(111, 243, 255, 0.08); }
+#maestra td.nombre { font-weight: 600; }
+#maestra td.aviso { color: #ffb86b; }
+#maestra td.tenue { color: #6f93a0; }
+#maestra .agentes { display: grid; grid-template-columns: minmax(300px, 1fr) 1.4fr; gap: 18px; }
+#maestra .agentes h3 { margin: 0 0 10px; font-size: 15px; color: #6ff3ff; }
+#maestra .proveedores { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
+#maestra textarea { width: 100%; min-height: 110px; box-sizing: border-box; padding: 8px 10px; background: rgba(0, 0, 0, 0.35); border: 1px solid #2a6b7a; border-radius: 7px; color: #dff7ff; font: inherit; font-size: 14px; resize: vertical; }
+#maestra .agente { padding: 10px 12px; margin-bottom: 8px; background: rgba(20, 60, 80, 0.35); border-left: 3px solid #6f93a0; border-radius: 6px; font-size: 13px; }
+#maestra .agente.trabajando { border-left-color: #6ff3ff; }
+#maestra .agente.hecho { border-left-color: #7dffa8; }
+#maestra .agente.fallo { border-left-color: #ff7b7b; }
+#maestra .agente .cabeza { color: #8fb8c4; font-size: 12px; }
+#maestra .agente .tarea { margin: 4px 0; overflow-wrap: anywhere; }
+#maestra .agente .rama { color: #9fdfe8; font-size: 12px; overflow-wrap: anywhere; }
+#maestra .agente .acciones { display: flex; gap: 6px; margin-top: 8px; }

@@ -12,6 +12,9 @@ import { paletaDeHora, vidaDeRepo } from "./ambiente.js";
 import { crearCielo, crearCristales, crearFaro } from "./decorado.js";
 import { crearPalantir } from "./palantir.js";
 import { crearLector } from "./lector.js";
+import { crearChispas } from "./chispas.js";
+import { crearHolograma } from "./maestra3d.js";
+import { crearMaestra } from "./maestra.js";
 import { mostrarNodo } from "./nodo.js";
 import { crearPuente, releerScript } from "./puente.js";
 import { crearPanelFicheros } from "./ficheros.js";
@@ -28,7 +31,7 @@ const RELEER_NOTICIAS_MS = 5 * 60000; // noticias.js lo rehace el puente cada 30
  * @typedef {import("./grafo3d.js").GrafoExportado} GrafoExportado
  * @typedef {import("./grafo3d.js").Grafo3D} Grafo3D
  * @typedef {import("./pantallas.js").Pantalla} Pantalla
- * @typedef {{portada: HTMLElement, info: HTMLElement, aviso: HTMLElement, ayuda: HTMLElement, ficheros: HTMLElement | null, nodo: HTMLElement | null, ajustes?: HTMLElement | null, lector?: HTMLElement | null}} Interfaz
+ * @typedef {{portada: HTMLElement, info: HTMLElement, aviso: HTMLElement, ayuda: HTMLElement, ficheros: HTMLElement | null, nodo: HTMLElement | null, ajustes?: HTMLElement | null, lector?: HTMLElement | null, juego?: HTMLElement | null, maestra?: HTMLElement | null}} Interfaz
  */
 
 /**
@@ -80,6 +83,9 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
   // islas el círculo es pequeño y se queda más cerca, para no aparecer dentro de una.
   const radioInicial = grafos.length ? Math.hypot(colocarIslas(grafos.length)[0].x, colocarIslas(grafos.length)[0].z) : 22;
   camara.position.set(0, ALTURA_OJOS, Math.min(20, radioInicial - 9));
+  // Mirando un poco hacia arriba, al palantír: así caben de una vez las noticias, la esfera, los
+  // repos del mes y la consola maestra encima.
+  camara.lookAt(0, 6.5, 0);
   escena.add(camara);
 
   escena.add(new THREE.HemisphereLight("#c8d0ff", "#2a1d40", 1.4));
@@ -192,11 +198,29 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
   const palantir = crearPalantir(opciones.vista === "fondo" ? THREE.MathUtils.clamp(radioInicial / 22, 1, 3) : 1);
   escena.add(palantir.objeto);
   palantir.paleta(paletaDeAhora());
+  // Chispas: clic en la esfera del palantír (en primera persona: se apunta con la mira).
+  const chispas = ui.juego && opciones.vista !== "fondo"
+    ? crearChispas(escena, ui.juego, {
+      origen: () => palantir.esfera.getWorldPosition(new THREE.Vector3()),
+      alHito: () => palantir.avivar(),
+      avisar: (t) => avisar(t),
+    })
+    : null;
   alCambiarHora.push((p) => palantir.paleta(p));
   async function releerNoticias() {
     await releerScript("noticias.js");
     palantir.actualizar(window.INFINITE_DESK_NOTICIAS, Date.now());
     lector?.actualizar(window.INFINITE_DESK_NOTICIAS);
+    // `?vista=demo&chispas`: una ronda que se juega sola (un disparo cada medio segundo, a la
+    // primera chispa), para ver rachas, estallidos y marcador sin manos (capturas).
+    if (opciones.vista === "demo" && chispas && !chispas.activo && new URLSearchParams(location.search).has("chispas")) {
+      chispas.empezar();
+      const juego = setInterval(() => {
+        if (!chispas.activo) return clearInterval(juego);
+        const blanco = chispas.objetivos[0];
+        if (blanco) chispas.disparar(new THREE.Ray(camara.position.clone(), blanco.sub(camara.position).normalize()));
+      }, 500);
+    }
     // `?vista=demo&leer=N`: el lector abierto en la tarjeta N, para verlo sin manos (capturas).
     const n = opciones.vista === "demo" ? new URLSearchParams(location.search).get("leer") : null;
     const tarjeta = n === null ? undefined : palantir.tarjetas[Number(n)];
@@ -217,7 +241,10 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
   const mirar = new PointerLockControls(camara, renderer.domElement);
   mirar.addEventListener("lock", () => (ui.portada.hidden = true));
   // Al entrar a escribir en una pantalla se suelta el ratón, pero no es para salir del mundo.
-  mirar.addEventListener("unlock", () => (ui.portada.hidden = escribiendo !== null || Boolean(panel?.abierto) || Boolean(ajustes?.abierto)));
+  // Con el lector abierto también: se suelta el ratón para leer, y la portada lo tapaba.
+  mirar.addEventListener("unlock", () => (ui.portada.hidden = escribiendo !== null || Boolean(panel?.abierto) || Boolean(ajustes?.abierto) || Boolean(lector?.abierto) || Boolean(maestra?.abierto)));
+  // Soltar el ratón (Esc) a media ronda de Chispas la acaba.
+  mirar.addEventListener("unlock", () => chispas?.terminar());
   ui.portada.addEventListener("click", () => mirar.lock());
   // "dentro": el mundo a pantalla completa, abierto desde el clic derecho del escritorio
   // (npm run fondo). Con el ratón ya suelto, Esc cierra la ventana y vuelve a verse el fondo.
@@ -228,7 +255,7 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
     const pie = ui.portada.querySelector("p");
     if (pie) pie.textContent = "Click to enter · Esc: back to the desktop (the space stays open) · Shift+Esc: close it";
     document.addEventListener("keydown", async (e) => {
-      if (e.code !== "Escape" || mirar.isLocked || escribiendo || panel?.abierto || ajustes?.abierto || lector?.abierto) return;
+      if (e.code !== "Escape" || mirar.isLocked || escribiendo || panel?.abierto || ajustes?.abierto || lector?.abierto || maestra?.abierto) return;
       if (e.shiftKey) return window.close();
       // Sin puente no hay quien lo minimice: se cierra, como antes.
       if (!(puente?.conectado && await puente.alEscritorio())) window.close();
@@ -376,6 +403,8 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
    *   | {tipo: "isla", isla: typeof islas[number]}
    *   | {tipo: "consola", consola: import("./consola3d.js").Consola}
    *   | {tipo: "titular", enlace: import("./palantir.js").Enlace, tarjeta: THREE.Object3D}
+   *   | {tipo: "palantir"}
+   *   | {tipo: "maestra"}
    *   | null} Apuntado
    */
   /** @type {Apuntado} */
@@ -411,6 +440,24 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
       if (consola) {
         mejor = golpeC.distance;
         res = { tipo: "consola", consola };
+      }
+    }
+
+    // El holograma de la consola maestra.
+    if (holograma) {
+      const golpeH = rayo.intersectObject(holograma.objeto, false)[0];
+      if (golpeH && golpeH.distance < mejor) {
+        mejor = golpeH.distance;
+        res = { tipo: "maestra" };
+      }
+    }
+
+    // La esfera del palantír (Chispas).
+    if (chispas) {
+      const golpeE = rayo.intersectObject(palantir.esfera, false)[0];
+      if (golpeE && golpeE.distance < mejor) {
+        mejor = golpeE.distance;
+        res = { tipo: "palantir" };
       }
     }
 
@@ -460,7 +507,7 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
     if (!apuntado) return null;
     if (apuntado.tipo === "nodo") return apuntado.g3d;
     if (apuntado.tipo === "isla") return apuntado.isla.g3d;
-    if (apuntado.tipo === "titular") return null;
+    if (apuntado.tipo === "titular" || apuntado.tipo === "palantir" || apuntado.tipo === "maestra") return null;
     if (apuntado.tipo === "consola") {
       const padre = apuntado.consola.objeto.parent;
       return vivos().find((g) => g.objeto === padre) ?? null;
@@ -475,6 +522,8 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
 
   function describir() {
     if (!apuntado) return "";
+    // En plena ronda de Chispas no se describe lo apuntado: los clics son disparos, no "mover pantalla".
+    if (chispas?.activo) return "";
     if (apuntado.tipo === "nodo") {
       const { g3d, i } = apuntado;
       const n = g3d.grafo.nodos[i];
@@ -489,6 +538,8 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
     }
     if (apuntado.tipo === "consola") return `${apuntado.consola.nombre}'s console — hold click: move it · wheel (while holding): closer/farther`;
     if (apuntado.tipo === "titular") return `${apuntado.enlace.etiqueta} — click: read it here`;
+    if (apuntado.tipo === "palantir") return chispas?.activo ? "" : "The palantír — click: play Sparks (45 s)";
+    if (apuntado.tipo === "maestra") return "Master console — click (or O): accounts, repos and agents";
     const p = apuntado.pantalla;
     const enter = p.hwnd === null ? "Enter: go to VS Code" : puente?.conectado ? "Enter: work in it" : "no bridge";
     return `${p.repo ?? "no repo"} · ${p.titulo} — ${enter} · hold click: move · wheel: size · G: graph · X: close`;
@@ -643,7 +694,37 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
       if (!mirar.isLocked && !escribiendo) ui.portada.hidden = false;
     })
     : null;
+  // La consola maestra: su holograma encima del palantír y, al hacer clic (u O), la consola entera.
+  // Solo dentro del mundo: el fondo no tiene puente, y sin él no hay nada que gestionar.
+  const demoMaestra = opciones.vista === "demo" && new URLSearchParams(location.search).has("maestra");
+  // Bien por encima del anillo de arriba: más bajo, desde donde se aparece caía detrás de la
+  // tarjeta de repo de delante (medido en captura).
+  const holograma = !fondo ? crearHolograma(palantir.cima + 5.6) : null;
+  if (holograma) escena.add(holograma.objeto);
+  const maestra = ui.maestra && holograma
+    ? crearMaestra(ui.maestra,
+      (args) => (demoMaestra ? Promise.resolve(args[0] === "estado" ? { ok: true, datos: estadoDeDemostracion(nombres) } : { ok: false, error: "demo" })
+        : puente ? puente.orquestador(args) : Promise.resolve({ ok: false, error: "no bridge" })),
+      (e) => holograma.actualizar(e),
+      () => { if (!mirar.isLocked && !escribiendo) ui.portada.hidden = false; })
+    : null;
+  function abrirMaestra() {
+    if (!maestra) return;
+    maestra.abrir();
+    mirar.unlock();
+  }
+  if (maestra) {
+    if (puente) {
+      holograma?.actualizar(null, "Waiting for the bridge…");
+      puente.alConectar(() => void maestra.refrescar());
+      if (puente.conectado) void maestra.refrescar(); // ya conectado antes de llegar aquí: alConectar no volverá a saltar
+      setInterval(() => { if (puente.conectado) void maestra.refrescar(); }, 60000);
+    } else if (demoMaestra) {
+      void maestra.refrescar().then(() => maestra.abrir());
+    } else holograma?.actualizar(null, "No bridge: come in from the desktop right-click menu");
+  }
   document.addEventListener("keydown", (e) => {
+    if (maestra?.abierto && !mirar.isLocked && e.code === "Escape") maestra.cerrar();
     if (lector?.abierto && !mirar.isLocked && e.code === "Escape") lector.cerrar();
     // Con el ratón aún bloqueado es la misma F (o P) que acaba de abrirlo: no se cierra.
     if (panel?.abierto && !mirar.isLocked && (e.code === "Escape" || e.code === "KeyF")) panel.cerrar();
@@ -926,6 +1007,7 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
   /** @param {string} codigo */
   function accion(codigo) {
     if (codigo === "KeyN") nuevaPantalla();
+    else if (codigo === "KeyO" && maestra) abrirMaestra();
     else if (codigo === "KeyF" && panel) {
       panel.abrir();
       mirar.unlock();
@@ -974,6 +1056,16 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
   let arrastrada = null;
   document.addEventListener("mousedown", (e) => {
     if (!mirar.isLocked || e.button !== 0) return;
+    // En plena ronda de Chispas, cada clic es un disparo y nada más; y justo después, nada (un
+    // clic de inercia cogía una pantalla).
+    if (chispas?.activo) {
+      rayo.setFromCamera(puntero, camara);
+      chispas.disparar(rayo.ray);
+      return;
+    }
+    if (chispas?.enGracia) return;
+    if (apuntado?.tipo === "palantir") return chispas?.empezar();
+    if (apuntado?.tipo === "maestra") return abrirMaestra();
     // Clic con la mira en un nodo: su ficha. En el vacío: se cierra.
     if (apuntado?.tipo === "nodo") return fichaDe(apuntado.g3d, apuntado.i);
     if (apuntado?.tipo === "titular") return void leer(apuntado.enlace);
@@ -1064,6 +1156,8 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
     const t = reloj.elapsedTime;
     cielo.tick(t, camara);
     palantir.tick(t, dt);
+    chispas?.tick(dt);
+    holograma?.tick(t, camara);
     for (const { cristales, faro } of islas) { cristales.tick(t); faro.tick(t); }
     for (const g3d of vivos()) g3d.latir(t);
     const ahora = performance.now();
@@ -1101,9 +1195,34 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
       }
       palantir.resaltar(apuntado?.tipo === "titular" ? apuntado.tarjeta : null);
       ui.info.textContent = describir();
-      ui.info.hidden = !apuntado;
+      ui.info.hidden = !apuntado || !ui.info.textContent;
     }
 
     renderer.render(escena, camara);
   });
+}
+
+/**
+ * Un estado de mentira para `?vista=demo&maestra`: las islas como repos, con cambios y agentes
+ * inventados (capturas sin manos, sin puente).
+ * @param {string[]} repos
+ * @returns {import("./maestra.js").EstadoMaestra}
+ */
+function estadoDeDemostracion(repos) {
+  const ahora = Date.now();
+  return {
+    carpeta: "C:/dev",
+    cuentas: {
+      claude: { instalado: true, sesion: true, cuenta: "you@example.com", plan: "max" },
+      codex: { instalado: true, sesion: false, detalle: "Not logged in" },
+      gemini: { instalado: false, sesion: false, detalle: "not installed" },
+      github: { instalado: true, sesion: true, cuenta: "you" },
+    },
+    repos: repos.map((nombre, i) => ({ nombre, rama: i % 7 === 3 ? "feature/x" : "main", cambios: i % 4 === 0 ? i + 1 : 0, delante: i % 5 === 1 ? 2 : 0, detras: i % 6 === 2 ? 1 : 0, sinRemoto: i % 9 === 8, ultimoCommit: Math.round(ahora / 1000 - i * 36000) })),
+    agentes: [
+      { id: "a", repo: repos[0] ?? "repo", proveedor: "claude", tarea: "Update the dependencies and make the tests pass", rama: "agente/20260926-1210-update-the-dependencies", worktree: "", inicio: new Date(ahora - 4 * 60000).toISOString(), estado: "trabajando" },
+      { id: "b", repo: repos[1] ?? "repo", proveedor: "claude", tarea: "Add a README section about the architecture", rama: "agente/20260926-1150-add-a-readme-section", worktree: "", inicio: new Date(ahora - 30 * 60000).toISOString(), fin: new Date(ahora - 22 * 60000).toISOString(), estado: "hecho", cambios: 2, commit: true },
+    ],
+    uso: { claude: { trabajando: 1, hoy: 2, minutosHoy: 12 }, codex: { trabajando: 0, hoy: 0, minutosHoy: 0 }, gemini: { trabajando: 0, hoy: 0, minutosHoy: 0 } },
+  };
 }
