@@ -132,7 +132,7 @@ await ev("__en(-8.2, 3, 23.6)");
 const zorro = await ev("(() => { const p = __zen.zen.espiritu.grupo.position; return [p.x, p.y + 0.5, p.z]; })()");
 await ev(`__mira(${zorro.join(",")})`);
 const pistaZorro = await ev("__zen.zen.pista(__zen.camara)");
-comprobar("aiming at the spirit offers to talk", /talk to the spirit/.test(pistaZorro), JSON.stringify(pistaZorro));
+comprobar("aiming at the spirit offers to talk", /talk to Kiri/.test(pistaZorro), JSON.stringify(pistaZorro));
 const lejosDe = () => ev("(() => { const e = __zen.zen.espiritu.grupo.position, c = __zen.camara.position; return Math.hypot(e.x - c.x, e.z - (c.z + 2600)); })()");
 await ev("__zen.zen.espiritu.seguir()");
 await ev("__anda(0.1, -0.08, 120)"); // unos 15 m hacia la poza

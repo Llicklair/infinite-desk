@@ -15,6 +15,7 @@ import { fuerzaDeCarga, posicionEn, recorrido } from "./lago.js";
 import { IMPULSO, caer, deslizar, sueloBajo } from "./andar.js";
 import { crearCabana } from "./cabana.js";
 import { crearEspiritu } from "./espiritu.js";
+import { NOMBRE } from "./apoyo.js";
 import { cesped as texCesped, piedra as texPiedra, triplanar } from "./texturas.js";
 import { H_LABIO, RISCO_Z, Z_LABIO, cajasRisco, cima, enRisco, hendidura, mallaRisco, ruido } from "./risco.js";
 
@@ -1154,7 +1155,7 @@ export function crearZen(escena, mundo) {
     ...cabana.interactivos,
     {
       objeto: espiritu.grupo,
-      texto: () => "E: talk to the spirit (V: just talk, by voice)",
+      texto: () => `E: talk to ${NOMBRE} (V: just talk, by voice)`,
       accion: () => mundo.alHablar?.(),
       sentado: true,
     },

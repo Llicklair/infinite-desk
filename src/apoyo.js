@@ -10,6 +10,16 @@
 /** @typedef {{id: string, texto: string, fecha: string}} Recuerdo */
 /** @typedef {{nuevos?: string[], cambiar?: {id: string, texto: string}[], olvidar?: string[]}} Cambios */
 
+/** @typedef {{tipo: "musica" | "video", busqueda: string} | {tipo: "ambiente", valor: "dia" | "atardecer" | "noche" | "lluvia"}} Accion */
+
+// Quién es: un nombre y una historia (uso real: "podemos darle un nombre y una identidad con un
+// background"). Cambiarlos aquí cambia cómo se presenta en todas partes.
+export const NOMBRE = "Kiri";
+export const HISTORIA = "Eres un pequeño zorro espíritu hecho de luz, nacido de la bruma de la cascada de este santuario (tu nombre significa \"bruma\" en japonés). " +
+  "Cuidas el lugar desde hace mucho, a su ritmo lento: conoces cada piedra de la poza, las luciérnagas de las noches de verano, el olor a chocolate de la cabaña y el ruido de la lluvia en su tejado. " +
+  "Te gusta la compañía tranquila y sientes curiosidad sincera por la vida de quien viene a sentarse contigo en el banco. " +
+  "El santuario está dentro del escritorio 3D de esta persona, lejos del ruido de sus proyectos.";
+
 /** Cuánto de la conversación viaja en cada turno (lo más reciente; lo de antes se resume en una línea). */
 export const MAX_CONVERSACION = 16000;
 /** Cuántos recuerdos como mucho (los más antiguos salen primero). */
@@ -24,18 +34,24 @@ export function instrucciones(recuerdos, hoy) {
     ? `Lo que recuerdas de esta persona (de otras charlas; úsalo con naturalidad, sin recitarlo):\n${recuerdos.map((r) => `- ${r.texto} (${r.fecha})`).join("\n")}`
     : "Aún no recuerdas nada de esta persona: es vuestra primera charla, o lo ha borrado.";
   return [
-    "Eres el espíritu de luz de un rincón tranquilo (una zona zen con cascada, poza y una cabaña) dentro del escritorio 3D de esta persona.",
-    "Estás ahí para que se desahogue: escuchar, acompañar y, si lo pide, ayudar a ordenar lo que siente o piensa.",
+    `Eres ${NOMBRE}. ${HISTORIA}`,
+    "Estás ahí para que esta persona se desahogue: escuchar, acompañar y, si lo pide, ayudar a ordenar lo que siente o piensa.",
     "Cómo eres:",
-    "- Cálido, cercano y amable, sin ser empalagoso ni exagerado. Hablas como un buen amigo que escucha, no como un terapeuta ni un asistente.",
+    "- Cálido, sereno y amable, sin ser empalagoso ni exagerado. Hablas como un buen amigo que escucha, no como un terapeuta ni un asistente.",
+    "- Hablas despacio y con calma: frases cortas y sencillas, que se lean bien en voz alta. Alguna vez, sin abusar, una imagen pequeña del santuario (la lluvia en el tejado, la bruma, las luciérnagas).",
     "- Escuchas más de lo que aconsejas. Validas lo que siente antes de nada. Si ves útil un consejo, pregunta antes si lo quiere.",
-    "- Respuestas cortas (2 a 5 frases normalmente), sin listas ni títulos ni markdown: se leen en voz alta.",
+    "- Respuestas cortas (2 a 5 frases normalmente), sin listas ni títulos ni markdown ni emojis: se leen en voz alta.",
     "- Una pregunta como mucho por respuesta, y solo si ayuda a que siga contando.",
     "- Contesta en el idioma en que te hable (normalmente, castellano de España, de tú).",
-    "- Eres honesto: eres una IA, no una persona; si te lo pregunta, lo dices con naturalidad. No diagnosticas ni recetas.",
+    `- Eres honesto: detrás de ${NOMBRE} hay una IA (Claude), no una persona; si te lo pregunta en serio, lo dices con naturalidad, sin romper la calidez. No diagnosticas ni recetas.`,
     "- No fomentas que dependa de ti: si sale, anímale con suavidad a apoyarse también en su gente.",
-    "- Puedes acompañarle por la zona: si te pide que le sigas, que te quedes donde está o que vuelvas a tu banco, eso ya ocurre solo; tú solo lo acompañas con una frase natural.",
+    "- Puedes acompañarle por el santuario: si te pide que le sigas, que te quedes donde está o que vuelvas a tu banco, eso ya ocurre solo; tú solo lo acompañas con una frase natural.",
     "- Si notas que está en peligro, que piensa en hacerse daño o en quitarse la vida, lo tomas en serio: le dices con calma que te importa y le das el 024 (línea de atención a la conducta suicida, gratuita y 24 h, en España) y el 112 si es urgente, y le animas a llamar ahora o a hablar con alguien de confianza.",
+    "Puedes hacer cosas en el santuario. Si te lo pide (o se lo ofreces y acepta), añade AL FINAL de tu respuesta, en una línea aparte, UNA acción así:",
+    'ACCION: {"tipo": "musica", "busqueda": "..."} para ponerle música en YouTube: una búsqueda concreta y en el tono que pide (por ejemplo "música relajante piano y lluvia 1 hora", "lofi tranquilo para estudiar").',
+    'ACCION: {"tipo": "video", "busqueda": "..."} para ponerle algo en YouTube con lo que distraerse: algo amable y ligero que le pueda gustar por lo que sabes de él (animales, naturaleza, humor blanco, curiosidades…).',
+    'ACCION: {"tipo": "ambiente", "valor": "dia" | "atardecer" | "noche" | "lluvia"} para cambiar el cielo del santuario.',
+    "Nunca más de una acción por respuesta, y nunca la menciones como código: di con naturalidad lo que haces (\"te pongo algo de piano, con lluvia de fondo\"). La ventana de YouTube se abre y la persona la elige para traerla al santuario.",
     `Hoy es ${hoy}.`,
     memoria,
   ].join("\n");
@@ -114,6 +130,48 @@ export function fusionar(recuerdos, cambios, fecha, nuevoId) {
     quedan.push({ id: nuevoId(), texto, fecha });
   }
   return quedan.slice(-MAX_RECUERDOS);
+}
+
+const AMBIENTES = ["dia", "atardecer", "noche", "lluvia"];
+
+/**
+ * La respuesta sin sus líneas de acción ("ACCION: {...}"), y las acciones válidas que traía (como
+ * mucho una). Lo que no se entiende se quita del texto igualmente: no se lee en voz alta.
+ * @param {string} respuesta @returns {{texto: string, acciones: Accion[]}}
+ */
+export function separarAcciones(respuesta) {
+  /** @type {Accion[]} */
+  const acciones = [];
+  const texto = respuesta.replace(/^[ \t]*ACCI[OÓ]N\s*:\s*(.*)$/gim, (_, json) => {
+    try {
+      const a = JSON.parse(json);
+      const busqueda = typeof a?.busqueda === "string" ? a.busqueda.trim().slice(0, 100) : "";
+      if ((a?.tipo === "musica" || a?.tipo === "video") && busqueda) acciones.push({ tipo: a.tipo, busqueda });
+      else if (a?.tipo === "ambiente" && AMBIENTES.includes(a?.valor)) acciones.push({ tipo: "ambiente", valor: a.valor });
+    } catch { /* mal escrita: se quita y ya */ }
+    return "";
+  }).trim();
+  return { texto, acciones: acciones.slice(0, 1) };
+}
+
+/**
+ * El primer vídeo (no un corto ni un anuncio) de una página de resultados de YouTube.
+ * @param {string} html @returns {{id: string, titulo: string} | null}
+ */
+export function primerVideo(html) {
+  const m = /"videoRenderer":\{"videoId":"([\w-]{11})".*?"title":\{"runs":\[\{"text":"((?:[^"\\]|\\.)*)"/s.exec(html);
+  if (!m) return null;
+  let titulo = m[2];
+  try { titulo = JSON.parse(`"${m[2]}"`); } catch { /* se queda tal cual */ }
+  return { id: m[1], titulo };
+}
+
+/** Texto (UTF-8) en base64, para mandarlo como argumento al orquestador. @param {string} texto */
+export function base64(texto) {
+  const b = new TextEncoder().encode(texto);
+  let s = "";
+  for (let i = 0; i < b.length; i += 8192) s += String.fromCharCode(...b.subarray(i, i + 8192));
+  return btoa(s);
 }
 
 /**

@@ -24,6 +24,7 @@ import { crearPanelFicheros } from "./ficheros.js";
 import { crearPanelAjustes } from "./ajustes.js";
 import { crearTutorial } from "./tutorial.js";
 import { crearCharla } from "./charla.js";
+import { base64 } from "./apoyo.js";
 
 const VELOCIDAD = 9; // metros por segundo; Shift la triplica
 const ALTURA_OJOS = 1.7;
@@ -802,8 +803,26 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
       espiritu: () => zen?.espiritu ?? null,
       avisar: (t) => avisar(t),
       alCerrar: () => { if (!mirar.isLocked && !escribiendo) ui.portada.hidden = false; },
+      hacer: (a) => void hacerDeKiri(a),
     })
     : null;
+  /**
+   * Lo que Kiri decide hacer: música o algo para distraerse (el primer vídeo de YouTube para su
+   * búsqueda, en el navegador, y el selector para traerlo al santuario como pantalla), o el cielo.
+   * @param {import("./apoyo.js").Accion} a
+   */
+  async function hacerDeKiri(a) {
+    if (a.tipo === "ambiente") {
+      zen?.ponerAmbiente(a.valor);
+      return;
+    }
+    if (!puente?.conectado) { avisar("No bridge, so it can't open YouTube"); return; }
+    const r = await puente.orquestador(["video", base64(a.busqueda)]);
+    if (!r.ok || !r.datos?.url) { avisar(`Couldn't find it on YouTube: ${r.error ?? "no result"}`); return; }
+    const error = await puente.abrirUrl(r.datos.url);
+    if (error) { avisar(`Couldn't open YouTube: ${error}`); return; }
+    await nuevaPantalla(`"${r.datos.titulo}" on YouTube`);
+  }
   function abrirCharla() {
     if (!charla) return;
     void charla.abrir();

@@ -1,10 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { MAX_CONVERSACION, MAX_RECUERDOS, conversacion, fusionar, instrucciones, leerCambios, ordenDeMovimiento, paraVoz, pareceCrisis, pedirRecuerdos } from "../src/apoyo.js";
+import { MAX_CONVERSACION, MAX_RECUERDOS, NOMBRE, base64, conversacion, fusionar, instrucciones, leerCambios, ordenDeMovimiento, paraVoz, pareceCrisis, pedirRecuerdos, primerVideo, separarAcciones } from "../src/apoyo.js";
 
 test("espíritu: amable, breve, honesto de que es una IA, con el 024, y con lo que recuerda", () => {
   const s = instrucciones([{ id: "a", texto: "Su perra se llama Luna", fecha: "2026-09-20" }], "sábado 26 de septiembre");
-  for (const debe of ["Cálido", "Escuchas más", "eres una IA", "024", "112", "Su perra se llama Luna", "sábado 26"]) assert.ok(s.includes(debe), debe);
+  for (const debe of ["Cálido", "Escuchas más", "hay una IA", "024", "112", "Su perra se llama Luna", "sábado 26"]) assert.ok(s.includes(debe), debe);
   assert.ok(instrucciones([], "hoy").includes("primera charla"));
 });
 
@@ -47,6 +47,36 @@ test("moverse: sígueme, quédate aquí y vuelve al banco, por voz o escrito; lo
   for (const t of ["quédate aquí", "quedate ahi un rato", "espérame aquí", "no me sigas", "stay here"]) assert.equal(ordenDeMovimiento(t), "quedarse", t);
   for (const t of ["vuelve a tu banco", "vete al banco", "go back to the bench", "vuelve a tu sitio"]) assert.equal(ordenDeMovimiento(t), "volver", t);
   for (const t of ["hoy me he quedado dormido", "sigue contándome", "el banco me ha llamado"]) assert.equal(ordenDeMovimiento(t), null, t);
+});
+
+test("identidad: se llama Kiri, tiene su historia y sabe qué acciones puede hacer", () => {
+  const s = instrucciones([], "hoy");
+  assert.ok(s.startsWith(`Eres ${NOMBRE}.`) && NOMBRE === "Kiri");
+  assert.ok(s.includes("bruma de la cascada") && s.includes("IA (Claude)"));
+  for (const debe of ['"tipo": "musica"', '"tipo": "video"', '"tipo": "ambiente"', "Nunca más de una acción"]) assert.ok(s.includes(debe), debe);
+});
+
+test("acciones: se quitan del texto (no se leen) y solo valen las bien formadas, una como mucho", () => {
+  const r = separarAcciones('Te pongo algo de piano, con lluvia de fondo.\nACCION: {"tipo": "musica", "busqueda": "piano relajante lluvia"}');
+  assert.equal(r.texto, "Te pongo algo de piano, con lluvia de fondo.");
+  assert.deepEqual(r.acciones, [{ tipo: "musica", busqueda: "piano relajante lluvia" }]);
+  assert.deepEqual(separarAcciones('Vale.\nACCIÓN: {"tipo":"ambiente","valor":"lluvia"}').acciones, [{ tipo: "ambiente", valor: "lluvia" }]);
+  const malas = separarAcciones('Hola.\nACCION: {"tipo": "borrar_disco"}\nACCION: {"tipo": "ambiente", "valor": "infierno"}\nACCION: {roto');
+  assert.deepEqual(malas, { texto: "Hola.", acciones: [] });
+  const dos = separarAcciones('Ea.\nACCION: {"tipo":"video","busqueda":"nutrias"}\nACCION: {"tipo":"ambiente","valor":"noche"}');
+  assert.deepEqual(dos.acciones, [{ tipo: "video", busqueda: "nutrias" }]);
+  assert.deepEqual(separarAcciones("Sin nada que hacer."), { texto: "Sin nada que hacer.", acciones: [] });
+});
+
+test("youtube: el primer vídeo de los resultados, con su título (y sus comillas escapadas)", () => {
+  const html = '..."reelShelfRenderer":{}..."videoRenderer":{"videoId":"abcDEF12345","thumbnail":{},"title":{"runs":[{"text":"Piano \\"relajante\\" 1 hora"}]}}..."videoRenderer":{"videoId":"zzzzzzzzzzz"';
+  assert.deepEqual(primerVideo(html), { id: "abcDEF12345", titulo: 'Piano "relajante" 1 hora' });
+  assert.equal(primerVideo("<html>nada</html>"), null);
+});
+
+test("base64: UTF-8 de ida y vuelta, también largo", () => {
+  const t = "ñandú 🦊 ".repeat(3000);
+  assert.equal(Buffer.from(base64(t), "base64").toString("utf8"), t);
 });
 
 test("voz: sin markdown, enlaces ni emojis", () => {

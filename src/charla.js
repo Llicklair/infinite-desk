@@ -4,19 +4,17 @@
 // y se puede borrar. Si lo dicho suena a crisis, además de lo que diga el espíritu, sale el 024.
 // "Sígueme", "quédate aquí" y "vuelve al banco" lo mueven (src/apoyo.js). Claude contesta por el
 // puente (tools/espiritu.mjs); la conversación vive solo aquí, en memoria, hasta cerrar el mundo.
-import { ordenDeMovimiento, paraVoz, pareceCrisis } from "./apoyo.js";
+import { NOMBRE, base64, ordenDeMovimiento, paraVoz, pareceCrisis } from "./apoyo.js";
 
 /** @typedef {import("./apoyo.js").Turno} Turno */
 /** @typedef {import("./apoyo.js").Recuerdo} Recuerdo */
+/** @typedef {import("./apoyo.js").Accion} Accion */
 /** @typedef {{seguir: () => void, quedarse: () => void, volver: () => void, hablando: boolean, escuchando: boolean}} Espiritu */
 
-/** @param {string} texto UTF-8 a base64 (a trozos: una charla larga no cabe en un solo apply). */
-function base64(texto) {
-  const b = new TextEncoder().encode(texto);
-  let s = "";
-  for (let i = 0; i < b.length; i += 8192) s += String.fromCharCode(...b.subarray(i, i + 8192));
-  return btoa(s);
-}
+// La voz de Kiri: más lenta y algo más grave que la de serie, frase a frase con una pausa entre
+// ellas (uso real: "¿la voz puede ser relajante y zen?"). La que se elige se recuerda en este equipo.
+const VOZ = { ritmo: 0.86, tono: 0.94, volumen: 0.9, pausaMs: 380 };
+const CLAVE_VOZ = "infinite-desk.voz-de-kiri";
 
 /**
  * @param {HTMLElement} panel
@@ -25,7 +23,8 @@ function base64(texto) {
  *   espiritu: () => Espiritu | null,
  *   avisar: (texto: string) => void,
  *   alCerrar: () => void,
- * }} op
+ *   hacer: (accion: Accion) => void,
+ * }} op `hacer`: lo que Kiri decide hacer (música o un vídeo de YouTube, el cielo del santuario)
  */
 export function crearCharla(panel, op) {
   /** @type {Turno[]} */
@@ -36,6 +35,8 @@ export function crearCharla(panel, op) {
   let pensando = false;
   let voz = true;
   const idioma = navigator.language?.startsWith("es") ? navigator.language : "es-ES";
+  // El país de la voz: el del navegador, o el "propio" del idioma si no lo dice (es -> es-ES).
+  const pais = idioma.includes("-") ? idioma : `${idioma}-${idioma.toUpperCase()}`;
 
   // --- el panel ---------------------------------------------------------------------------------
   /** @param {string} etiqueta @param {string} [clase] @param {string} [texto] */
@@ -46,14 +47,14 @@ export function crearCharla(panel, op) {
     return e;
   };
   const cabecera = el("div", "cabecera");
-  cabecera.append(el("h2", "", "The spirit"), el("p", "sub", "Here to listen. It's an AI (Claude): what you say goes to Anthropic to answer; what it remembers stays on this computer."));
+  cabecera.append(el("h2", "", NOMBRE), el("p", "sub", `A little fox spirit born from the waterfall's mist, here to listen. ${NOMBRE} is an AI (Claude): what you say goes to Anthropic to answer; what ${NOMBRE} remembers stays on this computer.`));
   const crisis = el("div", "crisis");
   crisis.hidden = true;
   crisis.append(el("b", "", "You matter. "), "If you're in danger or thinking of hurting yourself, call ", el("b", "", "024"), " (free, 24 h, Spain) or ", el("b", "", "112"), ". Talking to someone you trust helps too.");
   const mensajes = el("div", "mensajes");
   const entrada = /** @type {HTMLTextAreaElement} */ (el("textarea"));
   entrada.rows = 2;
-  entrada.placeholder = "Tell it anything… (Enter to send)";
+  entrada.placeholder = `Tell ${NOMBRE} anything… (Enter to send)`;
   const microfono = /** @type {HTMLButtonElement} */ (el("button", "mic", "🎙"));
   microfono.title = "Talk (click, speak, and it sends by itself)";
   const enviarBoton = /** @type {HTMLButtonElement} */ (el("button", "enviar", "Send"));
@@ -70,25 +71,33 @@ export function crearCharla(panel, op) {
   const vozBoton = /** @type {HTMLButtonElement} */ (el("button", "voz"));
   const pintarVoz = () => { vozBoton.textContent = voz ? "🔊 Voice on" : "🔈 Voice off"; };
   pintarVoz();
-  vozBoton.addEventListener("click", () => { voz = !voz; if (!voz) speechSynthesis.cancel(); pintarVoz(); });
-  mover.append(vozBoton);
+  vozBoton.addEventListener("click", () => { voz = !voz; if (!voz) callar(); pintarVoz(); });
+  // Qué voz: las del idioma, las naturales primero (en Edge suenan mucho mejor).
+  const selectorVoz = /** @type {HTMLSelectElement} */ (el("select", "elegir-voz"));
+  selectorVoz.title = `${NOMBRE}'s voice`;
+  selectorVoz.addEventListener("change", () => {
+    laVoz = speechSynthesis.getVoices().find((v) => v.name === selectorVoz.value) ?? laVoz;
+    try { localStorage.setItem(CLAVE_VOZ, selectorVoz.value); } catch { /* sin almacenamiento: solo esta vez */ }
+    decir(idioma.startsWith("es") ? "Así sueno ahora." : "This is how I sound now.");
+  });
+  mover.append(vozBoton, selectorVoz);
   const memoria = /** @type {HTMLDetailsElement} */ (el("details", "memoria"));
   const resumen = el("summary");
   const lista = el("ul");
   const olvidarTodo = /** @type {HTMLButtonElement} */ (el("button", "olvidar", "Forget everything"));
   olvidarTodo.addEventListener("click", async () => {
-    if (!confirm("Forget everything the spirit remembers about you?")) return;
+    if (!confirm(`Forget everything ${NOMBRE} remembers about you?`)) return;
     const r = await op.orquestador(["olvidar", "todo"]);
     if (r.ok) ponerRecuerdos(r.datos?.recuerdos ?? []);
   });
   memoria.append(resumen, lista, olvidarTodo);
-  const pie = el("p", "pie", "Esc: close · in the zone, V talks to it by voice without opening this");
+  const pie = el("p", "pie", `Esc: close · in the zone, V talks to ${NOMBRE} by voice without opening this`);
   panel.replaceChildren(cabecera, crisis, mensajes, fila, mover, memoria, pie);
 
   /** @param {Recuerdo[]} r */
   function ponerRecuerdos(r) {
     recuerdos = r;
-    resumen.textContent = `What it remembers about you (${r.length})`;
+    resumen.textContent = `What ${NOMBRE} remembers about you (${r.length})`;
     lista.replaceChildren(...(r.length ? r.map((x) => {
       const li = el("li");
       const b = el("button", "quitar", "×");
@@ -106,7 +115,7 @@ export function crearCharla(panel, op) {
   function pintarMensajes() {
     mensajes.replaceChildren(...turnos.map((t) => el("div", t.quien === "yo" ? "yo" : "espiritu", t.texto)));
     if (pensando) mensajes.append(el("div", "espiritu pensando", "…"));
-    if (!turnos.length && !pensando) mensajes.append(el("div", "espiritu", "Hi. I'm here. How are you, really?"));
+    if (!turnos.length && !pensando) mensajes.append(el("div", "espiritu", idioma.startsWith("es") ? `Hola, soy ${NOMBRE}. Aquí estoy. ¿Cómo estás, de verdad?` : `Hi, I'm ${NOMBRE}. I'm here. How are you, really?`));
     mensajes.scrollTop = mensajes.scrollHeight;
   }
 
@@ -114,27 +123,56 @@ export function crearCharla(panel, op) {
   /** @type {SpeechSynthesisVoice | null} */
   let laVoz = null;
   function elegirVoz() {
-    const todas = speechSynthesis.getVoices().filter((v) => v.lang.toLowerCase().startsWith(idioma.slice(0, 2).toLowerCase()));
-    // Las naturales (Edge: "Microsoft Elvira Online (Natural)") suenan mucho mejor; y del país, antes.
-    laVoz = todas.find((v) => /natural/i.test(v.name) && v.lang === idioma) ?? todas.find((v) => /natural|online/i.test(v.name)) ?? todas.find((v) => v.lang === idioma) ?? todas[0] ?? null;
+    const natural = (/** @type {SpeechSynthesisVoice} */ v) => /natural|online/i.test(v.name);
+    const todas = speechSynthesis.getVoices()
+      .filter((v) => v.lang.toLowerCase().startsWith(idioma.slice(0, 2).toLowerCase()))
+      .sort((a, b) => Number(natural(b)) - Number(natural(a)) || Number(b.lang === pais) - Number(a.lang === pais));
+    let guardada = null;
+    try { guardada = localStorage.getItem(CLAVE_VOZ); } catch { /* sin almacenamiento */ }
+    // Por defecto, una natural y suave del país (Edge: Elvira, Ximena…), si la hay.
+    laVoz = todas.find((v) => v.name === guardada) ?? todas.find((v) => natural(v) && v.lang === pais && /elvira|ximena|dalia|vera|jenny|aria/i.test(v.name))
+      ?? todas.find((v) => natural(v) && v.lang === pais) ?? todas.find(natural) ?? todas[0] ?? null;
+    selectorVoz.replaceChildren(...todas.map((v) => {
+      const o = /** @type {HTMLOptionElement} */ (el("option", "", v.name.replace(/^Microsoft\s+/, "").replace(/\s+-\s+.*$/, "")));
+      o.value = v.name;
+      o.selected = v === laVoz;
+      return o;
+    }));
+    selectorVoz.hidden = todas.length < 2;
   }
   if (typeof speechSynthesis !== "undefined") {
     elegirVoz();
     speechSynthesis.addEventListener("voiceschanged", elegirVoz);
   }
-  /** @param {string} texto */
+  let turnoDeVoz = 0; // cada respuesta nueva corta la anterior
+  function callar() {
+    turnoDeVoz++;
+    if (typeof speechSynthesis !== "undefined") speechSynthesis.cancel();
+    const e = op.espiritu();
+    if (e) e.hablando = false;
+  }
+  /** Lo dice despacio, frase a frase, con una pausa entre ellas. @param {string} texto */
   function decir(texto) {
     if (!voz || typeof speechSynthesis === "undefined") return;
-    speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance(paraVoz(texto));
-    if (laVoz) u.voice = laVoz;
-    u.lang = laVoz?.lang ?? idioma;
-    u.rate = 0.98;
-    u.pitch = 1.05;
+    callar();
+    const mio = turnoDeVoz;
+    const frases = paraVoz(texto).split(/(?<=[.!?…;:])\s+/).filter((f) => f.trim());
     const e = op.espiritu();
-    u.onstart = () => { if (e) e.hablando = true; };
-    u.onend = u.onerror = () => { if (e) e.hablando = false; };
-    speechSynthesis.speak(u);
+    const siguiente = (/** @type {number} */ i) => {
+      if (mio !== turnoDeVoz) return;
+      if (i >= frases.length) { if (e) e.hablando = false; return; }
+      const u = new SpeechSynthesisUtterance(frases[i]);
+      if (laVoz) u.voice = laVoz;
+      u.lang = laVoz?.lang ?? idioma;
+      u.rate = VOZ.ritmo;
+      u.pitch = VOZ.tono;
+      u.volume = VOZ.volumen;
+      u.onstart = () => { if (e) e.hablando = true; };
+      u.onend = () => { if (e) e.hablando = false; setTimeout(() => siguiente(i + 1), VOZ.pausaMs); };
+      u.onerror = () => { if (e) e.hablando = false; };
+      speechSynthesis.speak(u);
+    };
+    siguiente(0);
   }
 
   const Reconocer = /** @type {any} */ (window).SpeechRecognition ?? /** @type {any} */ (window).webkitSpeechRecognition;
@@ -151,7 +189,7 @@ export function crearCharla(panel, op) {
       return Promise.resolve(null);
     }
     oido?.abort();
-    speechSynthesis.cancel(); // si le hablas, se calla
+    callar(); // si le hablas, se calla
     const e = op.espiritu();
     return new Promise((resolver) => {
       const r = new Reconocer();
@@ -188,7 +226,7 @@ export function crearCharla(panel, op) {
     if (que === "seguir") e.seguir();
     else if (que === "quedarse") e.quedarse();
     else e.volver();
-    if (avisando) op.avisar(que === "seguir" ? "The spirit follows you" : que === "quedarse" ? "The spirit stays here" : "The spirit goes back to its bench");
+    if (avisando) op.avisar(que === "seguir" ? `${NOMBRE} follows you` : que === "quedarse" ? `${NOMBRE} stays here` : `${NOMBRE} goes back to the bench`);
   }
 
   /**
@@ -212,10 +250,12 @@ export function crearCharla(panel, op) {
       turnos.push({ quien: "espiritu", texto: respuesta });
       sinRecordar++;
       decir(respuesta);
+      // Lo que decide hacer (poner música, un vídeo, cambiar el cielo): lo hace el mundo.
+      for (const a of /** @type {Accion[]} */ (r.datos?.acciones ?? [])) op.hacer(a);
     } else {
       turnos.pop();
       sinRecordar--;
-      op.avisar(`The spirit can't answer right now: ${r.error ?? "no reply"}`);
+      op.avisar(`${NOMBRE} can't answer right now: ${r.error ?? "no reply"}`);
       if (!panel.hidden) entrada.value = texto;
     }
     pintarMensajes();
@@ -269,12 +309,12 @@ export function crearCharla(panel, op) {
       if (!dicho) { op.avisar("I didn't catch anything"); return; }
       op.avisar(`You: ${dicho}`);
       const r = await enviar(dicho);
-      if (r) op.avisar(`Spirit: ${r}`);
+      if (r) op.avisar(`${NOMBRE}: ${r}`);
     },
     /** Al salir de la zona: que recuerde lo hablado y se calle. */
     terminar() {
       oido?.abort();
-      if (typeof speechSynthesis !== "undefined") speechSynthesis.cancel();
+      callar();
       recordar();
     },
   };

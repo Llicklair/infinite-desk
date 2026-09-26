@@ -7,7 +7,7 @@ import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
-import { fusionar, instrucciones, leerCambios, pedirRecuerdos, conversacion } from "../src/apoyo.js";
+import { conversacion, fusionar, instrucciones, leerCambios, pedirRecuerdos, primerVideo, separarAcciones } from "../src/apoyo.js";
 import { DATOS } from "./orquestador-datos.mjs";
 
 const CASA = join(DATOS, "espiritu");
@@ -79,7 +79,8 @@ const fecha = () => new Date().toISOString().slice(0, 10);
  */
 export async function hablar(turnos) {
   if (!Array.isArray(turnos) || !turnos.length) throw new Error("nothing to answer");
-  return { texto: await claude(instrucciones(leerRecuerdos(), hoy()), conversacion(turnos)) };
+  // Lo que dice, sin las líneas de acción (esas las hace el mundo: música, un vídeo, el cielo).
+  return separarAcciones(await claude(instrucciones(leerRecuerdos(), hoy()), conversacion(turnos)));
 }
 
 /**
@@ -93,6 +94,26 @@ export async function recordar(turnos) {
   const despues = fusionar(antes, leerCambios(salida), fecha(), () => randomUUID().slice(0, 8));
   guardar(despues);
   return { recuerdos: despues };
+}
+
+/**
+ * Un vídeo de YouTube para una búsqueda (el primero de los resultados, solo vídeos): su enlace y
+ * su título. Sin clave de API: la página de resultados trae los datos. Si no se entiende, la
+ * búsqueda misma.
+ * @param {string} busqueda
+ */
+export async function buscarVideo(busqueda) {
+  const q = encodeURIComponent(busqueda.slice(0, 100));
+  const resultados = `https://www.youtube.com/results?search_query=${q}`;
+  try {
+    const r = await fetch(`${resultados}&sp=EgIQAQ%253D%253D`, {
+      headers: { "Accept-Language": "es-ES,es;q=0.9,en;q=0.8", "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0 Safari/537.36" },
+      signal: AbortSignal.timeout(15000),
+    });
+    const v = primerVideo(await r.text());
+    if (v) return { url: `https://www.youtube.com/watch?v=${v.id}`, titulo: v.titulo };
+  } catch { /* sin red o YouTube cambió: la búsqueda */ }
+  return { url: resultados, titulo: `YouTube: ${busqueda}` };
 }
 
 /** Olvidar uno (por id) o todo ("todo"). @param {string} id */

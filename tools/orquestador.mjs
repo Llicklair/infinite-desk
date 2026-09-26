@@ -12,6 +12,7 @@
 //   node tools/orquestador.mjs hablar <turnos en base64>    (el espíritu de la zona zen contesta)
 //   node tools/orquestador.mjs recordar <turnos en base64>  (al acabar: lo que merece recordar)
 //   node tools/orquestador.mjs recuerdos | olvidar <id|todo>  (lo que recuerda, a la vista y borrable)
+//   node tools/orquestador.mjs video <búsqueda en base64>  (el primer vídeo de YouTube: música o algo para distraerse)
 //
 // Los repos se nombran por su carpeta y tienen que estar en la carpeta de proyectos: quien llama
 // no elige rutas. Los agentes, uno por repo, con tools/agente.mjs en segundo plano.
@@ -26,7 +27,7 @@ import { claveDeFallo, estadoDeFallo, fallosDeRepos, trazaLegible } from "../src
 import { FORMATO_LOG, commitsDeLog, fallosNuevos } from "../src/actividad.js";
 import { carpetaDeProyectos, reposEn } from "./proyectos.mjs";
 import { buscarGb } from "./gb.mjs";
-import { hablar, leerRecuerdos, olvidar, recordar } from "./espiritu.mjs";
+import { buscarVideo, hablar, leerRecuerdos, olvidar, recordar } from "./espiritu.mjs";
 import { ENLAZADAS, WORKTREES, anotar, fichaDeAgente, guardarArreglados, guardarVistos, leerActividad, leerAgentes, leerArreglados, leerVistos } from "./orquestador-datos.mjs";
 
 const aqui = dirname(fileURLToPath(import.meta.url));
@@ -333,6 +334,7 @@ try {
     : orden === "recordar" ? await recordar(JSON.parse(Buffer.from(resto[0] ?? "", "base64").toString("utf8")))
     : orden === "recuerdos" ? { recuerdos: leerRecuerdos() }
     : orden === "olvidar" ? olvidar(resto[0] ?? "")
+    : orden === "video" ? await buscarVideo(Buffer.from(resto[0] ?? "", "base64").toString("utf8"))
     : (() => { throw new Error(`unknown order: ${orden ?? "(none)"}`); })();
   process.stdout.write(`${JSON.stringify({ ok: true, r })}\n`);
 } catch (e) {
