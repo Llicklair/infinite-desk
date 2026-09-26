@@ -234,7 +234,10 @@ object? Responder(JsonElement m, WebSocket ws)
         case "agentes":
             return new { id, ok = true, repos = agentes.Foto() };
         case "regenerar":
-            return new { id, ok = true, empezado = regenerador.Pedir("R") };
+            // Sin "repos", todas las islas (R); con ellos, solo esas (R sobre una isla, "Rebuild maps").
+            var soloEstos = m.TryGetProperty("repos", out var rr) && rr.ValueKind == JsonValueKind.Array
+                ? rr.EnumerateArray().Select(x => x.GetString() ?? "").ToArray() : null;
+            return new { id, ok = true, empezado = regenerador.Pedir(soloEstos == null ? "R" : "R (algunas islas)", soloEstos) };
         case "antesDeCapturar":
             // N: que el selector pueda ofrecer también lo minimizado (no ofrece minimizadas).
             // Y lo que no saldrá en él por no tener escritorio virtual, para avisar.

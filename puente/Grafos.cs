@@ -10,31 +10,56 @@ sealed class Regenerador(string raiz, Func<object, Task> difundir, Action alTerm
 {
     readonly object cerrojo = new();
     bool enCurso, pendiente;
+    // Lo pedido mientras corría otra: null = todas; si no, esos repos (R sobre una isla, "Rebuild maps").
+    HashSet<string>? pendientes;
+    bool pendienteTodo;
     DateTime finPropio = DateTime.MinValue;
     FileSystemWatcher? vigia, usos;
     Timer? espera;
     long leidoUsos;
 
-    /// <summary>Pide una regeneración; devuelve false si ya había una en marcha (se repetirá).</summary>
-    public bool Pedir(string motivo)
+    /// <summary>
+    /// Pide una regeneración: de todas las islas, o solo de estos repos (por nombre, de la carpeta de
+    /// proyectos: lo que no esté en ella se ignora). Devuelve false si ya había una en marcha (se
+    /// repetirá al acabar, con lo pedido mientras tanto).
+    /// </summary>
+    public bool Pedir(string motivo, IEnumerable<string>? repos = null)
     {
+        var validos = repos == null ? null : Validos(repos);
+        if (validos is { Count: 0 }) return false;
         lock (cerrojo)
         {
-            if (enCurso) { pendiente = true; return false; }
+            if (enCurso)
+            {
+                pendiente = true;
+                if (validos == null) pendienteTodo = true;
+                else (pendientes ??= []).UnionWith(validos);
+                return false;
+            }
             enCurso = true;
         }
-        Console.WriteLine($"{DateTime.Now:HH:mm:ss} regenerando grafos: {motivo}");
-        _ = Task.Run(() => Correr(motivo));
+        Console.WriteLine($"{DateTime.Now:HH:mm:ss} regenerando grafos: {motivo}{(validos == null ? "" : $" ({string.Join(", ", validos)})")}");
+        _ = Task.Run(() => Correr(motivo, validos));
         return true;
     }
 
-    async Task Correr(string motivo)
+    /// <summary>Solo nombres de carpetas que están de verdad en la carpeta de proyectos (nada de rutas).</summary>
+    HashSet<string> Validos(IEnumerable<string> repos)
+    {
+        var dev = Proyectos.Carpeta(raiz);
+        return repos.Where(n => !string.IsNullOrWhiteSpace(n) && n.IndexOfAny(['/', '\\', ':']) < 0 && n != ".." && n != "."
+            && Directory.Exists(Path.Combine(dev, n))).ToHashSet();
+    }
+
+    async Task Correr(string motivo, HashSet<string>? repos)
     {
         bool ok = false;
         string resumen;
         try
         {
-            var psi = new ProcessStartInfo("cmd.exe", "/c npm run --silent grafo")
+            // node directo (sin cmd): los nombres de repo van tal cual como argumentos, sin que un
+            // nombre raro pueda colarse como otra orden.
+            var psi = new ProcessStartInfo("node")
             {
                 WorkingDirectory = raiz,
                 RedirectStandardOutput = true,
@@ -42,6 +67,8 @@ sealed class Regenerador(string raiz, Func<object, Task> difundir, Action alTerm
                 UseShellExecute = false,
                 CreateNoWindow = true,
             };
+            psi.ArgumentList.Add(Path.Combine(raiz, "tools", "exportar.mjs"));
+            foreach (var r in repos ?? []) psi.ArgumentList.Add(r);
             using var p = Process.Start(psi)!;
             var salida = p.StandardOutput.ReadToEndAsync();
             var errores = p.StandardError.ReadToEndAsync();
@@ -57,8 +84,14 @@ sealed class Regenerador(string raiz, Func<object, Task> difundir, Action alTerm
         await difundir(new { evento = "grafos", ok, motivo, resumen });
         if (ok) alTerminar();
         bool otra;
-        lock (cerrojo) { enCurso = false; otra = pendiente; pendiente = false; finPropio = DateTime.Now; }
-        if (otra) Pedir("pedida mientras regeneraba");
+        HashSet<string>? siguientes;
+        lock (cerrojo)
+        {
+            enCurso = false; otra = pendiente; pendiente = false; finPropio = DateTime.Now;
+            siguientes = pendienteTodo ? null : pendientes;
+            pendientes = null; pendienteTodo = false;
+        }
+        if (otra) Pedir("pedida mientras regeneraba", siguientes);
     }
 
     /// <summary>

@@ -25,7 +25,7 @@ const REINTENTO_MS = 3000;
  *     u: number, v: number, e: {button?: number, buttons?: number}, delta?: number): void,
  *   alSalir(f: () => void): void,
  *   alConectar(f: () => void): void,
- *   regenerar(): Promise<boolean>,
+ *   regenerar(repos?: string[]): Promise<boolean>,
  *   alGrafos(f: (r: {ok: boolean, motivo: string, resumen: string}) => void): void,
  *   escritorio(): Promise<import("./ficheros.js").Cosa[]>,
  *   abrir(que: {ruta?: string, especial?: "explorador" | "navegador"}): Promise<string | null>,
@@ -167,8 +167,9 @@ export function crearPuente(tituloMundo) {
     alSalir(f) { alSalir.push(f); },
     alConectar(f) { alConectar.push(f); },
     /** @returns {Promise<boolean>} false si ya había una regeneración en marcha (se repetirá) */
-    async regenerar() {
-      const r = await pedir({ op: "regenerar" });
+    /** Rehace las islas: todas, o solo las de estos repos (por nombre). */
+    async regenerar(repos) {
+      const r = await pedir({ op: "regenerar", ...(repos?.length ? { repos } : {}) });
       return Boolean(r.ok && r.empezado);
     },
     alGrafos(f) { alGrafos.push(f); },

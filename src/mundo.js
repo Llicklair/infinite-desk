@@ -543,7 +543,7 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
         (n.enCiclo ? " · IN A CYCLE" : "");
     }
     if (apuntado.tipo === "isla" && apuntado.base) {
-      return `${apuntado.isla.grafo.nombre} — click: what it is · Enter: open in VS Code`;
+      return `${apuntado.isla.grafo.nombre} — click: what it is · Enter: open in VS Code · R: rebuild its map`;
     }
     if (apuntado.tipo === "isla") {
       return fondo
@@ -724,7 +724,7 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
         : puente ? puente.orquestador(args) : Promise.resolve({ ok: false, error: "no bridge" })),
       (e) => { holograma.actualizar(e); aplicarFallos(e.fallos ?? []); actividad = e.actividad ?? []; },
       () => { if (!mirar.isLocked && !escribiendo) ui.portada.hidden = false; },
-      () => void regenerar())
+      (repos) => void regenerar(repos))
     : null;
   // --- fallos (gb list, por la consola maestra cada minuto): en rojo en su isla ------------------
   /** @type {import("./fallos.js").Fallo[]} */
@@ -887,14 +887,27 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
   if (fondo) setInterval(releerGrafos, RELEER_FONDO_MS);
   if (fondo) setInterval(() => releerScript("fondo-estado.js"), 1000);
 
-  async function regenerar() {
+  /**
+   * Rehace las islas (gb graph, varios repos a la vez): todas, o solo las de estos repos (R sobre
+   * una isla, "Rebuild maps" en la consola maestra).
+   * @param {string[]} [repos]
+   */
+  async function regenerar(repos) {
     if (!puente?.conectado) {
       avisar("No bridge, so no regenerating: run `npm run grafo` and come back in.");
       return;
     }
     esperandoR = true;
-    const empezado = await puente.regenerar();
-    avisar(empezado ? "Regenerating graphs… (about a minute; keep going)" : "Already regenerating: it'll run again when done.");
+    const empezado = await puente.regenerar(repos);
+    const que = repos?.length ? (repos.length === 1 ? `${repos[0]}'s map` : `${repos.length} maps`) : "all the maps";
+    avisar(empezado ? `Rebuilding ${que}… (keep going)` : "Already rebuilding: it'll run again when done.");
+  }
+  /** La isla a la que se apunta (su base, uno de sus nodos o hacia ella), si hay. */
+  function islaApuntada() {
+    const a = apuntado;
+    if (a?.tipo === "isla") return a.isla.grafo.nombre;
+    if (a?.tipo === "nodo") return islas.find((i) => i.g3d === a.g3d)?.grafo.nombre ?? null;
+    return null;
   }
 
   // --- agentes de gb sobre los nodos --------------------------------------------------------
@@ -1091,7 +1104,11 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
       ajustes.abrir();
       mirar.unlock();
     }
-    else if (codigo === "KeyR") regenerar();
+    else if (codigo === "KeyR") {
+      // Apuntando a una isla, solo esa; si no, todas.
+      const una = islaApuntada();
+      regenerar(una ? [una] : undefined);
+    }
     else if (codigo === "KeyT") {
       verCarpetas = !verCarpetas;
       apuntado = null;

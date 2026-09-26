@@ -10,6 +10,35 @@ Cada medición real: qué se probó, qué salió, qué cambió por ello.
 
 ---
 
+## 2026-09-26 · arrastrar una carpeta del escritorio giraba el fondo — ARREGLADO, confirmado con manos
+
+Uso real: "movía una carpeta y a la vez se movía la preview aérea".
+
+- **Por qué:** el fondo recibe el ratón crudo de todo el escritorio y solo miraba si el cursor
+  estaba "sobre el escritorio". Los iconos también lo son, así que arrastrar un icono llegaba
+  como arrastre y giraba la vista. El doble clic para abrir una carpeta volaba a una isla.
+- **Arreglo:** al pulsar, se pregunta por MSAA (accesibilidad, solo lectura) a la lista de
+  iconos del Explorador (`accHitTest`). Si hay un icono, ese gesto entero (bajar y subir) no
+  llega al fondo. Con 200 ms de límite, por si el Explorador no contesta.
+- **Medido con un script aparte:** en el centro de un icono ("nebular"), 1; en una zona vacía, 0;
+  también con ventanas encima.
+- **Con manos:** "funciona correctamente" (uso real).
+
+## 2026-09-26 · mapas rehechos en masa y de uno en uno, varios a la vez — FUNCIONA sin manos
+
+- **4 repos a la vez:** `npm run grafo` rehace las 19 islas en 48 s. Ahora solo espera a TTS
+  pro, que tarda 31 s por sí mismo.
+- **Parcial:** `npm run grafo -- galaxy-brain "TTS pro"` rehace esas dos y deja las otras 17
+  como estaban (`fusionarGrafos`, con test).
+- **El puente:** `regenerar` acepta `repos`, solo nombres de carpetas que existen en la de
+  proyectos (probado: `..\Windows` y uno inexistente, ignorados). Corre node directamente, sin
+  cmd, así que un nombre no puede colarse como orden.
+- Si ya hay una regeneración en marcha, lo pedido se junta y corre al acabar.
+- **Resultado:** repo-tour y handrail rehechas en 0,7 s.
+- **En el mundo:** R apuntando a una isla (su base, un nodo o hacia ella) rehace solo esa; en
+  otro sitio, todas. "Rebuild maps" en la pestaña Repos rehace las seleccionadas.
+- Sin IA: `gb graph` es determinista y no gasta cupo.
+
 ## 2026-09-26 · instalar galaxy-brain desde el mundo — FUNCIONA sin manos
 
 - **Detección:** galaxy-brain 0.7.0, instalado en modo editable desde `dev/galaxy-brain` con

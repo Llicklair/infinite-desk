@@ -104,3 +104,18 @@ export function desdeCarpetas(raiz, ficheros) {
   }));
   return { raiz, nodos, aristas, ciclos: 0, fuente: "carpetas" };
 }
+
+/**
+ * Las islas de siempre con unas pocas rehechas (R sobre una isla, "Rebuild maps" de la consola
+ * maestra): las nuevas sustituyen a las de su mismo nombre y las que no estaban se añaden; el
+ * orden, el de `orden` (la carpeta de proyectos), y lo que no esté en él, al final.
+ * @template {{nombre: string}} T
+ * @param {T[]} viejos @param {T[]} nuevos @param {string[]} orden
+ * @returns {T[]}
+ */
+export function fusionarGrafos(viejos, nuevos, orden) {
+  const porNombre = new Map(viejos.map((g) => [g.nombre, g]));
+  for (const g of nuevos) porNombre.set(g.nombre, g);
+  const pos = new Map(orden.map((n, i) => [n, i]));
+  return [...porNombre.values()].sort((a, b) => (pos.get(a.nombre) ?? Infinity) - (pos.get(b.nombre) ?? Infinity));
+}

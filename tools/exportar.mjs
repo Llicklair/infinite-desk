@@ -4,11 +4,12 @@
 // Pide el grafo a gb (ARCHITECTURE 2), lo dispone en 3D y lo deja en wallpaper/grafos.js
 // como script clásico (ARCHITECTURE 3). Si gb no está instalado, falla o no ve módulos en un
 // repo, la isla es su árbol de carpetas (ADR 0003): quien no tenga gb también tiene mundo.
-import { execFileSync } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
+import { promisify } from "node:util";
 import { existsSync, readFileSync, readdirSync, renameSync, writeFileSync } from "node:fs";
 import { resolve, dirname, join, basename, relative } from "node:path";
 import { fileURLToPath } from "node:url";
-import { desdeCarpetas, desdeGbGraph } from "../src/datos.js";
+import { desdeCarpetas, desdeGbGraph, fusionarGrafos } from "../src/datos.js";
 import { disponer } from "../src/disposicion.js";
 import { resumenDeReadme } from "../src/noticias.js";
 import { carpetaDeProyectos, reposEn } from "./proyectos.mjs";
@@ -17,7 +18,22 @@ const aqui = dirname(fileURLToPath(import.meta.url));
 const proyecto = resolve(aqui, "..");
 const destino = join(proyecto, "wallpaper", "grafos.js");
 
-const repos = process.argv.length > 2 ? process.argv.slice(2).map((r) => resolve(r)) : reposEn(carpetaDeProyectos());
+// Sin argumentos, todos los repos de la carpeta de proyectos. Con argumentos (rutas o nombres de
+// repo: `npm run grafo -- galaxy-brain "TTS pro"`), solo esos, y las demás islas se quedan como
+// estaban en grafos.js (R sobre una isla, "Rebuild maps" de la consola maestra).
+const todosLosRepos = reposEn(carpetaDeProyectos());
+const pedidos = process.argv.slice(2);
+const parcial = pedidos.length > 0;
+const repos = parcial
+  ? pedidos.map((r) => (existsSync(resolve(r)) ? resolve(r) : todosLosRepos.find((x) => basename(x) === r))).filter((r) => {
+    if (!r) console.log("  salto  un repo pedido que no está en la carpeta de proyectos");
+    return Boolean(r);
+  }).map((r) => /** @type {string} */ (r))
+  : todosLosRepos;
+// Varios a la vez: gb graph de un repo grande tarda (TTS pro, ~30 s) y los demás no tienen por qué esperar.
+const A_LA_VEZ = Math.max(1, Number(process.env.GRAFOS_A_LA_VEZ) || 4);
+const correrGb = promisify(execFile);
+/** @type {any[]} */
 const grafos = [];
 
 /** Carpetas que no son del proyecto aunque estén dentro (cuando no hay git que lo diga). */
@@ -59,14 +75,14 @@ function resumen(repo) {
 }
 
 /** El grafo de gb, o por qué no lo hay. @param {string} repo */
-function deGb(repo) {
+async function deGb(repo) {
   try {
-    const salida = execFileSync("gb", ["graph", "--json", repo], {
+    const { stdout: salida } = await correrGb("gb", ["graph", "--json", repo], {
       encoding: "utf8",
       env: { ...process.env, PYTHONUTF8: "1" },
       maxBuffer: 256 * 1024 * 1024,
-      stdio: ["ignore", "pipe", "pipe"],
       timeout: 120000,
+      windowsHide: true,
     });
     const grafo = desdeGbGraph(JSON.parse(salida.replace(/^﻿/, "")));
     return grafo.nodos.length >= 2 ? { grafo } : { porque: `gb ve ${grafo.nodos.length} módulo(s)` };
@@ -76,16 +92,17 @@ function deGb(repo) {
   }
 }
 
-for (const repo of repos) {
+/** Una isla: el grafo de gb, o si no, su árbol de carpetas. @param {string} repo */
+async function isla(repo) {
   const nombre = basename(repo);
   const t0 = Date.now();
-  const gb = deGb(repo);
+  const gb = await deGb(repo);
   let grafo = gb.grafo;
   if (!grafo) {
     grafo = desdeCarpetas(repo, ficherosDe(repo));
     if (grafo.nodos.length < 2) {
       console.log(`  salto  ${nombre}: ${gb.porque} y no tiene ficheros que dibujar`);
-      continue;
+      return;
     }
   }
   const posiciones = disponer(grafo);
@@ -99,12 +116,29 @@ for (const repo of repos) {
   console.log(`  isla   ${nombre}: ${que} (${Date.now() - t0} ms)`);
 }
 
-if (grafos.length === 0) {
+const t0 = Date.now();
+const cola = [...repos];
+await Promise.all(Array.from({ length: Math.min(A_LA_VEZ, cola.length) }, async () => {
+  for (let r = cola.shift(); r; r = cola.shift()) await isla(r);
+}));
+const hechas = grafos.map((g) => g.nombre);
+const orden = todosLosRepos.map((r) => basename(r));
+// Parcial: las demás islas, tal como estaban.
+let viejas = [];
+if (parcial) {
+  try {
+    const texto = readFileSync(destino, "utf8");
+    viejas = JSON.parse(texto.slice(texto.indexOf("["), texto.lastIndexOf("]") + 1));
+  } catch { /* no había grafos.js: solo estas */ }
+}
+const todas = fusionarGrafos(viejas, grafos, orden);
+
+if (todas.length === 0) {
   console.error("Ningún repo con módulos ni ficheros: nada que pintar.");
   process.exit(1);
 }
 // De golpe (temporal + renombrar): el mundo lo relee mientras se regenera (R, puente) y no
 // debe ver nunca un fichero a medio escribir.
-writeFileSync(`${destino}.tmp`, `window.GB_GRAFOS = ${JSON.stringify(grafos)};\n`);
+writeFileSync(`${destino}.tmp`, `window.GB_GRAFOS = ${JSON.stringify(todas)};\n`);
 renameSync(`${destino}.tmp`, destino);
-console.log(`${grafos.length} islas -> ${destino}`);
+console.log(`${todas.length} islas -> ${destino}${parcial ? ` (rehechas: ${hechas.join(", ") || "ninguna"})` : ""} en ${((Date.now() - t0) / 1000).toFixed(1)} s, ${A_LA_VEZ} a la vez`);

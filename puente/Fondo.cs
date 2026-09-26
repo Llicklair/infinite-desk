@@ -217,6 +217,8 @@ static class Fondo
         POINT ultimoSitio;
         bool dentro;
         long ultimoMovimiento;
+        // El gesto en curso empezó sobre un icono del escritorio: es del Explorador, no del fondo.
+        bool deIcono;
 
         public async Task Montar(CoreWebView2Environment entorno, IDCompositionDevice composicion, IntPtr anfitriona, string url, double escala)
         {
@@ -271,6 +273,12 @@ static class Fondo
                 return;
             }
             dentro = true;
+            // Pulsar sobre un icono (arrastrar una carpeta, abrirla con doble clic) es del Explorador:
+            // ese gesto entero, bajar y subir, no llega al fondo. Si no, arrastrar una carpeta giraba
+            // la vista y el doble clic volaba a una isla (uso real: "movía una carpeta y a la vez se
+            // movía la preview aérea").
+            if ((botones & 0x0001) != 0 && SobreUnIcono(p)) { deIcono = true; return; }
+            if ((botones & 0x0002) != 0 && deIcono) { deIcono = false; return; }
             if ((botones & 0x0001) != 0) // RI_MOUSE_LEFT_BUTTON_DOWN; el doble clic hay que deducirlo
             {
                 uint ahora = (uint)Environment.TickCount;
@@ -361,6 +369,48 @@ static class Fondo
             finally { Marshal.FreeHGlobal(buffer); }
         }
     }
+
+    /// <summary>
+    /// ¿Hay un icono del escritorio en ese punto? Se pregunta por accesibilidad (MSAA, como un
+    /// lector de pantalla: solo lectura) a la lista de iconos del Explorador: accHitTest devuelve el
+    /// número del icono, o 0 si es la lista vacía. Con límite de tiempo: si el Explorador no contesta
+    /// en 200 ms, se da por que no (el fondo no se queda esperando a un Explorador colgado).
+    /// Medido: en el centro de un icono, 1; en una zona vacía, 0; aunque haya ventanas encima.
+    /// </summary>
+    static bool SobreUnIcono(POINT p)
+    {
+        var pregunta = Task.Run(() =>
+        {
+            try
+            {
+                var lista = ListaDeIconos();
+                if (lista == IntPtr.Zero) return false;
+                var iid = new Guid("618736E0-3C3D-11CF-810C-00AA00389B71"); // IID_IAccessible
+                if (AccessibleObjectFromWindow(lista, 0xFFFFFFFC /*OBJID_CLIENT*/, ref iid, out var o) != 0 || o is not Accessibility.IAccessible acc) return false;
+                var hijo = acc.accHitTest(p.X, p.Y);
+                return (hijo is int i && i > 0) || hijo is Accessibility.IAccessible;
+            }
+            catch (Exception) { return false; }
+        });
+        return pregunta.Wait(200) && pregunta.Result;
+    }
+
+    /// <summary>La lista de iconos del escritorio (SysListView32 dentro de SHELLDLL_DefView, bajo Progman o una WorkerW).</summary>
+    static IntPtr ListaDeIconos()
+    {
+        var vista = FindWindowEx(FindWindow("Progman", null), IntPtr.Zero, "SHELLDLL_DefView", null);
+        if (vista == IntPtr.Zero)
+            EnumWindows((h, _) =>
+            {
+                var v = FindWindowEx(h, IntPtr.Zero, "SHELLDLL_DefView", null);
+                if (v == IntPtr.Zero) return true;
+                vista = v;
+                return false;
+            }, IntPtr.Zero);
+        return vista == IntPtr.Zero ? IntPtr.Zero : FindWindowEx(vista, IntPtr.Zero, "SysListView32", null);
+    }
+
+    [DllImport("oleacc.dll")] static extern int AccessibleObjectFromWindow(IntPtr h, uint id, ref Guid iid, [MarshalAs(UnmanagedType.IUnknown)] out object? o);
 
     /// <summary>
     /// El cursor está sobre el escritorio (los iconos o el fondo), no sobre otra ventana. No vale

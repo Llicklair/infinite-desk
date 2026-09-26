@@ -57,7 +57,7 @@ function hace(seg) {
  * @param {(args: string[]) => Promise<{ok: boolean, datos?: any, error?: string}>} orquestador
  * @param {(e: EstadoMaestra) => void} alEstado cada vez que llega un estado nuevo (el holograma)
  * @param {() => void} alCerrar
- * @param {() => void} [regenerar] rehacer las islas (R): tras instalar galaxy-brain
+ * @param {(repos?: string[]) => void} [regenerar] rehacer las islas: todas (tras instalar galaxy-brain) o unas ("Rebuild maps")
  */
 export function crearMaestra(panel, orquestador, alEstado, alCerrar, regenerar) {
   /** @type {EstadoMaestra | null} */
@@ -148,9 +148,11 @@ export function crearMaestra(panel, orquestador, alEstado, alCerrar, regenerar) 
       el("span", "cuenta-sel", `${elegidos.size} selected`),
       boton("Fetch", () => void orden(["accion", "fetch", ...elegidos], `Fetching ${elegidos.size} repo(s)…`, (r) => resumenAccion(r))),
       boton("Pull", () => void orden(["accion", "pull", ...elegidos], `Pulling ${elegidos.size} repo(s)…`, (r) => resumenAccion(r))),
+      // Sus mapas con gb graph, varios a la vez (sin IA: gb es determinista y no gasta cupo).
+      boton("Rebuild maps", () => { regenerar?.([...elegidos]); mensaje = `Rebuilding ${elegidos.size} map(s) with galaxy-brain, several at once…`; pintar(); }),
       boton("Send agents →", () => { pestana = "agentes"; pintar(); }, "principal"),
     );
-    for (const b of barra.querySelectorAll("button")) if (["Fetch", "Pull", "Send agents →"].includes(b.textContent ?? "")) b.disabled = !elegidos.size || ocupado;
+    for (const b of barra.querySelectorAll("button")) if (["Fetch", "Pull", "Rebuild maps", "Send agents →"].includes(b.textContent ?? "")) b.disabled = !elegidos.size || ocupado;
     const tabla = el("table");
     const cabeza = el("tr");
     for (const t of ["", "Repo", "Branch", "Uncommitted", "Push / pull", "Last commit"]) cabeza.append(el("th", undefined, t));

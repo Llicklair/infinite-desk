@@ -55,3 +55,11 @@ test("sin gb y demasiados ficheros: solo las carpetas, para que la isla se pueda
   const g = desdeCarpetas("/repo", muchos);
   assert.deepEqual(g.nodos.map((n) => n.id), [".", "d0", "d1", "d2", "d3", "d4"]);
 });
+
+test("fusionar: las rehechas sustituyen a las suyas, las nuevas se añaden, en el orden de la carpeta", async () => {
+  const { fusionarGrafos } = await import("../src/datos.js");
+  const viejos = [{ nombre: "a", v: 1 }, { nombre: "b", v: 1 }, { nombre: "c", v: 1 }];
+  const r = fusionarGrafos(viejos, [{ nombre: "b", v: 2 }, { nombre: "d", v: 2 }], ["a", "b", "c", "d"]);
+  assert.deepEqual(r, [{ nombre: "a", v: 1 }, { nombre: "b", v: 2 }, { nombre: "c", v: 1 }, { nombre: "d", v: 2 }]);
+  assert.deepEqual(fusionarGrafos([], [{ nombre: "x" }, { nombre: "y" }], ["y"]).map((g) => g.nombre), ["y", "x"], "lo que no está en el orden, al final");
+});

@@ -12,7 +12,7 @@ Lo de esta sección se EJECUTA, así que no puede pudrirse en silencio: si mient
 npm test                    # node --test, núcleo puro (datos, disposición, islas, vínculo, ambiente, noticias, juego, orquesta, fallos, actividad)
 npm run tipos               # tsc --checkJs estricto sobre src/ y tools/
 npm run carpeta [-- ruta]   # la carpeta de proyectos de esta máquina (selector del sistema) -> infinite-desk.local.json
-npm run grafo [-- repo ...] # gb graph --json por repo -> wallpaper/grafos.js (por defecto: los repos de la carpeta de proyectos)
+npm run grafo [-- repo ...] # gb graph --json por repo, 4 a la vez -> wallpaper/grafos.js (sin argumentos, todos; con nombres o rutas, solo esas islas y el resto se queda)
 npm run noticias            # lo último sobre IA en Bluesky, Reddit, HN y Mastodon + top de GitHub del mes -> wallpaper/noticias.js (el palantír; el puente lo corre cada 30 min)
 node tools/orquestador.mjs estado # la consola maestra por debajo: cuentas (Claude, Codex, Gemini, gh, galaxy-brain), repos, agentes, fallos y actividad (también accion/lanzar/descartar/abrir/traza/instalarGb)
 npm run build               # esbuild -> wallpaper/infinite-desk.js (script clásico, sin módulos)
