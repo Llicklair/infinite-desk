@@ -64,7 +64,9 @@ export function crearLector(panel, abrirEnNavegador, alCerrar) {
       cabecera.append(el("span", "insignia", "GitHub"), el("span", "quien", `top this month · ★ +${puntosCortos(r.estrellasMes)} (${puntosCortos(r.estrellas)} total)${r.lenguaje ? ` · ${r.lenguaje}` : ""}`));
     }
     const titulo = el("h2", undefined, p ? p.texto : r?.nombre ?? enlace.etiqueta);
+    // El título va dentro de lo que se desplaza: en Bluesky o Mastodon es el post entero, y largo.
     const texto = el("div", "texto");
+    texto.append(titulo);
     // El texto del post ya está en el título: la lectura empieza por lo que añade (el artículo).
     const bloques = cuerpo(lectura).filter((n, i) => !(i === 0 && p && n.textContent === p.texto));
     if (r?.descripcion) texto.append(el("p", "descripcion", r.descripcion));
@@ -85,10 +87,10 @@ export function crearLector(panel, abrirEnNavegador, alCerrar) {
     const pie = el("div", "pie");
     const navegador = el("button", undefined, "Open in the browser (then N brings it in)");
     navegador.addEventListener("click", () => { cerrar(); abrirEnNavegador(enlace); });
-    const cerrarB = el("button", undefined, "Close (Esc)");
+    const cerrarB = el("button", undefined, "Close (Esc or click outside)");
     cerrarB.addEventListener("click", () => cerrar());
     pie.append(navegador, cerrarB);
-    panel.replaceChildren(cabecera, titulo, texto, pie);
+    panel.replaceChildren(cabecera, texto, pie);
   }
 
   function cerrar() {
