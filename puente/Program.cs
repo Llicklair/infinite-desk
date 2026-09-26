@@ -2,8 +2,9 @@
 //
 // Seguridad: controlar ventanas desde una página es peligroso si CUALQUIER web puede hacerlo.
 // Por eso (1) solo escucha en 127.0.0.1, (2) exige el origen de una página abierta desde disco
-// ("null" en file://) y (3) un token, escrito en wallpaper/puente-config.js:
-// una web no puede leer un fichero local, la página del mundo sí lo carga como script.
+// ("null" en file://) o servida por él mismo (http://127.0.0.1:47800/mundo/) y (3) un token,
+// escrito en wallpaper/puente-config.js: una web no puede leer un fichero local, y el puente no se
+// lo sirve a otra web (Sec-Fetch-Site); la página del mundo sí lo carga como script.
 using System.Collections.Concurrent;
 using System.Net.WebSockets;
 using System.Runtime.InteropServices;
@@ -58,11 +59,44 @@ builder.Logging.SetMinimumLevel(LogLevel.Warning);
 var app = builder.Build();
 app.UseWebSockets();
 
+// El mundo, servido desde aquí (http://127.0.0.1:47800/mundo/): abierto desde disco (file://),
+// Edge no guarda permisos y pedía el micrófono cada vez (uso real: "me pide permitir todo el
+// rato"). Solo ficheros de la carpeta del mundo, solo GET, solo a quien los pide para sí mismo:
+// una web cualquiera que intente cargar puente-config.js (lleva el token) como <script> manda
+// Sec-Fetch-Site: cross-site y se rechaza; un Host que no es este (rebinding de DNS), también.
+const string ORIGEN_PROPIO = "http://127.0.0.1:47800";
+bool OrigenValido(string origen) => origen is "null" or "" or ORIGEN_PROPIO;
+var tipos = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+{
+    [".html"] = "text/html; charset=utf-8", [".js"] = "text/javascript; charset=utf-8", [".css"] = "text/css; charset=utf-8",
+    [".json"] = "application/json", [".png"] = "image/png", [".jpg"] = "image/jpeg", [".svg"] = "image/svg+xml",
+    [".ico"] = "image/x-icon", [".woff2"] = "font/woff2", [".mp3"] = "audio/mpeg", [".ogg"] = "audio/ogg", [".webp"] = "image/webp",
+};
+var raizMundo = Path.GetFullPath(mundo).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+app.MapGet("/mundo/{**ruta}", async (HttpContext ctx, string? ruta) =>
+{
+    var sitio = ctx.Request.Headers["Sec-Fetch-Site"].ToString();
+    if (ctx.Request.Host.Value != $"127.0.0.1:{PUERTO}" || (sitio != "" && sitio != "same-origin" && sitio != "none"))
+    {
+        ctx.Response.StatusCode = 403;
+        return;
+    }
+    var fichero = Path.GetFullPath(Path.Combine(raizMundo, string.IsNullOrEmpty(ruta) ? "index.html" : ruta));
+    if (!fichero.StartsWith(raizMundo, StringComparison.OrdinalIgnoreCase) || !File.Exists(fichero) || !tipos.TryGetValue(Path.GetExtension(fichero), out var tipo))
+    {
+        ctx.Response.StatusCode = 404;
+        return;
+    }
+    ctx.Response.ContentType = tipo;
+    ctx.Response.Headers.CacheControl = "no-store"; // grafos.js, noticias.js y la config cambian: siempre los de ahora
+    await ctx.Response.SendFileAsync(fichero);
+});
+
 app.Map("/", async (HttpContext ctx) =>
 {
     if (!ctx.WebSockets.IsWebSocketRequest) { ctx.Response.StatusCode = 400; return; }
     var origen = ctx.Request.Headers.Origin.ToString();
-    if (ctx.Request.Query["token"] != token || (origen != "null" && origen != ""))
+    if (ctx.Request.Query["token"] != token || !OrigenValido(origen))
     {
         ctx.Response.StatusCode = 403;
         return;
@@ -95,7 +129,7 @@ app.Map("/vista", async (HttpContext ctx) =>
 {
     if (!ctx.WebSockets.IsWebSocketRequest) { ctx.Response.StatusCode = 400; return; }
     var origen = ctx.Request.Headers.Origin.ToString();
-    if (ctx.Request.Query["token"] != token || (origen != "null" && origen != "") || !long.TryParse(ctx.Request.Query["hwnd"], out var hv))
+    if (ctx.Request.Query["token"] != token || !OrigenValido(origen) || !long.TryParse(ctx.Request.Query["hwnd"], out var hv))
     {
         ctx.Response.StatusCode = 403;
         return;

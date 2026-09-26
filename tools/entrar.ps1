@@ -91,6 +91,9 @@ if ($h -ne [IntPtr]::Zero) {
   [void][Entrar.Mundo]::SetForegroundWindow($h)
   exit
 }
+# Servido por el puente (Program.cs, /mundo/), no desde disco: desde file:// Edge no guarda
+# permisos y pedía el micrófono cada vez (uso real: "me pide permitir todo el rato").
+if ((Escucha) -and $Url -match '^file:.*/wallpaper/index\.html(\?.*)?$') { $Url = "http://127.0.0.1:47800/mundo/index.html$($Matches[1])" }
 Start-Process $Navegador -ArgumentList "--user-data-dir=`"$Perfil`"", '--no-first-run', '--start-fullscreen', "--app=$Url"
 # Hasta que el mundo tenga su título (así un clic más lo encuentra y vuelve a él), sin soltar el turno.
 for ($i = 0; $i -lt 100 -and [Entrar.Mundo]::Buscar() -eq [IntPtr]::Zero; $i++) { Start-Sleep -Milliseconds 150 }
