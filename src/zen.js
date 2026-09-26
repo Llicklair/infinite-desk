@@ -14,17 +14,14 @@ import { fuerzaDeCarga, posicionEn, recorrido } from "./lago.js";
 import { IMPULSO, caer, deslizar, sueloBajo } from "./andar.js";
 import { crearCabana } from "./cabana.js";
 import { cesped as texCesped, piedra as texPiedra, triplanar } from "./texturas.js";
+import { H_LABIO, RISCO_Z, Z_LABIO, cajasRisco, cima, enRisco, hendidura, mallaRisco, ruido } from "./risco.js";
 
 /** Lejos del anillo de islas: a más distancia que el plano lejano de la cámara, no se ven. */
 export const CENTRO_ZEN = new THREE.Vector3(0, 0, -2600);
 const R_LAGO = 15;
-const RISCO_Z = -18; // los bloques de detrás de la poza; la cascada cae de ellos
-const ALTO_CASCADA = 11;
 const OJOS = 1.7;
-// El chorro: sale del labio de piedra a esta altura y, como agua lanzada en horizontal, cae en arco
+// El chorro: sale del labio del risco (src/risco.js) y, como agua lanzada en horizontal, cae en arco
 // (avanza K_ARCO·√(lo que ha caído)). Donde toca la poza, la espuma y las salpicaduras.
-const H_LABIO = ALTO_CASCADA + 0.2;
-const Z_LABIO = RISCO_Z + 2.1;
 const K_ARCO = 0.55;
 const PIE_Z = Z_LABIO + K_ARCO * Math.sqrt(H_LABIO);
 const MAX_ONDAS = 16;
@@ -41,7 +38,7 @@ const MAX_ONDAS = 16;
 /** @type {Record<Ambiente, Preset>} */
 export const AMBIENTES = {
   dia: {
-    cenit: "#4a98e3", horizonte: "#f8e6cc", sol: "#ffe7bd", solDir: [0.75, 0.5, -0.35], estrellas: 0, nubes: 1,
+    cenit: "#4a98e3", horizonte: "#f8e6cc", sol: "#ffe7bd", solDir: [0.7, 0.55, 0.4], estrellas: 0, nubes: 1,
     niebla: "#e9dfca", densidad: 0.004, cieloLuz: "#dcecff", sueloLuz: "#6f9a46", hemi: 1.15, luz: "#ffe2b0", intensidad: 2.6,
     hondo: "#1ba7b8", somero: "#86e8d8", luciernagas: 0, brillo: 1, farolillos: 0.15, motas: "#fff0b3", cuantasMotas: 0.7,
     exposicion: 0.9, vineta: "rgba(90, 55, 20, 0.28)", lluvia: 0, ventanas: 0.1,
@@ -68,18 +65,6 @@ export const AMBIENTES = {
   },
 };
 export const ORDEN_AMBIENTES = /** @type {Ambiente[]} */ (["dia", "atardecer", "noche", "lluvia"]);
-
-/** Ruido de valor 2D determinista (sin Math.random: el santuario es siempre el mismo). @param {number} x @param {number} y */
-function ruido(x, y) {
-  const h = (/** @type {number} */ a, /** @type {number} */ b) => {
-    const s = Math.sin(a * 127.1 + b * 311.7) * 43758.5453;
-    return s - Math.floor(s);
-  };
-  const ix = Math.floor(x), iy = Math.floor(y), fx = x - ix, fy = y - iy;
-  const ux = fx * fx * (3 - 2 * fx), uy = fy * fy * (3 - 2 * fy);
-  const a = h(ix, iy), b = h(ix + 1, iy), c = h(ix, iy + 1), d = h(ix + 1, iy + 1);
-  return a + (b - a) * ux + (c - a) * uy + (a - b - c + d) * ux * uy;
-}
 
 /** La altura del suelo en coordenadas de la zona (la poza, en el origen, a 0). @param {number} x @param {number} z */
 export function alturaTerreno(x, z) {
@@ -531,83 +516,48 @@ export function crearZen(escena, mundo) {
     const hx = (w * c + d * sn) / 2, hz = (w * sn + d * c) / 2;
     rocas.push({ x0: cx - hx, x1: cx + hx, z0: cz - hz, z1: cz + hz, y0, y1 });
   };
-  /** @param {number} x @param {number} y @param {number} z @param {number} w @param {number} h @param {number} d @param {boolean} [conMusgo] */
-  function bloque(x, y, z, w, h, d, conMusgo = true) {
-    // No un bloque liso: capas de piedra apiladas, cada una algo desplazada, girada y de otro tamaño
-    // y tono, como sillares viejos (uso real: "reestructura los pilares, que son completamente cuadrados").
-    const semilla = x * 1.7 + z * 2.3 + y;
-    const capas = Math.max(1, Math.round(h / 2.6));
-    const pesos = Array.from({ length: capas }, (_, k) => 0.75 + ruido(semilla, k) * 0.5);
-    const total = pesos.reduce((a, b) => a + b, 0);
-    let yy = y;
-    /** @type {{w: number, d: number, ox: number, oz: number, giro: number}} */
-    let arriba = { w, d, ox: 0, oz: 0, giro: 0 };
-    for (let k = 0; k < capas; k++) {
-      const hk = (h * pesos[k]) / total;
-      // Las de abajo, algo más anchas; las de arriba, más estrechas y más sueltas.
-      const estrecha = 1 - (k / capas) * 0.12;
-      const wk = w * estrecha * (0.9 + ruido(semilla, k + 11) * 0.16);
-      const dk = d * estrecha * (0.9 + ruido(semilla, k + 13) * 0.16);
-      const ox = (ruido(semilla, k + 17) - 0.5) * 0.7, oz = (ruido(semilla, k + 19) - 0.5) * 0.5;
-      const giro = (ruido(semilla, k + 23) - 0.5) * 0.12;
-      const sillar = sombra(new THREE.Mesh(caja(wk, hk * 0.97, dk, 0.35 + ruido(semilla, k + 29) * 0.2), tono(k + semilla)));
-      sillar.position.set(x + ox, yy + hk / 2, z + oz);
-      sillar.rotation.y = giro;
-      roca(x + ox, z + oz, wk, dk, yy, yy + hk * 0.97, giro);
-      grupo.add(sillar);
-      // A veces, una piedra suelta al pie o en una junta, para romper la línea.
-      if (ruido(semilla, k + 31) > 0.6) {
-        const suelta = sombra(new THREE.Mesh(caja(0.8 + ruido(k, semilla) * 0.8, 0.6, 0.7, 0.2), tono(k)));
-        suelta.position.set(x + ox + (ruido(semilla, k + 37) - 0.5) * wk, yy + 0.3, z + oz + dk / 2 + 0.2);
-        suelta.rotation.y = ruido(semilla, k + 41) * 1.2;
-        roca(suelta.position.x, suelta.position.z, 1.1, 1.1, yy, yy + 0.6);
-        grupo.add(suelta);
-      }
-      yy += hk;
-      arriba = { w: wk, d: dk, ox, oz, giro };
-    }
-    if (conMusgo) {
-      const m = sombra(new THREE.Mesh(caja(arriba.w * 1.03, 0.4, arriba.d * 1.03, 0.18), musgo));
-      m.position.set(x + arriba.ox, yy + 0.1, z + arriba.oz);
-      m.rotation.y = arriba.giro;
-      grupo.add(m);
-      // Hiedra que cuelga por delante, de la última capa.
-      for (let k = 0; k < Math.floor(arriba.w / 1.2); k++) {
-        if (ruido(x + k, z) < 0.45) continue;
-        const largo = 0.8 + ruido(k, x + y) * h * 0.6;
-        const hiedra = new THREE.Mesh(caja(0.35, largo, 0.1, 0.04), musgo);
-        hiedra.position.set(x + arriba.ox - arriba.w / 2 + 0.6 + k * 1.2, yy - largo / 2, z + arriba.oz + arriba.d / 2 + 0.06);
-        grupo.add(hiedra);
-      }
-    }
-  }
   const zc = RISCO_Z;
-  // A los lados de la cascada, escalonados (el hueco del centro es para el agua).
-  bloque(-5.8, 0, zc, 5, ALTO_CASCADA, 6);
-  bloque(5.8, 0, zc + 0.3, 5, ALTO_CASCADA - 1.2, 6);
-  // Arriba, dos pilares altos que encajonan el canal, y detrás la roca de la que mana.
-  bloque(-3.35, ALTO_CASCADA, zc - 0.4, 2.1, 3.2, 4.2);
-  bloque(3.35, ALTO_CASCADA - 1.2, zc - 0.2, 2.1, 4.3, 4.2);
-  bloque(0, ALTO_CASCADA - 0.6, zc - 4, 6.5, 4.8, 2.8);
-  // El canal: su lecho, que sale en voladizo como un labio por donde se lanza el agua.
-  const lecho = sombra(new THREE.Mesh(caja(4.8, 0.5, Z_LABIO - (zc - 3.2), 0.18), sillares[1]));
-  lecho.position.set(0, H_LABIO - 0.3, (Z_LABIO + zc - 3.2) / 2);
-  grupo.add(lecho);
-  for (const x of [-2.45, 2.45]) { // bordillos del labio, redondeados por el agua
-    const b = sombra(new THREE.Mesh(caja(0.35, 0.4, 1.6, 0.15), sillares[2]));
-    b.position.set(x, H_LABIO + 0.05, Z_LABIO - 0.8);
-    grupo.add(b);
+  // El risco de la cascada, de una sola pieza (src/risco.js da la forma). Aquí se viste: piedra
+  // clara, musgo donde es plano (las repisas y la cima), oscura y brillante donde la moja el agua.
+  const { posiciones: pRisco, indices: iRisco } = mallaRisco();
+  const geoRisco = new THREE.BufferGeometry();
+  geoRisco.setAttribute("position", new THREE.BufferAttribute(pRisco, 3));
+  geoRisco.setIndex(iRisco);
+  geoRisco.computeVertexNormals();
+  const nRisco = geoRisco.attributes.normal;
+  const cRisco = new Float32Array(pRisco.length), mRisco = new Float32Array(pRisco.length / 3);
+  const colPiedra = new THREE.Color(), colMusgo = new THREE.Color(), colMojada = new THREE.Color("#46524f");
+  for (let i = 0; i < pRisco.length / 3; i++) {
+    const x = pRisco[i * 3], y = pRisco[i * 3 + 1], z = pRisco[i * 3 + 2];
+    const n = ruido(x * 0.35, (y - z) * 0.35);
+    colPiedra.setHSL(0.1 + n * 0.02, 0.22 + n * 0.08, 0.84 + (ruido(x * 1.3, y * 1.3) - 0.5) * 0.1);
+    colMusgo.setHSL(0.24 + n * 0.04, 0.5, 0.33 + n * 0.08);
+    // Musgo según la pendiente (y un poco en las grietas de la cara), nunca bajo el agua.
+    const musgoso = THREE.MathUtils.smoothstep(nRisco.getY(i), 0.3 - n * 0.2, 0.62) * THREE.MathUtils.smoothstep(y, 0.4, 1.2);
+    // Mojada: la hendidura entera, la orilla del agua y donde salpica al pie de la cascada.
+    const mojada = Math.min(1, hendidura(x) * (z > zc - 2.5 ? 1 : 0.5)
+      + (1 - THREE.MathUtils.smoothstep(y, 0.2, 1.4)) * 0.6
+      + (1 - THREE.MathUtils.smoothstep(Math.abs(x), 2.5, 5.5)) * (1 - THREE.MathUtils.smoothstep(y, 0.5, 4)) * 0.7);
+    c.copy(colPiedra).lerp(colMusgo, musgoso * (1 - mojada * 0.7)).lerp(colMojada, mojada * (1 - musgoso * 0.5) * 0.85);
+    cRisco.set([c.r, c.g, c.b], i * 3);
+    mRisco[i] = mojada;
   }
-  // Detrás del chorro, la pared oscura y mojada (que el agua blanca se lea contra ella).
-  const mojada = new THREE.Mesh(new THREE.PlaneGeometry(5, H_LABIO - 0.4), new THREE.MeshStandardMaterial({ color: "#3d4847", roughness: 0.22, metalness: 0.1 }));
-  mojada.position.set(0, (H_LABIO - 0.4) / 2, zc + 0.12);
-  mojada.receiveShadow = true;
-  grupo.add(mojada);
-  bloque(-12.5, 0, zc + 1, 6, 6, 5);
-  bloque(12, 0, zc + 1.5, 5.5, 4.5, 5);
-  bloque(-17, 0, zc + 4, 5, 3, 5);
-  bloque(16.5, 0, zc + 5, 4.5, 2.2, 4);
-  bloque(0, 0, zc - 1.3, 5.4, H_LABIO - 0.6, 2.8, false); // la pared detrás del agua
+  geoRisco.setAttribute("color", new THREE.BufferAttribute(cRisco, 3));
+  geoRisco.setAttribute("mojado", new THREE.BufferAttribute(mRisco, 1));
+  const matRisco = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.92 });
+  matRisco.onBeforeCompile = (sh) => { // lo mojado brilla (menos rugoso)
+    sh.vertexShader = sh.vertexShader
+      .replace("#include <common>", "#include <common>\nattribute float mojado;\nvarying float vMojado;")
+      .replace("#include <begin_vertex>", "#include <begin_vertex>\nvMojado = mojado;");
+    sh.fragmentShader = sh.fragmentShader
+      .replace("#include <common>", "#include <common>\nvarying float vMojado;")
+      .replace("#include <roughnessmap_fragment>", "#include <roughnessmap_fragment>\nroughnessFactor = mix(roughnessFactor, 0.2, vMojado);");
+  };
+  triplanar(matRisco, texPiedra(), 0.18);
+  matRisco.customProgramCacheKey = () => "risco"; // su propio programa (el de triplanar lo comparten los sillares)
+  const risco = sombra(new THREE.Mesh(geoRisco, matRisco));
+  grupo.add(risco);
+  for (const k of cajasRisco()) rocas.push(k);
   // Piedras para pisar, en fila por la poza.
   for (let i = 0; i < 5; i++) {
     const s = sombra(new THREE.Mesh(caja(2.6, 0.5, 1.8, 0.2), piedra));
@@ -731,10 +681,11 @@ export function crearZen(escena, mundo) {
   }
   // Matas en los salientes de arriba.
   const helecho = mecer(new THREE.MeshStandardMaterial({ color: "#5f9f44", roughness: 0.9 }), 0.05, -0.6);
-  for (const [x, y, z, e] of [[-6.8, ALTO_CASCADA + 0.3, zc + 2.2, 0.9], [-4.6, ALTO_CASCADA + 3.3, zc + 1.2, 0.6], [6.8, ALTO_CASCADA - 0.9, zc + 2.4, 0.8], [4.4, ALTO_CASCADA + 3.2, zc + 1.4, 0.55], [-2.9, H_LABIO + 0.2, Z_LABIO - 0.3, 0.4]]) {
+  for (const [x, e] of [[-8.2, 0.9], [-4.4, 0.6], [-3, 0.45], [3.1, 0.45], [4.6, 0.55], [7.6, 0.8], [11, 0.7], [-11.5, 0.75], [15, 0.6]]) {
+    const arista = cima(x);
     const m = sombra(new THREE.Mesh(new THREE.IcosahedronGeometry(0.8, 3), helecho));
     m.scale.set(e * 1.3, e * 0.8, e * 1.3);
-    m.position.set(x, y, z);
+    m.position.set(x, arista.y + e * 0.3, arista.z - e * 0.6);
     grupo.add(m);
   }
   // Bruma al pie (nube blanda) y salpicaduras que saltan en arco.
@@ -795,11 +746,14 @@ export function crearZen(escena, mundo) {
     const a = ruido(i, 41) * Math.PI * 2;
     const d = 20 + ruido(i, 43) * 48;
     const x = Math.cos(a) * d, z = Math.sin(a) * d;
-    if ((z > 12 && Math.abs(x) < 12) || junto(x, z)) continue; // la vista desde la llegada, despejada; la cabaña
+    if ((z > 12 && Math.abs(x) < 12) || junto(x, z) || enRisco(x, z)) continue; // la vista desde la llegada, despejada; la cabaña; el risco
     arboles.push({ x, z, y: alturaTerreno(x, z), s: 0.9 + ruido(i, 47) * 0.8 });
   }
-  // Y dos grandes encima de los bloques, como en la imagen.
-  arboles.push({ x: -6.6, z: zc - 1, y: ALTO_CASCADA + 0.3, s: 1.4 }, { x: 7, z: zc - 0.6, y: ALTO_CASCADA - 0.9, s: 1.25 });
+  // Y tres encima del risco, como en la imagen: dos grandes en los lóbulos y uno en la cola.
+  for (const [x, s, atras] of [[-6.6, 1.4, 2.2], [7, 1.25, 2], [-13.5, 1, 1.6]]) {
+    const arista = cima(x);
+    arboles.push({ x, z: arista.z - atras, y: arista.y - 0.2, s });
+  }
   const tronco = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.2, 0.35, 3.4, 6), new THREE.MeshStandardMaterial({ color: "#6b4f3a", roughness: 1 }), arboles.length);
   const BOLAS = 5;
   const hojas = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1.5, 3), triplanar(/** @type {THREE.MeshStandardMaterial} */ (mecer(new THREE.MeshStandardMaterial({ color: "#ffffff", roughness: 0.85 }), 0.05, -1.5)), texCesped(), 0.7), arboles.length * BOLAS);
@@ -863,7 +817,7 @@ export function crearZen(escena, mundo) {
     if (r < R_LAGO + 2 || r > 42) return false;
     if (Math.abs(x) < 8.5 && z > R_LAGO + 1 && z < R_LAGO + 13) return false; // el patio
     if (junto(x, z)) return false;
-    return !(z < RISCO_Z + 4 && Math.abs(x) < 20); // los bloques
+    return !enRisco(x, z);
   };
   const BRIZNAS = 4200;
   const geoBrizna = new THREE.ConeGeometry(0.06, 1, 3);

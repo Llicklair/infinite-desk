@@ -9,6 +9,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { frente } from "../src/risco.js";
 const url = pathToFileURL(join(dirname(fileURLToPath(import.meta.url)), "..", "wallpaper", "index.html")).href + "?vista=dentro&zen=dia";
 const perfil = mkdtempSync(join(tmpdir(), "zen-"));
 const puerto = 9700 + Math.floor(Math.random() * 200);
@@ -50,7 +51,8 @@ await ev(`(() => {
 console.log("rocks and walls");
 await ev("__en(-12.5, 3, -11.5)");
 let pos = await ev("__anda(0, -0.1, 80)");
-comprobar("walking into a stone pillar stops you", pos[2] > -14.6, `z = ${pos[2].toFixed(2)} (the pillar starts at -14.5)`);
+const cara = frente(-12.5);
+comprobar("walking into the waterfall cliff stops you at its face", pos[2] > cara - 0.6 && pos[2] < -12 && pos[1] < 3, `z = ${pos[2].toFixed(2)}, y = ${pos[1].toFixed(2)} (the face is at z = ${cara.toFixed(2)})`);
 await ev("__en(-21, 3, 2.3)");
 pos = await ev("__anda(0.1, 0, 60)");
 comprobar("the moon gate stops you at its stone", true, `ends at x = ${pos[0].toFixed(2)}`);
@@ -87,8 +89,9 @@ await ev("__zen.zen.interactuar(__zen.camara)");
 comprobar("E takes the mug", await ev("__zen.zen.estado.tazaEnMano"), "");
 const antes = await ev("__zen.zen.estado.nivel");
 await ev("__zen.zen.clic()");
-await esp(1800);
-const despues = await ev("__zen.zen.estado.nivel");
+// El sorbo es una animación: se espera a que baje (con swiftshader, a veces tarda más de 1,8 s).
+let despues = antes;
+for (let t = 0; t < 30 && despues >= antes; t++) { await esp(200); despues = await ev("__zen.zen.estado.nivel"); }
 comprobar("click takes a sip (the level goes down)", despues < antes, `${antes} -> ${despues.toFixed(2)}`);
 await ev("__zen.zen.interactuar(__zen.camara)");
 comprobar("E leaves it on the table", !(await ev("__zen.zen.estado.tazaEnMano")), "");

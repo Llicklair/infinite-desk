@@ -248,3 +248,11 @@ actividad   -/-> texturas
 lago        -/-> texturas
 andar       -/-> texturas
 tools -/-> texturas
+
+# La forma del risco de la cascada (risco) es núcleo puro: números, sin three; zen la viste.
+risco       -/-> zen
+risco       -/-> cabana
+risco       -/-> texturas
+risco       -/-> mundo
+risco       -/-> grafo3d
+risco       -/-> puente
