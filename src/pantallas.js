@@ -1,6 +1,6 @@
 // Pantallas flotantes: una ventana capturada en vivo, con el grafo de su repo detrás y encima.
 import * as THREE from "three";
-import { crearGrafo3D } from "./grafo3d.js";
+import { crearGrafo3D, liberar } from "./grafo3d.js";
 import { rotulo } from "./rotulo.js";
 import { hwndDeEtiqueta } from "./puente.js";
 
@@ -112,10 +112,8 @@ export function crearPantalla(captura) {
 
   const textura = new THREE.VideoTexture(video);
   textura.colorSpace = THREE.SRGBColorSpace;
-  const lienzo = new THREE.Mesh(
-    new THREE.PlaneGeometry(1, 1),
-    new THREE.MeshBasicMaterial({ map: textura, toneMapped: false, side: THREE.DoubleSide }),
-  );
+  const materialVideo = new THREE.MeshBasicMaterial({ map: textura, toneMapped: false, side: THREE.DoubleSide });
+  const lienzo = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), materialVideo);
   const marco = new THREE.Mesh(
     new THREE.PlaneGeometry(1, 1),
     new THREE.MeshBasicMaterial({ color: "#3a4480", side: THREE.DoubleSide }),
@@ -150,6 +148,72 @@ export function crearPantalla(captura) {
     if (etiqueta) etiqueta.position.set(0, -alto / 2 - 0.3, 0.05);
   }
 
+  // --- la vista directa (mientras se escribe en ella): trozos BGRA del puente a una textura -----
+  /** @type {{tex: THREE.DataTexture, material: THREE.MeshBasicMaterial, ancho: number, alto: number, entera: boolean} | null} */
+  let directa = null;
+
+  /**
+   * Un mensaje de la vista directa: u16 ancho, alto, n; n rectángulos (u16 x, y, w, h); y sus
+   * píxeles BGRA fila a fila. Hasta el primero, la pantalla sigue con la captura de Chromium.
+   * @param {ArrayBuffer} datos
+   */
+  function aplicarDirecto(datos) {
+    const d = new DataView(datos);
+    const ancho = d.getUint16(0, true), alto = d.getUint16(2, true), n = d.getUint16(4, true);
+    if (!ancho || !alto) return;
+    if (!directa || directa.ancho !== ancho || directa.alto !== alto) {
+      quitarDirecto(false);
+      const tex = new THREE.DataTexture(new Uint8Array(ancho * alto * 4), ancho, alto, THREE.RGBAFormat);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      tex.minFilter = tex.magFilter = THREE.LinearFilter;
+      tex.generateMipmaps = false;
+      // Las filas vienen de arriba abajo; la textura empieza por abajo: se da la vuelta con la uv.
+      tex.repeat.set(1, -1);
+      tex.offset.set(0, 1);
+      const material = new THREE.MeshBasicMaterial({ map: tex, toneMapped: false, side: THREE.DoubleSide });
+      // BGRA como lo da Windows: los canales se intercambian aquí, gratis (en el puente costaba).
+      material.onBeforeCompile = (sh) => {
+        sh.fragmentShader = sh.fragmentShader.replace("#include <map_fragment>",
+          "#ifdef USE_MAP\n  diffuseColor *= texture2D( map, vMapUv ).bgra;\n#endif");
+      };
+      // `entera`: hay pendiente una subida de la textura ENTERA (la primera, o un mensaje grande).
+      // Hasta que three la haga (onUpdate), no se le añaden filas sueltas: si no, al subir hacía
+      // solo esas y lo demás se quedaba sin subir; nada más entrar, en negro, porque la textura
+      // nueva empieza a ceros (uso real: "aparecen como recuadros negros nada más pulsar Enter").
+      const nueva = { tex, material, ancho, alto, entera: true };
+      tex.onUpdate = () => { nueva.entera = false; };
+      directa = nueva;
+    }
+    const px = /** @type {Uint8Array} */ (directa.tex.image.data);
+    let o = 6 + n * 8;
+    let area = 0;
+    for (let i = 0; i < n; i++) {
+      const x = d.getUint16(6 + i * 8, true), y = d.getUint16(8 + i * 8, true);
+      const w = d.getUint16(10 + i * 8, true), h = d.getUint16(12 + i * 8, true);
+      for (let f = 0; f < h; f++) {
+        const inicio = ((y + f) * ancho + x) * 4;
+        px.set(new Uint8Array(datos, o, w * 4), inicio);
+        if (!directa.entera) directa.tex.addUpdateRange(inicio, w * 4);
+        o += w * 4;
+      }
+      area += w * h;
+    }
+    // Mucho cambiado (scroll, vídeo): una subida entera sale más barata que cientos de filas.
+    if (area > ancho * alto * 0.3) directa.entera = true;
+    if (directa.entera) directa.tex.clearUpdateRanges();
+    directa.tex.needsUpdate = true;
+    lienzo.material = directa.material;
+  }
+
+  /** De vuelta a la captura de Chromium. @param {boolean} [volver] */
+  function quitarDirecto(volver = true) {
+    if (volver) lienzo.material = materialVideo;
+    if (!directa) return;
+    directa.tex.dispose();
+    directa.material.dispose();
+    directa = null;
+  }
+
   const pantalla = {
     objeto,
     titulo,
@@ -165,8 +229,9 @@ export function crearPantalla(captura) {
      * @param {import("./grafo3d.js").GrafoExportado | null} grafo
      */
     enganchar(grafo) {
-      if (grafo3d) objeto.remove(grafo3d.objeto);
-      if (etiqueta) objeto.remove(etiqueta);
+      // Lo de antes se suelta de la GPU: cambiar de grafo con G una y otra vez no debe ir sumando.
+      if (grafo3d) { objeto.remove(grafo3d.objeto); liberar(grafo3d.objeto); }
+      if (etiqueta) { objeto.remove(etiqueta); liberar(etiqueta); }
       grafo3d = grafo ? crearGrafo3D(grafo, ANCHO_INICIAL * 0.42) : null;
       pantalla.repo = grafo?.nombre ?? null;
       if (grafo3d) {
@@ -178,6 +243,8 @@ export function crearPantalla(captura) {
       /** @type {THREE.MeshBasicMaterial} */ (marco.material).color.set(grafo ? "#5a6cff" : "#3a4480");
       colocarAnexos();
     },
+    aplicarDirecto,
+    quitarDirecto,
     /** Quita o vuelve a poner el grafo encima de la ventana; devuelve si queda visible. */
     alternarGrafo() {
       grafoVisible = !grafoVisible;
@@ -186,8 +253,10 @@ export function crearPantalla(captura) {
     },
     cerrar() {
       for (const t of stream.getTracks()) t.stop();
-      textura.dispose();
+      quitarDirecto();
       objeto.removeFromParent();
+      liberar(objeto); // el vídeo, el marco, el grafo y el rótulo: una pantalla cerrada no deja nada en la GPU
+      video.srcObject = null;
     },
     /** @param {() => void} alTerminar la ventana se cerró o se dejó de compartir */
     alTerminar(alTerminar) {

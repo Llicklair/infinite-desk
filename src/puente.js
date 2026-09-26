@@ -21,12 +21,14 @@ const REINTENTO_MS = 3000;
  *   antesDeCapturar(): Promise<string[]>,
  *   carpetaEnVSCode(): Promise<string | null>,
  *   elegirCarpeta(): Promise<Carpeta | string>,
+ *   vistaDirecta(hwnd: number, alTrozos: (datos: ArrayBuffer) => void): () => void,
  *   raton(hwnd: number, tipo: "mover" | "bajar" | "doble" | "subir" | "rueda",
  *     u: number, v: number, e: {button?: number, buttons?: number}, delta?: number): void,
  *   alSalir(f: () => void): void,
  *   alConectar(f: () => void): void,
  *   regenerar(repos?: string[]): Promise<boolean>,
  *   alGrafos(f: (r: {ok: boolean, motivo: string, resumen: string}) => void): void,
+ *   alIsla(f: (m: {repo: string, ok: boolean, texto: string}) => void): void,
  *   escritorio(): Promise<import("./ficheros.js").Cosa[]>,
  *   abrir(que: {ruta?: string, especial?: "explorador" | "navegador"}): Promise<string | null>,
  *   abrirUrl(url: string): Promise<string | null>,
@@ -38,6 +40,43 @@ const REINTENTO_MS = 3000;
  * @typedef {{repo: string, agentes: import("./vinculo.js").Agente[], cruces: string[]}} EstadoAgentes
  *   quién toca qué en un repo, según `gb who --json` (lo pregunta el puente al ver cambios)
  */
+
+/**
+ * Un mensaje de la vista directa (Vista.cs, Empaquetar), tal cual lo quiere la pantalla. Primer byte:
+ * 0, el resto tal cual; 1, comprimido (deflate: los grandes, la ventana entera cambiando).
+ * @param {ArrayBuffer} datos
+ * @returns {Promise<ArrayBuffer>}
+ */
+export async function desempaquetar(datos) {
+  const cuerpo = datos.slice(1);
+  if (new Uint8Array(datos, 0, 1)[0] === 0) return cuerpo;
+  return new Response(new Blob([cuerpo]).stream().pipeThrough(new DecompressionStream("deflate-raw"))).arrayBuffer();
+}
+
+/** Lo que hace cada obrero de la vista directa: desempaquetar (lo mismo que arriba) y devolverlo. */
+const OBRERO = `onmessage = async (e) => {
+  const { n, datos } = e.data;
+  let plano = null;
+  try {
+    const cuerpo = datos.slice(1);
+    plano = new Uint8Array(datos, 0, 1)[0] === 1
+      ? await new Response(new Blob([cuerpo]).stream().pipeThrough(new DecompressionStream("deflate-raw"))).arrayBuffer()
+      : cuerpo;
+  } catch { plano = null; }
+  postMessage({ n, plano }, plano ? [plano] : []);
+};`;
+
+/** Dos obreros (Web Workers desde un blob: valen desde file://), o ninguno si no se puede. @returns {Worker[]} */
+function crearObreros() {
+  try {
+    const url = URL.createObjectURL(new Blob([OBRERO], { type: "text/javascript" }));
+    const obreros = [new Worker(url), new Worker(url), new Worker(url)];
+    URL.revokeObjectURL(url);
+    return obreros;
+  } catch {
+    return [];
+  }
+}
 
 /**
  * Vuelve a cargar un script clásico de wallpaper/ (puente-config.js, grafos.js): desde file://
@@ -69,6 +108,8 @@ export function crearPuente(tituloMundo) {
   const alSalir = [];
   /** @type {((r: {ok: boolean, motivo: string, resumen: string}) => void)[]} */
   const alGrafos = [];
+  /** @type {((m: {repo: string, ok: boolean, texto: string}) => void)[]} */
+  const alIsla = [];
   /** @type {((m: EstadoAgentes) => void)[]} */
   const alAgentes = [];
   /** @type {(() => void)[]} */
@@ -95,6 +136,7 @@ export function crearPuente(tituloMundo) {
       const m = JSON.parse(e.data);
       if (m.evento === "salir") for (const f of alSalir) f();
       if (m.evento === "grafos") for (const f of alGrafos) f(m);
+      if (m.evento === "isla") for (const f of alIsla) f(m);
       if (m.evento === "agentes") for (const f of alAgentes) f(m);
       if (m.evento === "lista") for (const f of alLista) f(m.titulo);
       esperando.get(m.id)?.(m);
@@ -160,6 +202,56 @@ export function crearPuente(tituloMundo) {
       return r.ok ? null : r.error ?? "unknown error";
     },
     soltar(hwnd) { pedir({ op: "soltar", hwnd }); }, // la pantalla se cerró: si se minimiza, ya no es cosa nuestra
+    /**
+     * La vista directa de una ventana mientras se escribe en ella (Vista.cs del puente): la captura
+     * de Chromium tardaba ~200 ms de la tecla a la página; esta, ~25 ms (medido). Cada mensaje llega
+     * ya descomprimido y en orden (son diferencias: ninguno se salta), y se confirma DESPUÉS de
+     * aplicarlo: el puente no manda más de 2 sin confirmar y, mientras, se queda con el último.
+     * Devuelve con qué cerrarla.
+     */
+    vistaDirecta(hwnd, alTrozos) {
+      const config = window.INFINITE_DESK_PUENTE;
+      if (!config || typeof DecompressionStream === "undefined") return () => {};
+      const v = new WebSocket(`ws://127.0.0.1:${config.puerto}/vista?token=${config.token}&hwnd=${hwnd}`);
+      v.binaryType = "arraybuffer";
+      let abierta = true;
+      // Se aplican en orden (son diferencias) y se confirma cada uno después de aplicarlo.
+      /** @param {ArrayBuffer | null} plano */
+      const aplicar = (plano) => {
+        if (!abierta) return;
+        if (plano) alTrozos(plano);
+        if (v.readyState === WebSocket.OPEN) v.send("1");
+      };
+      const obreros = crearObreros();
+      if (obreros.length) {
+        // Dos obreros descomprimen a la vez, uno cada mensaje (medido: en el hilo del mundo, ~27 ms
+        // por fotograma entero, y no pasaba de ~37 por segundo); aquí se reordenan por número.
+        let enviados = 0, siguiente = 0;
+        /** @type {Map<number, ArrayBuffer | null>} */
+        const listos = new Map();
+        for (const o of obreros) {
+          o.onmessage = (e) => {
+            listos.set(e.data.n, e.data.plano);
+            while (listos.has(siguiente)) {
+              const plano = listos.get(siguiente) ?? null;
+              listos.delete(siguiente++);
+              aplicar(plano);
+            }
+          };
+        }
+        v.addEventListener("message", (e) => {
+          const n = enviados++;
+          obreros[n % obreros.length].postMessage({ n, datos: e.data }, [e.data]);
+        });
+      } else {
+        let cola = Promise.resolve();
+        v.addEventListener("message", (e) => {
+          const datos = /** @type {ArrayBuffer} */ (e.data);
+          cola = cola.then(async () => aplicar(await desempaquetar(datos))).catch(() => aplicar(null));
+        });
+      }
+      return () => { abierta = false; v.close(); for (const o of obreros) o.terminate(); };
+    },
     raton(hwnd, tipo, u, v, e, delta = 0) {
       if (!ws || ws.readyState !== WebSocket.OPEN) return;
       ws.send(JSON.stringify({ op: "raton", hwnd, tipo, u, v, boton: e.button ?? 0, botones: e.buttons ?? 0, delta }));
@@ -173,6 +265,8 @@ export function crearPuente(tituloMundo) {
       return Boolean(r.ok && r.empezado);
     },
     alGrafos(f) { alGrafos.push(f); },
+    /** Cada isla según termina de regenerarse (la pestaña Maps va marcándolas). */
+    alIsla(f) { alIsla.push(f); },
     async escritorio() {
       const r = await pedir({ op: "escritorio" });
       return r.ok ? r.cosas : [];

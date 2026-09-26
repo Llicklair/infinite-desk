@@ -8,6 +8,8 @@ static partial class Ventanas
 {
     static Timer? vigia;
     static int recolocadas;
+    /// <summary>La última ventana ajena que se encontró bajo la rueda (para apuntarla una vez, no a cada muesca).</summary>
+    static IntPtr ultimaAjena;
     /// <summary>La pantalla estaba escondida antes de entrar en ella: al salir se vuelve a esconder.</summary>
     static IntPtr reesconder;
 
@@ -189,10 +191,50 @@ static partial class Ventanas
             if (!IsWindow(mundo)) { PostMessage(h, 0x020A, wp, lp); return; }
             long ex = GetWindowLongPtr(mundo, GWL_EXSTYLE).ToInt64();
             SetWindowLongPtr(mundo, GWL_EXSTYLE, (IntPtr)(ex | WS_EX_TRANSPARENT));
-            try { SendMessageTimeout(h, 0x020A, wp, lp, 0x2 /*SMTO_ABORTIFHUNG*/, 100, out _); }
+            try
+            {
+                // Chromium solo se desplaza si la ventana bajo el punto es suya. Si otra la tapa ahí
+                // (una ventana por encima del mundo, o en un monitor que el mundo no cubre; medido: un
+                // Chrome encima se quedaba la rueda), se busca otro punto de la ventana que sí sea
+                // suyo: la página se desplaza igual, que es lo que se quiere.
+                var p = new POINT { X = (short)((long)lp & 0xFFFF), Y = (short)(((long)lp >> 16) & 0xFFFF) };
+                var bajo = GetAncestor(WindowFromPoint(p), 2 /*GA_ROOT*/);
+                if (bajo != h && PuntoPropio(h) is { } otro)
+                {
+                    lp = (IntPtr)((otro.Y << 16) | (otro.X & 0xFFFF));
+                    bajo = h;
+                }
+                if (bajo != h && bajo != ultimaAjena)
+                {
+                    ultimaAjena = bajo;
+                    Registro.Anotar($"rueda para {h}: bajo el punto está {bajo} \"{Titulo(bajo)}\" ({Clase(bajo)}), y ningún otro punto de la ventana es suyo");
+                }
+                SendMessageTimeout(h, 0x020A, wp, lp, 0x2 /*SMTO_ABORTIFHUNG*/, 100, out _);
+            }
             finally { SetWindowLongPtr(mundo, GWL_EXSTYLE, (IntPtr)(ex & ~WS_EX_TRANSPARENT)); }
         }
     }
+
+    /// <summary>
+    /// Un punto (de pantalla) de la ventana en el que lo que hay de verdad debajo es ella: del centro
+    /// hacia fuera, en una rejilla sobre su rectángulo visible. Null si la tapan entera.
+    /// </summary>
+    static POINT? PuntoPropio(IntPtr h)
+    {
+        if (DwmGetWindowAttribute(h, 9, out RECT r, Marshal.SizeOf<RECT>()) != 0) GetWindowRect(h, out r);
+        int ancho = r.Right - r.Left, alto = r.Bottom - r.Top;
+        foreach (var (fx, fy) in Rejilla)
+        {
+            var p = new POINT { X = r.Left + (int)(fx * ancho), Y = r.Top + (int)(fy * alto) };
+            if (GetAncestor(WindowFromPoint(p), 2 /*GA_ROOT*/) == h) return p;
+        }
+        return null;
+    }
+
+    /// <summary>Del centro hacia fuera; la franja de arriba no (la barra de título no se desplaza).</summary>
+    static readonly (double, double)[] Rejilla = [.. new[] { 0.5, 0.35, 0.65, 0.2, 0.8, 0.08, 0.92 }
+        .SelectMany(fy => new[] { 0.5, 0.3, 0.7, 0.12, 0.88 }.Select(fx => (fx, fy))).Where(p => p.Item2 > 0.1)
+        .OrderBy(p => Math.Abs(p.Item1 - 0.5) + Math.Abs(p.Item2 - 0.5))];
 
     /// <summary>MouseEvent.buttons (1 izq, 2 der, 4 medio) -> MK_LBUTTON/MK_RBUTTON/MK_MBUTTON.</summary>
     static int Teclas(int botones) => ((botones & 1) != 0 ? 0x1 : 0) | ((botones & 2) != 0 ? 0x2 : 0) | ((botones & 4) != 0 ? 0x10 : 0);

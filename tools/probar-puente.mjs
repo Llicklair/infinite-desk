@@ -13,6 +13,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "no
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { inflateRawSync } from "node:zlib";
 
 if (process.platform !== "win32") {
   console.log("npm run probar-puente is for Windows (the bridge on macOS isn't built yet).");
@@ -80,7 +81,9 @@ async function rueda() {
   }
   await espera(900);
 }
-async function mundoDelante() { ps("restaurar", mundo); await espera(1200); }
+// Delante de verdad: si mientras tanto se usó otra ventana (uso real: Chrome encima del mundo), se
+// quedaba la rueda y la prueba fallaba sin que el puente tuviera la culpa.
+async function mundoDelante() { ps("delante", mundo); await espera(1200); }
 
 try {
   await mundoDelante();
@@ -91,6 +94,28 @@ try {
   const e1 = await op({ op: "entrar", hwnd });
   await rueda();
   comprobar("normal screen scrolls", e1.ok && desplazado() > antes, `${antes} -> ${desplazado()}${e1.ok ? "" : ` (enter: ${e1.error})`}`);
+  // Con otra ventana tapando justo el punto (uso real: un Chrome por encima se quedaba la rueda).
+  const tapa = spawn("powershell", ["-NoProfile", "-STA", "-ExecutionPolicy", "Bypass", "-File", join(aqui, "probar-puente.ps1"), "tapar", h], { stdio: "ignore" });
+  await espera(2500);
+  antes = desplazado();
+  await rueda();
+  comprobar("covered in the middle, it still scrolls", desplazado() > antes, `${antes} -> ${desplazado()}`);
+  tapa.kill();
+  // La vista directa (ADR 0005): al cambiar la ventana, llegan trozos con su tamaño.
+  const vista = new WebSocket(`ws://127.0.0.1:47800/vista?token=${token}&hwnd=${hwnd}`);
+  vista.binaryType = "arraybuffer";
+  /** @type {ArrayBuffer[]} */
+  const trozos = [];
+  vista.addEventListener("message", (e) => { trozos.push(/** @type {ArrayBuffer} */ (e.data)); vista.send("1"); });
+  await new Promise((r) => vista.addEventListener("open", r));
+  await rueda();
+  // Primer byte: 0 tal cual, 1 deflate (Vista.cs, Empaquetar); luego u16 ancho y alto.
+  /** @param {ArrayBuffer} datos */
+  const plano0 = (datos) => (new Uint8Array(datos)[0] === 1 ? inflateRawSync(new Uint8Array(datos, 1)) : Buffer.from(datos, 1));
+  const plano = trozos[0] ? plano0(trozos[0]) : null;
+  const [vw, vh] = plano ? [plano.readUInt16LE(0), plano.readUInt16LE(2)] : [0, 0];
+  comprobar("the direct view sends what changes", trozos.length > 0 && vw > 100 && vh > 100, `${trozos.length} message(s), ${vw}x${vh}`);
+  vista.close();
   await op({ op: "salir" });
 
   ps("minimizar", h);

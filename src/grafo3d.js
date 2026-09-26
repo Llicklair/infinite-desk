@@ -6,6 +6,25 @@ import { escalaAjuste } from "./islas.js";
 export const ROJO_CICLO = new THREE.Color("#ff4d5e");
 const esfera = new THREE.SphereGeometry(1, 12, 8);
 
+/**
+ * Suelta de la GPU lo que cuelga de un objeto que se va (una isla, una pantalla, un grafo): sus
+ * geometrías, materiales y texturas. Compartidas, no se tocan: la esfera de los nodos (de aquí) y
+ * el cuadrado de los sprites (de three).
+ * @param {THREE.Object3D} objeto
+ */
+export function liberar(objeto) {
+  objeto.traverse((o) => {
+    const m = /** @type {THREE.Mesh | THREE.Sprite} */ (o);
+    if (o instanceof THREE.InstancedMesh) o.dispose();
+    else if (m.geometry && m.geometry !== esfera && !(o instanceof THREE.Sprite)) m.geometry.dispose();
+    for (const mat of [m.material].flat()) {
+      if (!mat) continue;
+      /** @type {any} */ (mat).map?.dispose();
+      mat.dispose();
+    }
+  });
+}
+
 /** @param {string} grupo @param {string[]} grupos */
 function colorDeGrupo(grupo, grupos) {
   const tono = (grupos.indexOf(grupo) * 0.618034 + 0.12) % 1; // razón áurea: tonos separados
@@ -16,10 +35,12 @@ function colorDeGrupo(grupo, grupos) {
 
 /**
  * @typedef {import("./datos.js").Grafo & {posiciones: number[]}} GrafoDispuesto
- * @typedef {GrafoDispuesto & {nombre: string, alt?: GrafoDispuesto, ultimoCommit?: number, resumen?: string}} GrafoExportado
+ * @typedef {GrafoDispuesto & {nombre: string, alt?: GrafoDispuesto, ultimoCommit?: number, resumen?: string, generado?: number, porque?: string, sinCodigo?: boolean}} GrafoExportado
  *   `alt`: el árbol de carpetas de un repo que tiene grafo de gb (tecla T);
  *   `ultimoCommit`: segundos desde 1970 del último commit (la vida de la isla, ambiente.js);
- *   `resumen`: lo que cuenta su README, en corto (la ficha de la isla)
+ *   `resumen`: lo que cuenta su README, en corto (la ficha de la isla);
+ *   `generado`: cuándo se hizo (segundos desde 1970); `porque`: por qué es árbol de carpetas y no de gb;
+ *   `sinCodigo`: el repo no tiene código que gb lea (HTML, Markdown…): el árbol de carpetas ES su mapa
  */
 
 /**

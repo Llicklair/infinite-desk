@@ -1,7 +1,7 @@
-# Ayudante de tools/probar-puente.mjs: mira y toca ventanas por su HWND.
+﻿# Ayudante de tools/probar-puente.mjs: mira y toca ventanas por su HWND.
 #   buscar <prefijo>   la primera ventana visible cuyo título empieza así (sin el fondo)
 #   estado <hwnd>      "atraviesa encima alfa minimizada" de una vez
-#   titulo | minimizar | restaurar | cerrar <hwnd>
+#   titulo | minimizar | restaurar | delante | cerrar <hwnd>
 #   sin-escritorio     abre 20 s una ventana propia SIN escritorio virtual (como las que N no ve)
 param([string]$Accion, [string]$Arg)
 Add-Type @'
@@ -16,6 +16,10 @@ public static class P {
   [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr h);
   [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr h);
   [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int c);
+  [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
+  [DllImport("user32.dll")] public static extern void keybd_event(byte v, byte s, uint f, UIntPtr e);
+  // Delante de verdad (restaurar no la sube si otra se le puso encima): F24 da "la última entrada".
+  public static void Delante(IntPtr h) { ShowWindow(h, 9); keybd_event(0x87, 0, 0, UIntPtr.Zero); keybd_event(0x87, 0, 2, UIntPtr.Zero); SetForegroundWindow(h); }
   [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr h, uint m, IntPtr w, IntPtr l);
   [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW")] public static extern IntPtr GetL(IntPtr h, int i);
   [DllImport("user32.dll")] public static extern bool GetLayeredWindowAttributes(IntPtr h, out uint k, out byte a, out uint f);
@@ -36,6 +40,7 @@ switch ($Accion) {
   'titulo' { [P]::T($h) }
   'minimizar' { [void][P]::ShowWindow($h, 6) }
   'restaurar' { [void][P]::ShowWindow($h, 9) }
+  'delante' { [P]::Delante($h) }
   'cerrar' { [void][P]::PostMessage($h, 0x10, [IntPtr]::Zero, [IntPtr]::Zero) }
   'sin-escritorio' {
     Add-Type -AssemblyName System.Windows.Forms
@@ -44,6 +49,20 @@ switch ($Accion) {
     [P]::QuitarEscritorio($f.Handle)
     $fin = (Get-Date).AddSeconds(20)
     while ((Get-Date) -lt $fin) { [System.Windows.Forms.Application]::DoEvents(); Start-Sleep -Milliseconds 100 }
+    $f.Close()
+  }
+  'tapar' {
+    # 8 s, una ventana propia siempre encima que tapa el centro de <hwnd> (como un Chrome por encima
+    # del mundo, o en el monitor que no cubre): la rueda tiene que llegar igual.
+    Add-Type -MemberDefinition '[DllImport("user32.dll")] public static extern bool SetProcessDpiAwarenessContext(IntPtr c); [StructLayout(LayoutKind.Sequential)] public struct R { public int L, T, Ri, B; } [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out R r);' -Name T -Namespace Tapa
+    [void][Tapa.T]::SetProcessDpiAwarenessContext([IntPtr](-4))
+    Add-Type -AssemblyName System.Windows.Forms
+    $r = New-Object Tapa.T+R; [void][Tapa.T]::GetWindowRect($h, [ref]$r)
+    $w = [int](($r.Ri - $r.L) * 0.4); $a = [int](($r.B - $r.T) * 0.4)
+    $f = New-Object System.Windows.Forms.Form; $f.Text = 'probar-puente tapa'; $f.FormBorderStyle = 'None'; $f.TopMost = $true; $f.ShowInTaskbar = $false
+    $f.StartPosition = 'Manual'; $f.Show(); $f.Bounds = New-Object System.Drawing.Rectangle(([int](($r.L + $r.Ri) / 2) - [int]($w / 2)), ([int](($r.T + $r.B) / 2) - [int]($a / 2)), $w, $a)
+    $fin = (Get-Date).AddSeconds(8)
+    while ((Get-Date) -lt $fin) { [System.Windows.Forms.Application]::DoEvents(); Start-Sleep -Milliseconds 50 }
     $f.Close()
   }
 }

@@ -38,7 +38,7 @@ public static class Ventanas {
 
 # El puente (ADR 0002): sin él el mundo funciona, pero no se puede escribir en las pantallas.
 $raiz = Split-Path $PSScriptRoot -Parent
-$puente = Join-Path $raiz 'puente\bin\Release\net10.0-windows\infinite-desk-bridge.exe'
+$puente = Join-Path $raiz 'puente\bin\Release\net10.0-windows10.0.19041.0\infinite-desk-bridge.exe'
 # Se mira el puerto, no el nombre del proceso: el fondo animado (--fondo, ADR 0004) es el mismo
 # ejecutable y no escucha.
 function Escucha { try { (New-Object Net.Sockets.TcpClient '127.0.0.1', 47800).Close(); $true } catch { $false } }

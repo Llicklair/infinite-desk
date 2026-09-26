@@ -35,7 +35,7 @@ else windows();
 function windows() {
   const MENU = "HKCU\\Software\\Classes\\DesktopBackground\\Shell\\infinite-desk";
   const ARRANQUE = "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run";
-  const compilado = join(raiz, "puente", "bin", "Release", "net10.0-windows");
+  const compilado = join(raiz, "puente", "bin", "Release", "net10.0-windows10.0.19041.0");
   const copia = join(datos, "fondo");
   const exe = join(copia, "infinite-desk-bridge.exe");
   const reg = (/** @type {string[]} */ ...args) => execFileSync("reg", args, { stdio: "ignore" });

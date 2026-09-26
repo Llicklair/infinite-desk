@@ -17,6 +17,7 @@ static partial class Ventanas
     [DllImport("user32.dll")] static extern bool EnumWindows(Visitar v, IntPtr l);
     [DllImport("user32.dll")] static extern IntPtr GetWindow(IntPtr h, uint c);
     [DllImport("user32.dll")] static extern IntPtr GetAncestor(IntPtr h, uint f);
+    [DllImport("user32.dll")] static extern IntPtr WindowFromPoint(POINT p);
     [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
     [DllImport("user32.dll")] static extern int GetWindowTextLength(IntPtr h);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetWindowText(IntPtr h, StringBuilder s, int n);

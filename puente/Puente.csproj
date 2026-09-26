@@ -2,7 +2,8 @@
   <!-- Puente nativo de la fase 2 (ADR 0002): el mundo web le pide, por WebSocket local, que
        active, aparque y reciba ratón una ventana capturada. -->
   <PropertyGroup>
-    <TargetFramework>net10.0-windows</TargetFramework>
+    <!-- 10.0.19041: Windows Graphics Capture (la vista directa al escribir, Vista.cs). -->
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
     <OutputType>Exe</OutputType>
     <AssemblyName>infinite-desk-bridge</AssemblyName>
     <RootNamespace>InfiniteDesk.Puente</RootNamespace>

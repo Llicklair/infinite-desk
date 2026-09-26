@@ -89,6 +89,22 @@ app.Map("/", async (HttpContext ctx) =>
     }
 });
 
+// La vista directa de una pantalla mientras se escribe en ella (Vista.cs): un WebSocket propio, solo
+// binario, para no mezclar los fotogramas con las respuestas del canal de arriba.
+app.Map("/vista", async (HttpContext ctx) =>
+{
+    if (!ctx.WebSockets.IsWebSocketRequest) { ctx.Response.StatusCode = 400; return; }
+    var origen = ctx.Request.Headers.Origin.ToString();
+    if (ctx.Request.Query["token"] != token || (origen != "null" && origen != "") || !long.TryParse(ctx.Request.Query["hwnd"], out var hv))
+    {
+        ctx.Response.StatusCode = 403;
+        return;
+    }
+    using var ws = await ctx.WebSockets.AcceptWebSocketAsync();
+    try { await Vista.Servir(ws, (IntPtr)hv); }
+    catch (Exception e) { Registro.Anotar($"vista directa de {hv}: {e.Message}"); }
+});
+
 // Un atajo global para salir de la pantalla aunque el teclado lo tenga la ventana, no el mundo.
 // El primero libre de la lista (Ctrl+Alt+M ya lo tenía otro programa en el primer uso real).
 (string nombre, uint vk)[] candidatos = [("Ctrl+Alt+Esc", 0x1B), ("Ctrl+Alt+M", 'M'), ("Ctrl+Alt+Q", 'Q'), ("Ctrl+Alt+F12", 0x7B)];
