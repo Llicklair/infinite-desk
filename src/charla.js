@@ -198,6 +198,34 @@ export function crearCharla(panel, persona, op) {
     siguiente(0);
   }
 
+  /**
+   * ¿Se puede usar el micrófono? Si nunca se ha pedido, se pide ya, con el ratón suelto (a pantalla
+   * completa y con el ratón capturado, el aviso del navegador no se veía ni se podía pulsar).
+   * @returns {Promise<boolean>}
+   */
+  async function microfonoListo() {
+    let estado = "prompt";
+    try { estado = (await navigator.permissions.query(/** @type {any} */ ({ name: "microphone" }))).state; } catch { /* sin Permissions API: se prueba */ }
+    if (estado === "granted") return true;
+    if (estado === "denied") {
+      op.avisar("The microphone is blocked for infinite-desk: allow it in edge://settings/content/microphone, then press V again");
+      return false;
+    }
+    document.exitPointerLock?.();
+    op.avisar("Allow the microphone in the browser's prompt (top of the window) to talk by voice");
+    try {
+      const flujo = await navigator.mediaDevices.getUserMedia({ audio: true });
+      for (const pista of flujo.getTracks()) pista.stop();
+      op.avisar("Microphone ready: press V (or 🎙) and talk");
+      return true;
+    } catch (e) {
+      const nombre = /** @type {Error} */ (e).name;
+      op.avisar(nombre === "NotFoundError" ? "No microphone found: check it's plugged in and chosen as the default input in Windows"
+        : "The microphone wasn't allowed: allow it in edge://settings/content/microphone to talk by voice");
+      return false;
+    }
+  }
+
   const Reconocer = /** @type {any} */ (window).SpeechRecognition ?? /** @type {any} */ (window).webkitSpeechRecognition;
   /** @type {any} */
   let oido = null;
@@ -206,11 +234,12 @@ export function crearCharla(panel, persona, op) {
    * @param {(parcial: string) => void} mientras lo que va entendiendo
    * @returns {Promise<string | null>}
    */
-  function escuchar(mientras) {
+  async function escuchar(mientras) {
     if (!Reconocer) {
       op.avisar("This browser can't listen (no speech recognition): type instead");
-      return Promise.resolve(null);
+      return null;
     }
+    if (!(await microfonoListo())) return null;
     oido?.abort();
     callar(); // si le hablas, se calla
     const e = op.figura();
@@ -227,9 +256,18 @@ export function crearCharla(panel, persona, op) {
         for (const res of ev.results) (res.isFinal ? (final += res[0].transcript) : (parcial += res[0].transcript));
         mientras(final + parcial);
       };
+      // Cada fallo, con su porqué (antes, casi todos acababan en silencio: "pulso V pero no recoge mi voz").
       r.onerror = (/** @type {any} */ ev) => {
-        if (ev.error === "not-allowed") op.avisar("The microphone is blocked: allow it for this page to talk by voice");
-        else if (ev.error === "network") op.avisar("Speech recognition needs internet (the browser sends the audio to its service)");
+        const porque = /** @type {Record<string, string>} */ ({
+          "not-allowed": "The microphone is blocked for infinite-desk: allow it in edge://settings/content/microphone (or answer the browser's prompt)",
+          "service-not-allowed": "The browser won't let this page use speech recognition",
+          "network": "Speech recognition needs internet (the browser sends the audio to its service)",
+          "audio-capture": "No microphone found: check it's plugged in and chosen as the default input in Windows",
+          "no-speech": "I didn't hear anything: check the microphone (Windows sound settings) and speak after pressing V",
+          "language-not-supported": `Speech recognition doesn't support ${idioma} here`,
+        })[ev.error];
+        if (porque) op.avisar(porque);
+        else if (ev.error !== "aborted") op.avisar(`Couldn't listen: ${ev.error}`);
       };
       r.onend = () => {
         if (e) e.escuchando = false;

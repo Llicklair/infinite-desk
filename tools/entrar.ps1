@@ -48,10 +48,19 @@ $puente = Join-Path $raiz 'puente\bin\Release\net10.0-windows10.0.19041.0\infini
 # Se mira el puerto, no el nombre del proceso: el fondo animado (--fondo, ADR 0004) es el mismo
 # ejecutable y no escucha.
 function Escucha { try { (New-Object Net.Sockets.TcpClient '127.0.0.1', 47800).Close(); $true } catch { $false } }
+# Desde una COPIA, como el fondo: corriendo desde puente\bin, el .exe quedaba bloqueado y
+# `npm run puente` (y `npm run terminado`) fallaba en cuanto se cambiaba el puente.
+$copia = Join-Path $env:LOCALAPPDATA 'infinite-desk\puente'
+# Si hay un puente compilado más nuevo que el que corre, se reinicia: si no, seguía el viejo y el
+# mundo nuevo le pedía órdenes que no conocía (uso real: "Atlas can't answer right now: unknown order").
+$dllBin = Join-Path (Split-Path $puente) 'infinite-desk-bridge.dll'
+$dllCopia = Join-Path $copia 'infinite-desk-bridge.dll'
+if ((Test-Path $dllBin) -and (Test-Path $dllCopia) -and (Escucha) -and ((Get-Item $dllBin).LastWriteTime -gt (Get-Item $dllCopia).LastWriteTime)) {
+  $exeCopia = Join-Path $copia 'infinite-desk-bridge.exe'
+  Get-CimInstance Win32_Process -Filter "Name='infinite-desk-bridge.exe'" | Where-Object { $_.ExecutablePath -eq $exeCopia } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
+  for ($i = 0; $i -lt 50 -and (Escucha); $i++) { Start-Sleep -Milliseconds 100 }
+}
 if ((Test-Path $puente) -and -not (Escucha)) {
-  # Desde una COPIA, como el fondo: corriendo desde puente\bin, el .exe quedaba bloqueado y
-  # `npm run puente` (y `npm run terminado`) fallaba en cuanto se cambiaba el puente.
-  $copia = Join-Path $env:LOCALAPPDATA 'infinite-desk\puente'
   robocopy (Split-Path $puente) $copia /MIR /NJH /NJS /NP /NFL /NDL | Out-Null
   Start-Process (Join-Path $copia 'infinite-desk-bridge.exe') -ArgumentList "`"$(Join-Path $raiz 'wallpaper')`"" -WindowStyle Hidden
   # Espera a que escuche (la página también reintenta, pero así Enter funciona a la primera).
