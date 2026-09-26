@@ -117,6 +117,8 @@ File.WriteAllText(config,
 regenerador.Pedir("al entrar");
 regenerador.Vigilar();
 agentes.Empezar();
+// Las noticias del palantír: ahora y cada 30 minutos.
+new Noticias(repo).Empezar();
 Console.WriteLine($"infinite-desk-bridge en ws://127.0.0.1:{PUERTO} · atajo {atajo ?? "ninguno"} · config en {config}");
 await app.RunAsync();
 return 0;
@@ -210,6 +212,12 @@ object? Responder(JsonElement m, WebSocket ws)
             if (fallo == null) Ventanas.QueNoNazcanMinimizadas(antes, t => _ = Difundir(new { evento = "lista", titulo = t }));
             Registro.Anotar($"abrir {Texto(m, "ruta") ?? Texto(m, "especial")}: {fallo ?? "ok"}");
             return new { id, ok = fallo == null, error = fallo };
+        case "abrirUrl":
+            var antesDeUrl = Ventanas.DePrimerNivel();
+            var sinUrl = Escritorio.AbrirUrl(Texto(m, "url"));
+            if (sinUrl == null) Ventanas.QueNoNazcanMinimizadas(antesDeUrl, t => _ = Difundir(new { evento = "lista", titulo = t }));
+            Registro.Anotar($"abrir enlace {Texto(m, "url")}: {sinUrl ?? "ok"}");
+            return new { id, ok = sinUrl == null, error = sinUrl };
         case "agentes":
             return new { id, ok = true, repos = agentes.Foto() };
         case "regenerar":

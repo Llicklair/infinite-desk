@@ -60,6 +60,19 @@ static class Escritorio
         catch (Exception e) { return e.Message; }
     }
 
+    /// <summary>
+    /// Un enlace de la web (un titular del palantír) en una ventana nueva del navegador por
+    /// defecto. Solo http y https: la página no puede pedir que se abra otra cosa (un fichero, un
+    /// programa, otro esquema) por aquí.
+    /// </summary>
+    public static string? AbrirUrl(string? url)
+    {
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || (uri.Scheme != Uri.UriSchemeHttps && uri.Scheme != Uri.UriSchemeHttp))
+            return "only web links (http, https) can be opened";
+        try { return NuevaVentanaDelNavegador(uri.AbsoluteUri); }
+        catch (Exception e) { return e.Message; }
+    }
+
     /// <summary>Programas que se abren en la ventana que ya tienen salvo que se les pida --new-window.</summary>
     static readonly string[] UnaInstancia = ["code.exe", "chrome.exe", "msedge.exe", "firefox.exe", "brave.exe"];
 

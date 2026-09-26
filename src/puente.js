@@ -29,6 +29,7 @@ const REINTENTO_MS = 3000;
  *   alGrafos(f: (r: {ok: boolean, motivo: string, resumen: string}) => void): void,
  *   escritorio(): Promise<import("./ficheros.js").Cosa[]>,
  *   abrir(que: {ruta?: string, especial?: "explorador" | "navegador"}): Promise<string | null>,
+ *   abrirUrl(url: string): Promise<string | null>,
  *   alAgentes(f: (m: EstadoAgentes) => void): void,
  *   alLista(f: (titulo: string) => void): void,
  * }} Puente
@@ -178,6 +179,11 @@ export function crearPuente(tituloMundo) {
     alLista(f) { alLista.push(f); },
     async abrir(que) {
       const r = await pedir({ op: "abrir", ...que });
+      return r.ok ? null : r.error ?? "unknown error";
+    },
+    /** Un enlace (http/https, un titular del palantír) en una ventana nueva del navegador; el error, o null. */
+    async abrirUrl(url) {
+      const r = await pedir({ op: "abrirUrl", url });
       return r.ok ? null : r.error ?? "unknown error";
     },
   };

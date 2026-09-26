@@ -21,6 +21,10 @@ they're not screenshots: they're your real windows, live, and **you can type and
   modules and dependencies if you have [galaxy-brain](https://github.com/Llicklair/galaxy-brain),
   or its folder tree if you don't. With galaxy-brain you also see agents at work: the modules they
   touch light up live.
+- **Keep up with AI without scrolling.** In the middle of the space, a palantír: below it, the 12
+  most talked-about AI posts right now on Bluesky, Reddit, Hacker News and Mastodon; above it, the
+  GitHub repos gaining the most stars this month. Refreshed every 30 minutes. Click one to read it
+  right there: the whole post, the article it links to, the top replies, or the repo's README.
 - **As your wallpaper.** The same space, slowly turning behind your desktop icons (Windows);
   right-click the desktop (Windows) or open *Enter infinite-desk* (macOS) to step in.
 
@@ -48,8 +52,10 @@ npm run fondo       # the animated wallpaper (Windows) plus "Enter infinite-desk
 Right-click the desktop → **Enter infinite-desk** (on macOS, open the app). Click to step in and press **N** to bring in
 your first window.
 
-Or just open `wallpaper/index.html` in Edge or Chrome. New repos show up on their own. To remove
-the wallpaper and the menu entry: `npm run fondo -- --quitar`.
+Or just open `wallpaper/index.html` in Edge or Chrome. New repos show up on their own. To turn
+the animated wallpaper off or back on (Windows), run `npm run alternar-fondo` or double-click
+`tools\alternar-fondo.cmd`. It stays that way after you sign in again, and Enter keeps working.
+To remove the wallpaper and the menu entry: `npm run fondo -- --quitar`.
 
 ## Controls
 

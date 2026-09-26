@@ -4,6 +4,7 @@
   "description": "Un mundo 3D con una isla por repo y tus ventanas como pantallas flotantes",
   "scripts": {
     "grafo": "node tools/exportar.mjs",
+    "noticias": "node tools/noticias.mjs",
     "carpeta": "node tools/proyectos.mjs",
     "build": "esbuild src/main.js --bundle --format=iife --minify --target=chrome110 --outfile=wallpaper/infinite-desk.js",
     "mundo": "node tools/servir.mjs",
@@ -11,6 +12,7 @@
     "tipos": "tsc -p .",
     "terminado": "npm run tipos && npm test && npm run grafo && npm run build && npm run puente && node tools/comprobar.mjs && node tools/humo.mjs",
     "fondo": "node tools/fondo.mjs",
+    "alternar-fondo": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/alternar-fondo.ps1",
     "parar": "node tools/parar.mjs",
     "diagnostico": "node tools/diagnostico.mjs",
     "probar-puente": "node tools/probar-puente.mjs",

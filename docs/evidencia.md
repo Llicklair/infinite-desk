@@ -10,6 +10,126 @@ Cada medición real: qué se probó, qué salió, qué cambió por ello.
 
 ---
 
+## 2026-09-26 · leer dentro del mundo: el post, el artículo, las respuestas o el README — FUNCIONA sin manos
+
+Montaje: `npm run noticias` contra las redes de verdad, y capturas con `?vista=demo&leer=N`, que
+abre el lector en la tarjeta N.
+
+Qué se lee de cada cosa (lo baja la misma pasada cada 30 minutos, unas 20 peticiones más):
+
+- **El post entero.** De Reddit, su texto, del Atom.
+- **El artículo que enlaza.** El texto de su `<article>`, `<main>` o `<body>`, hasta 12.000
+  caracteres, sin menús, scripts ni botones de compartir. Estos últimos se colaban como lista
+  ("Share on Facebook", "Email"…) en un artículo de Mother Jones: ahora se filtran.
+- **Las respuestas**, las 8 mejores de cada red:
+  - HN: su API de ítems.
+  - Bluesky: getPostThread.
+  - Mastodon: el contexto del estado.
+  - Reddit: el Atom del post. Uno a uno y despacio, y aun así da 429 a veces: solo 1 de 3 los
+    trajo.
+- **El README de cada repo.** Markdown pasado a títulos, párrafos, listas y código, sin
+  insignias.
+
+Resultado: 19 de 20 con lectura. El que no, un post de Reddit que es una imagen: el lector lo
+dice y ofrece abrirlo en el navegador. noticias.js pesa unos 180 KB.
+
+Seguridad: todo lo de fuera se pone con textContent, nunca como HTML.
+
+Cuando el mundo relee noticias.js con el lector abierto, se repinta lo que se está leyendo sin
+perder el scroll.
+
+## 2026-09-26 · el palantír sin X, con el top de GitHub del mes y el fuego del color del cielo — FUNCIONA sin manos
+
+- **X, fuera.** Con el widget de cada perfil no hay forma de tenerla al día (ver la entrada
+  siguiente), y lo que se pidió es que esté actualizado. Quedan Bluesky, Reddit, Hacker News y
+  Mastodon.
+- **Arriba, los repos del mes.** Salen de `github.com/trending?since=monthly`: sin API, se lee
+  su HTML (22 repos con las estrellas ganadas en el mes). Un test con una entrada real recortada
+  avisa si GitHub cambia la página. Si falla, se quedan los de la vez anterior.
+  Resultado: 8 repos, de +56 k a +18 k estrellas en el mes.
+- **Colocación.** La esfera queda entre dos carruseles: los titulares abajo, a la altura de los
+  ojos, y los repos arriba, girando al revés. A 15 de distancia el anillo de arriba quedaba
+  fuera del encuadre al entrar; ahora se aparece a 20 (menos si el círculo de islas es pequeño).
+- **El fuego.** Toma el tono de la nebulosa de la hora (morado de noche, coral al atardecer). A
+  su intensidad real era casi negro, medido en captura: se lleva el tono a plena intensidad.
+
+## 2026-09-26 · el palantír: lo último sobre IA en las redes, en el centro del mundo — FUNCIONA, X a medias
+
+Montaje:
+
+- `npm run noticias` contra las redes de verdad, sin cuentas ni claves.
+- Capturas del mundo en primera persona y del fondo.
+- `abrirUrl` probado contra el puente real.
+
+Qué se puede leer sin cuenta (probado una a una):
+
+- **Bluesky**: búsqueda y perfiles, en `api.bsky.app`. En `public.api.bsky.app`, la búsqueda
+  da 403.
+- **Reddit**: por RSS. El JSON da 403. De subreddit en subreddit corta enseguida con 429, así que
+  va una sola petición con todos juntos (`r/a+b+c`), y cada entrada dice su subreddit.
+- **Hacker News**: la búsqueda de Algolia.
+- **Mastodon**: las etiquetas. Mezclan idiomas (la mitad de #LLM, en japonés), así que se filtra
+  a inglés. #AI es demasiado revuelta y se quitó.
+- **X**: no hay API sin pagar. xcancel da 451 y nitter no responde. El widget público de cada
+  perfil (`syndication.twitter.com`) sí trae hasta 100 tuits, pero:
+  - para algunas cuentas son copias viejas (Karpathy y Altman: lo más reciente, de hace 316 días;
+    Anthropic, de ayer);
+  - a la tercera petición contesta 429, aun de una en una y con pausa.
+
+  Por eso cada pasada lee solo 2 cuentas, guarda lo de la última semana y rota: todas se
+  refrescan en unas horas.
+
+Resultado:
+
+- 12 titulares de 266 a 423 publicaciones, como mucho 3 por red. Cada publicación pesa por sus
+  puntos relativos a su fuente y por lo reciente que es.
+- El puente lo corre al arrancar y cada 30 minutos (log: "noticias: 12 titulares…"). El mundo
+  relee el fichero cada 5.
+- Primera versión, con sprites: las 12 tarjetas se amontonaban delante de la esfera. Ahora son
+  un carrusel de planos mirando hacia fuera: se leen las de tu lado, y las de detrás no se ven.
+- En el fondo, el palantír crece con el círculo de islas, hasta ×3; si no, era una mota.
+- `abrirUrl` solo abre http y https. Rechazados: `file:`, `javascript:`, una ruta de Windows y
+  `--disable-web-security`. Un enlace https se abrió en una ventana nueva del navegador.
+
+Pendiente:
+
+- X, hasta que se vea en uso cuántas cuentas dan tuits recientes.
+- Clic en una tarjeta desde el fondo animado: el fondo no tiene puente, así que remite a Entrar.
+
+## 2026-09-26 · decoración que cuenta cosas: cielo por la hora, cristales por la vida del repo, faro de agentes — FUNCIONA sin manos
+
+Montaje: capturas del mundo construido con Edge sin ventana, con la hora falseada, en las vistas
+aérea, demo y demo con agentes. Para medir, la página del fondo con y sin decoración en una
+ventana de Edge de 1600×900 delante, 15-20 s cada una, varias rondas.
+
+Resultado: sin errores de JavaScript.
+
+- El cielo es un degradado con una nebulosa y estrellas que titilan, y cambia con la hora real:
+  noche, amanecer, un día azul profundo (nunca claro, por el contraste de las pantallas) y
+  atardecer.
+- Cada isla tiene de 3 a 14 cristales, y su anillo se apaga según la edad de su último commit.
+- Una isla con agentes trabajando tiene un faro del color del agente.
+
+Tres fallos que salieron por el camino:
+
+- **La niebla y el faro se veían más claros de lo pedido.** Three trata los colores como
+  lineales y el shader pinta sRGB tal cual. Ahora los colores se pasan en sRGB.
+- **Las estrellas eran rayas.** Se salían de su celda de la rejilla. Ahora son más pequeñas y
+  quedan dentro.
+- **Donde acaba el suelo se veía una raya recta contra el cielo.** Ahora, cerca del horizonte y
+  por debajo, el cielo es del color de la niebla.
+
+Coste:
+
+| | sin decoración | nebulosa en vivo | nebulosa horneada |
+|---|---|---|---|
+| CPU | 27-29 % | 27-29 % | igual |
+| GPU 3D | 11,3 % | 16 % | 12,6 % |
+
+Con la nebulosa calculada en cada fotograma, la GPU subía unos 5 puntos. Se hornea en un cubo de
+textura una vez por minuto, cuando cambia la paleta, y en vivo solo quedan las estrellas. El
+coste queda en +1,3 puntos de GPU y nada de CPU.
+
 ## 2026-09-25 · afinado con el puente de verdad: rueda, esconder, Esc y N — FUNCIONA sin manos
 
 Montaje: `npm run probar-puente`. Una página larga en una ventana de Edge aparte hace de

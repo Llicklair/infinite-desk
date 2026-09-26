@@ -49,3 +49,48 @@ tools -/-> puente
 tools -/-> nodo
 tools -/-> consola3d
 tools -/-> ajustes
+
+# El ambiente (paleta por hora, vida de un repo) también es núcleo puro; la decoración, del mundo 3D.
+datos       -/-> decorado
+disposicion -/-> decorado
+islas       -/-> decorado
+vinculo     -/-> decorado
+ambiente    -/-> grafo3d
+ambiente    -/-> mundo
+ambiente    -/-> pantallas
+ambiente    -/-> rotulo
+ambiente    -/-> puente
+ambiente    -/-> ficheros
+ambiente    -/-> nodo
+ambiente    -/-> consola3d
+ambiente    -/-> ajustes
+ambiente    -/-> decorado
+tools -/-> decorado
+
+# Las noticias (leer cada red, elegir titulares) también son núcleo puro; el palantír, del mundo 3D.
+datos       -/-> palantir
+disposicion -/-> palantir
+islas       -/-> palantir
+vinculo     -/-> palantir
+ambiente    -/-> palantir
+noticias    -/-> grafo3d
+noticias    -/-> mundo
+noticias    -/-> pantallas
+noticias    -/-> rotulo
+noticias    -/-> puente
+noticias    -/-> ficheros
+noticias    -/-> nodo
+noticias    -/-> consola3d
+noticias    -/-> ajustes
+noticias    -/-> decorado
+noticias    -/-> palantir
+tools -/-> palantir
+
+# El lector (DOM) tampoco lo conoce el núcleo, ni las herramientas de Node.
+datos       -/-> lector
+disposicion -/-> lector
+islas       -/-> lector
+vinculo     -/-> lector
+ambiente    -/-> lector
+noticias    -/-> lector
+tools -/-> lector

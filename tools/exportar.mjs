@@ -43,6 +43,14 @@ function ficherosDe(repo) {
   return lista;
 }
 
+/** Cuándo fue el último commit (segundos desde 1970), o nada si no hay git o commits. @param {string} repo */
+function ultimoCommit(repo) {
+  try {
+    const s = execFileSync("git", ["-C", repo, "log", "-1", "--format=%ct"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+    return s ? Number(s) : undefined;
+  } catch { return undefined; }
+}
+
 /** El grafo de gb, o por qué no lo hay. @param {string} repo */
 function deGb(repo) {
   try {
@@ -77,7 +85,7 @@ for (const repo of repos) {
   // Con gb, también el árbol de carpetas: la tecla T alterna entre los dos en el mundo.
   const carpetas = grafo.fuente === "gb" ? desdeCarpetas(repo, ficherosDe(repo)) : null;
   const alt = carpetas && carpetas.nodos.length >= 2 ? { ...carpetas, posiciones: disponer(carpetas) } : undefined;
-  grafos.push({ nombre, ...grafo, posiciones, alt });
+  grafos.push({ nombre, ...grafo, posiciones, alt, ultimoCommit: ultimoCommit(repo) });
   const que = grafo.fuente === "carpetas"
     ? `${grafo.nodos.length} carpetas y ficheros (sin gb: ${gb.porque})`
     : `${grafo.nodos.length} módulos, ${grafo.aristas.length} aristas, ${grafo.ciclos} ciclos`;

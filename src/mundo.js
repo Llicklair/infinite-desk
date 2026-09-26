@@ -8,6 +8,10 @@ import { rotulo } from "./rotulo.js";
 import { capturaDeDemostracion, capturarVentana, crearPantalla, puedeCapturar } from "./pantallas.js";
 import { colorDeAgente, encendidosPorAgentes, repoDeTitulo, senalesDeAgentes, siguienteRepo, vigorOnda } from "./vinculo.js";
 import { crearConsola } from "./consola3d.js";
+import { paletaDeHora, vidaDeRepo } from "./ambiente.js";
+import { crearCielo, crearCristales, crearFaro } from "./decorado.js";
+import { crearPalantir } from "./palantir.js";
+import { crearLector } from "./lector.js";
 import { mostrarNodo } from "./nodo.js";
 import { crearPuente, releerScript } from "./puente.js";
 import { crearPanelFicheros } from "./ficheros.js";
@@ -18,12 +22,13 @@ const ALTURA_OJOS = 1.7;
 const RECIENTE_MS = 120000; // lo abierto con Enter hace menos de esto es el candidato de la próxima captura
 const REPOSO_MS = 30000; // en el fondo, sin tocarlo este rato vuelve a girar solo
 const RELEER_FONDO_MS = 120000; // el fondo (sin puente) relee grafos.js cada tanto
+const RELEER_NOTICIAS_MS = 5 * 60000; // noticias.js lo rehace el puente cada 30 min (npm run noticias)
 
 /**
  * @typedef {import("./grafo3d.js").GrafoExportado} GrafoExportado
  * @typedef {import("./grafo3d.js").Grafo3D} Grafo3D
  * @typedef {import("./pantallas.js").Pantalla} Pantalla
- * @typedef {{portada: HTMLElement, info: HTMLElement, aviso: HTMLElement, ayuda: HTMLElement, ficheros: HTMLElement | null, nodo: HTMLElement | null, ajustes?: HTMLElement | null}} Interfaz
+ * @typedef {{portada: HTMLElement, info: HTMLElement, aviso: HTMLElement, ayuda: HTMLElement, ficheros: HTMLElement | null, nodo: HTMLElement | null, ajustes?: HTMLElement | null, lector?: HTMLElement | null}} Interfaz
  */
 
 /**
@@ -48,11 +53,33 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
   contenedor.appendChild(renderer.domElement);
 
   const escena = new THREE.Scene();
-  escena.background = new THREE.Color("#070912");
-  escena.fog = new THREE.FogExp2("#070912", 0.0065);
+  // El cielo (degradado, nebulosa y estrellas) sigue la hora de verdad; la niebla toma su color de
+  // horizonte para que el suelo se funda con él. Se repasa cada minuto.
+  const niebla = new THREE.FogExp2("#070912", 0.0065);
+  escena.fog = niebla;
+  const cielo = crearCielo(renderer);
+  escena.add(cielo.objeto);
+  /** @type {((p: import("./ambiente.js").Paleta) => void)[]} lo que sigue a la hora, además del cielo (el palantír) */
+  const alCambiarHora = [];
+  const paletaDeAhora = () => {
+    const d = new Date();
+    return paletaDeHora(d.getHours() + d.getMinutes() / 60);
+  };
+  function ponerHora() {
+    const p = paletaDeAhora();
+    cielo.paleta(p);
+    niebla.color.setRGB(...p.horizonte, THREE.SRGBColorSpace); // el cielo pinta sRGB tal cual: la niebla, igual
+    for (const f of alCambiarHora) f(p);
+  }
+  ponerHora();
+  setInterval(ponerHora, 60000);
 
   const camara = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.05, 2000);
-  camara.position.set(0, ALTURA_OJOS, 0);
+  // Se aparece delante del palantír (en el centro), mirándolo, con la primera isla detrás de él. A
+  // 20 se ven a la vez sus dos anillos (a 15, el de arriba quedaba fuera del encuadre); con pocas
+  // islas el círculo es pequeño y se queda más cerca, para no aparecer dentro de una.
+  const radioInicial = grafos.length ? Math.hypot(colocarIslas(grafos.length)[0].x, colocarIslas(grafos.length)[0].z) : 22;
+  camara.position.set(0, ALTURA_OJOS, Math.min(20, radioInicial - 9));
   escena.add(camara);
 
   escena.add(new THREE.HemisphereLight("#c8d0ff", "#2a1d40", 1.4));
@@ -71,21 +98,9 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
   rejilla.position.y = 0.01;
   escena.add(rejilla);
 
-  const estrellas = new Float32Array(4000 * 3);
-  for (let i = 0; i < estrellas.length; i += 3) {
-    const v = new THREE.Vector3().randomDirection();
-    v.y = Math.abs(v.y) + 0.05; // solo cielo, nada bajo el suelo
-    v.normalize().multiplyScalar(500 + Math.random() * 300);
-    estrellas.set([v.x, v.y, v.z], i);
-  }
-  const geoEstrellas = new THREE.BufferGeometry();
-  geoEstrellas.setAttribute("position", new THREE.BufferAttribute(estrellas, 3));
-  escena.add(new THREE.Points(geoEstrellas, new THREE.PointsMaterial({
-    color: "#9aa4d8", size: 1.5, sizeAttenuation: false, fog: false,
-  })));
-
-  // Islas: pedestal, anillo de color, el grafo flotando y el cartel del repo.
-  /** @type {{g3d: Grafo3D, base: THREE.Group, grafo: GrafoExportado}[]} */
+  // Islas: pedestal, anillo de color, el grafo flotando y el cartel del repo. Y la decoración que
+  // cuenta cosas: cristales según la vida del repo (su último commit) y un faro si hay agentes.
+  /** @type {{g3d: Grafo3D, base: THREE.Group, grafo: GrafoExportado, color: THREE.Color, cristales: ReturnType<typeof crearCristales>, faro: ReturnType<typeof crearFaro>}[]} */
   const islas = [];
   let firma = "";
   // T: cada isla con gb puede verse también como su árbol de carpetas (`alt`, ADR 0003).
@@ -146,7 +161,10 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
       new THREE.MeshStandardMaterial({ color: "#111633", roughness: 0.6 }),
     );
     pedestal.position.y = 0.25;
-    const anillo = new THREE.Mesh(new THREE.TorusGeometry(6.8, 0.07, 8, 96), new THREE.MeshBasicMaterial({ color }));
+    const vida = vidaDeRepo(grafo.ultimoCommit, Date.now() / 1000);
+    // Una isla olvidada tiene el anillo apagado, pero se sigue viendo de qué color es.
+    const anillo = new THREE.Mesh(new THREE.TorusGeometry(6.8, 0.07, 8, 96),
+      new THREE.MeshBasicMaterial({ color: color.clone().multiplyScalar(0.35 + 0.65 * vida) }));
     anillo.rotation.x = -Math.PI / 2;
     anillo.position.y = 0.52;
 
@@ -161,11 +179,32 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
     );
     cartel.position.y = 14.8;
 
-    base.add(pedestal, anillo, g3d.objeto, cartel);
+    const cristales = crearCristales(color, vida);
+    const faro = crearFaro();
+    base.add(pedestal, anillo, cristales.objeto, faro.objeto, g3d.objeto, cartel);
     escena.add(base);
-    islas.push({ g3d, base, grafo });
+    islas.push({ g3d, base, grafo, color, cristales, faro });
   }
   ponerIslas(grafos);
+
+  // El palantír, en el centro del círculo de islas: lo último sobre IA en las redes.
+  // En el fondo se mira desde la órbita, lejos: crece con el círculo de islas (hasta ×3).
+  const palantir = crearPalantir(opciones.vista === "fondo" ? THREE.MathUtils.clamp(radioInicial / 22, 1, 3) : 1);
+  escena.add(palantir.objeto);
+  palantir.paleta(paletaDeAhora());
+  alCambiarHora.push((p) => palantir.paleta(p));
+  async function releerNoticias() {
+    await releerScript("noticias.js");
+    palantir.actualizar(window.INFINITE_DESK_NOTICIAS, Date.now());
+    lector?.actualizar(window.INFINITE_DESK_NOTICIAS);
+    // `?vista=demo&leer=N`: el lector abierto en la tarjeta N, para verlo sin manos (capturas).
+    const n = opciones.vista === "demo" ? new URLSearchParams(location.search).get("leer") : null;
+    const tarjeta = n === null ? undefined : palantir.tarjetas[Number(n)];
+    const enlace = tarjeta && palantir.enlaceDe(tarjeta);
+    if (enlace && lector && !lector.abierto) lector.abrir(enlace);
+  }
+  releerNoticias();
+  setInterval(releerNoticias, RELEER_NOTICIAS_MS);
 
   /** @type {Pantalla[]} */
   const pantallas = [];
@@ -189,7 +228,7 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
     const pie = ui.portada.querySelector("p");
     if (pie) pie.textContent = "Click to enter · Esc: back to the desktop (the space stays open) · Shift+Esc: close it";
     document.addEventListener("keydown", async (e) => {
-      if (e.code !== "Escape" || mirar.isLocked || escribiendo || panel?.abierto || ajustes?.abierto) return;
+      if (e.code !== "Escape" || mirar.isLocked || escribiendo || panel?.abierto || ajustes?.abierto || lector?.abierto) return;
       if (e.shiftKey) return window.close();
       // Sin puente no hay quien lo minimice: se cierra, como antes.
       if (!(puente?.conectado && await puente.alEscritorio())) window.close();
@@ -336,6 +375,7 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
    *   | {tipo: "pantalla", pantalla: Pantalla}
    *   | {tipo: "isla", isla: typeof islas[number]}
    *   | {tipo: "consola", consola: import("./consola3d.js").Consola}
+   *   | {tipo: "titular", enlace: import("./palantir.js").Enlace, tarjeta: THREE.Object3D}
    *   | null} Apuntado
    */
   /** @type {Apuntado} */
@@ -371,6 +411,16 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
       if (consola) {
         mejor = golpeC.distance;
         res = { tipo: "consola", consola };
+      }
+    }
+
+    // Una tarjeta del palantír (un titular o un repo).
+    const golpeT = rayo.intersectObjects(palantir.tarjetas, false)[0];
+    if (golpeT && golpeT.distance < mejor) {
+      const enlace = palantir.enlaceDe(golpeT.object);
+      if (enlace) {
+        mejor = golpeT.distance;
+        res = { tipo: "titular", enlace, tarjeta: golpeT.object };
       }
     }
 
@@ -410,6 +460,7 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
     if (!apuntado) return null;
     if (apuntado.tipo === "nodo") return apuntado.g3d;
     if (apuntado.tipo === "isla") return apuntado.isla.g3d;
+    if (apuntado.tipo === "titular") return null;
     if (apuntado.tipo === "consola") {
       const padre = apuntado.consola.objeto.parent;
       return vivos().find((g) => g.objeto === padre) ?? null;
@@ -437,6 +488,7 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
         : `${apuntado.isla.grafo.nombre} — Enter: open in VS Code · Q/E: rotate · wheel: size`;
     }
     if (apuntado.tipo === "consola") return `${apuntado.consola.nombre}'s console — hold click: move it · wheel (while holding): closer/farther`;
+    if (apuntado.tipo === "titular") return `${apuntado.enlace.etiqueta} — click: read it here`;
     const p = apuntado.pantalla;
     const enter = p.hwnd === null ? "Enter: go to VS Code" : puente?.conectado ? "Enter: work in it" : "no bridge";
     return `${p.repo ?? "no repo"} · ${p.titulo} — ${enter} · hold click: move · wheel: size · G: graph · X: close`;
@@ -536,9 +588,11 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
     const repo = porNombre.has("galaxy-brain") ? "galaxy-brain" : nombres[0];
     // `&agentes`: sin pantalla, que taparía la isla con los agentes de mentira (abajo).
     if (!new URLSearchParams(location.search).has("agentes")) capturaDeDemostracion(`cli.py - ${repo} - Visual Studio Code`).then((c) => {
+      // Relativo a donde se aparece (delante del palantír): en el centro está él.
+      const z = camara.position.z;
       colocarPantalla(c);
-      camara.position.set(3.2, 2.6, 2.2);
-      camara.lookAt(0, 3.2, -5.5);
+      camara.position.set(3.2, 2.6, z + 2.2);
+      camara.lookAt(0, 3.2, z - 5.5);
     });
   }
 
@@ -583,7 +637,14 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
       if (!mirar.isLocked && !escribiendo) ui.portada.hidden = false;
     })
     : null;
+  // El lector del palantír: el post o la noticia entera, dentro del mundo.
+  const lector = ui.lector && !fondo
+    ? crearLector(ui.lector, (enlace) => abrirEnlace(enlace), () => {
+      if (!mirar.isLocked && !escribiendo) ui.portada.hidden = false;
+    })
+    : null;
   document.addEventListener("keydown", (e) => {
+    if (lector?.abierto && !mirar.isLocked && e.code === "Escape") lector.cerrar();
     // Con el ratón aún bloqueado es la misma F (o P) que acaba de abrirlo: no se cierra.
     if (panel?.abierto && !mirar.isLocked && (e.code === "Escape" || e.code === "KeyF")) panel.cerrar();
     if (ajustes?.abierto && !mirar.isLocked && (e.code === "Escape" || e.code === "KeyP")) ajustes.cerrar();
@@ -748,6 +809,21 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
   }
   function aplicarAgentes() {
     for (const g3d of vivos()) encenderGrafo(g3d);
+    // El faro: sobre la isla, del color del agente más fresco, con su vigor (se apaga como en gb).
+    const ahora = performance.now();
+    for (const { grafo, faro } of islas) {
+      const dato = agentesDe.get(grafo.nombre);
+      const agentes = dato ? trabajando(dato.estado) : [];
+      const nombresAg = agentes.map((a) => a.nombre);
+      const recibido = dato?.recibido ?? ahora;
+      let fuerza = 0;
+      let color = "#ffffff";
+      for (const a of agentes) {
+        const v = vigorOnda(a.hace_seg == null ? null : a.hace_seg + (ahora - recibido) / 1000);
+        if (v > fuerza) { fuerza = v; color = colorDeAgente(a.nombre, nombresAg); }
+      }
+      faro.encender(fuerza, color);
+    }
   }
   // Trabajando = toca algo y no se ha apagado (uso real: el repo principal sin cambios desde
   // hace un mes salía anunciado como "working").
@@ -817,7 +893,34 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
   /** Un clic (sin arrastrar) en el fondo: la ficha del nodo apuntado, o se cierra. */
   function clicSuelto() {
     if (apuntado?.tipo === "nodo") fichaDe(apuntado.g3d, apuntado.i);
+    else if (apuntado?.tipo === "titular") abrirEnlace(apuntado.enlace);
     else cerrarFicha();
+  }
+
+  /**
+   * Clic en una tarjeta: se lee aquí mismo (el lector), con el ratón suelto para hacer scroll. Sin
+   * lector (el fondo), al navegador.
+   * @param {import("./palantir.js").Enlace} enlace
+   */
+  function leer(enlace) {
+    if (!lector) return void abrirEnlace(enlace);
+    lector.abrir(enlace);
+    mirar.unlock();
+  }
+
+  /**
+   * Una tarjeta del palantír (titular o repo), en una ventana NUEVA del navegador (por el puente:
+   * desde la página se abriría dentro del perfil del mundo). Cuando la ventana está, el puente
+   * avisa ("… is ready: press N") y se trae como cualquier otra.
+   * @param {import("./palantir.js").Enlace} enlace
+   */
+  async function abrirEnlace(enlace) {
+    if (!puente?.conectado) {
+      avisar(fondo ? "Open it from the space: right-click the desktop → Enter infinite-desk" : "No bridge, so it can't open the browser.");
+      return;
+    }
+    const error = await puente.abrirUrl(enlace.url);
+    avisar(error ? `Couldn't open it: ${error}` : `Opening ${enlace.etiqueta} in the browser…`);
   }
 
   /** @param {string} codigo */
@@ -873,6 +976,7 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
     if (!mirar.isLocked || e.button !== 0) return;
     // Clic con la mira en un nodo: su ficha. En el vacío: se cierra.
     if (apuntado?.tipo === "nodo") return fichaDe(apuntado.g3d, apuntado.i);
+    if (apuntado?.tipo === "titular") return void leer(apuntado.enlace);
     if (apuntado?.tipo === "consola") {
       const d = apuntado.consola.cartel.getWorldPosition(new THREE.Vector3()).distanceTo(camara.position);
       arrastrada = { consola: apuntado.consola, distancia: d };
@@ -958,6 +1062,9 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
 
     for (const { g3d } of islas) g3d.objeto.rotation.y += dt * 0.08;
     const t = reloj.elapsedTime;
+    cielo.tick(t, camara);
+    palantir.tick(t, dt);
+    for (const { cristales, faro } of islas) { cristales.tick(t); faro.tick(t); }
     for (const g3d of vivos()) g3d.latir(t);
     const ahora = performance.now();
     for (const c of consolas) c.tick(ahora);
@@ -992,6 +1099,7 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
         nuevo?.g3d.resaltar(nuevo.i);
         encendido = nuevo ? { g3d: nuevo.g3d, i: nuevo.i } : null;
       }
+      palantir.resaltar(apuntado?.tipo === "titular" ? apuntado.tarjeta : null);
       ui.info.textContent = describir();
       ui.info.hidden = !apuntado;
     }

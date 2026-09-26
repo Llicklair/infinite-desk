@@ -5,4 +5,6 @@ interface Window {
   INFINITE_DESK_PUENTE?: { puerto: number; token: string; atajo: string | null };
   /** Lo escribe `infinite-desk-bridge --fondo` en wallpaper/fondo-estado.js (ADR 0004). */
   INFINITE_DESK_FONDO?: { tapado: boolean[] };
+  /** Lo escribe tools/noticias.mjs en wallpaper/noticias.js: los titulares del palantír. */
+  INFINITE_DESK_NOTICIAS?: import("./palantir.js").Noticias;
 }

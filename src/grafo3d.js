@@ -16,8 +16,9 @@ function colorDeGrupo(grupo, grupos) {
 
 /**
  * @typedef {import("./datos.js").Grafo & {posiciones: number[]}} GrafoDispuesto
- * @typedef {GrafoDispuesto & {nombre: string, alt?: GrafoDispuesto}} GrafoExportado
- *   `alt`: el árbol de carpetas de un repo que tiene grafo de gb (tecla T)
+ * @typedef {GrafoDispuesto & {nombre: string, alt?: GrafoDispuesto, ultimoCommit?: number}} GrafoExportado
+ *   `alt`: el árbol de carpetas de un repo que tiene grafo de gb (tecla T);
+ *   `ultimoCommit`: segundos desde 1970 del último commit (la vida de la isla, ambiente.js)
  */
 
 /**
