@@ -1,0 +1,103 @@
+// El espíritu de la zona zen, por fuera: habla con Claude (`claude -p`, la cuenta del usuario, sin
+// herramientas: solo conversa) y guarda lo que recuerda en el equipo, en DATOS/espiritu/recuerdos.json.
+// La conversación no se guarda. Lo llama tools/orquestador.mjs (órdenes hablar, recordar, recuerdos
+// y olvidar), que es lo que el puente deja correr al mundo. La forma de ser y los recuerdos, en
+// src/apoyo.js.
+import { spawn } from "node:child_process";
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { randomUUID } from "node:crypto";
+import { fusionar, instrucciones, leerCambios, pedirRecuerdos, conversacion } from "../src/apoyo.js";
+import { DATOS } from "./orquestador-datos.mjs";
+
+const CASA = join(DATOS, "espiritu");
+const RECUERDOS = join(CASA, "recuerdos.json");
+const WIN = process.platform === "win32";
+
+/** @returns {import("../src/apoyo.js").Recuerdo[]} */
+export function leerRecuerdos() {
+  try { return JSON.parse(readFileSync(RECUERDOS, "utf8")).recuerdos ?? []; } catch { return []; }
+}
+
+/** @param {import("../src/apoyo.js").Recuerdo[]} recuerdos */
+function guardar(recuerdos) {
+  mkdirSync(CASA, { recursive: true });
+  const tmp = `${RECUERDOS}.tmp`;
+  writeFileSync(tmp, JSON.stringify({ recuerdos }, null, 2));
+  renameSync(tmp, RECUERDOS);
+}
+
+/**
+ * Dónde está claude: en Windows, el claude.exe que hay detrás del claude.cmd de npm (así se lanza
+ * sin cmd.exe, que no deja pasar argumentos vacíos como `--tools ""`); si no, el del PATH.
+ */
+function ejecutable() {
+  if (!WIN) return "claude";
+  for (const dir of (process.env.PATH ?? "").split(";")) {
+    if (!dir || !existsSync(join(dir, "claude.cmd"))) continue;
+    const exe = join(dir, "node_modules", "@anthropic-ai", "claude-code", "bin", "claude.exe");
+    if (existsSync(exe)) return exe;
+  }
+  for (const dir of (process.env.PATH ?? "").split(";")) if (dir && existsSync(join(dir, "claude.exe"))) return join(dir, "claude.exe");
+  throw new Error("Claude Code is not installed (claude not found)");
+}
+
+/**
+ * `claude -p` sin herramientas, sin ajustes ni CLAUDE.md de nadie (corre en la carpeta del espíritu),
+ * sin sesión guardada. El prompt de sistema va en un fichero y la charla por la entrada estándar.
+ * @param {string} sistema @param {string} texto @returns {Promise<string>}
+ */
+function claude(sistema, texto) {
+  mkdirSync(CASA, { recursive: true });
+  const fichero = join(CASA, `sistema-${process.pid}.txt`);
+  writeFileSync(fichero, sistema);
+  const args = ["-p", "--tools", "", "--system-prompt-file", fichero, "--no-session-persistence", "--setting-sources", "", "--strict-mcp-config", "--output-format", "text"];
+  return new Promise((resolver, fallar) => {
+    const p = spawn(ejecutable(), args, { cwd: CASA, windowsHide: true });
+    let salida = "", error = "";
+    p.stdout.on("data", (d) => (salida += d));
+    p.stderr.on("data", (d) => (error += d));
+    const reloj = setTimeout(() => p.kill(), 150000);
+    const fin = () => { clearTimeout(reloj); try { rmSync(fichero, { force: true }); } catch { /* ya no está */ } };
+    p.on("error", (e) => { fin(); fallar(e); });
+    p.on("close", (codigo) => {
+      fin();
+      if (codigo === 0 && salida.trim()) resolver(salida.trim());
+      else fallar(new Error((error || salida).trim().split("\n").at(-1) || `claude exited with ${codigo}`));
+    });
+    p.stdin.end(texto);
+  });
+}
+
+/** Qué día es, para que el espíritu lo sepa (y fecha los recuerdos). */
+const hoy = () => new Date().toLocaleDateString("es-ES", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+const fecha = () => new Date().toISOString().slice(0, 10);
+
+/**
+ * Un turno: lo que contesta el espíritu a la conversación hasta ahora.
+ * @param {import("../src/apoyo.js").Turno[]} turnos
+ */
+export async function hablar(turnos) {
+  if (!Array.isArray(turnos) || !turnos.length) throw new Error("nothing to answer");
+  return { texto: await claude(instrucciones(leerRecuerdos(), hoy()), conversacion(turnos)) };
+}
+
+/**
+ * Al acabar una charla: lo que merece recordar se añade (y lo que cambió, se cambia).
+ * @param {import("../src/apoyo.js").Turno[]} turnos
+ */
+export async function recordar(turnos) {
+  const antes = leerRecuerdos();
+  if (!turnos?.some((t) => t.quien === "yo")) return { recuerdos: antes };
+  const salida = await claude("Eres quien decide qué recordar de una charla. Contestas solo con JSON.", pedirRecuerdos(turnos, antes));
+  const despues = fusionar(antes, leerCambios(salida), fecha(), () => randomUUID().slice(0, 8));
+  guardar(despues);
+  return { recuerdos: despues };
+}
+
+/** Olvidar uno (por id) o todo ("todo"). @param {string} id */
+export function olvidar(id) {
+  const quedan = id === "todo" ? [] : leerRecuerdos().filter((r) => r.id !== id);
+  if (id === "todo" || existsSync(RECUERDOS)) guardar(quedan);
+  return { recuerdos: quedan };
+}

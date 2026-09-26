@@ -42,6 +42,32 @@ body[data-escribiendo] #mira { display: none; }
 #tutorial p.pide { margin: 0; padding: 8px 10px; background: rgba(90, 108, 255, 0.18); border-radius: 6px; color: #fff; }
 #tutorial p.pide.hecho { background: rgba(60, 170, 110, 0.3); }
 #tutorial p.pie { margin: 10px 0 0; font-size: 11px; color: #6f78a8; }
+/* El espíritu de la zona zen: la charla, a la derecha, suave. */
+#charla { position: fixed; top: 6vh; right: 24px; width: min(440px, 44vw); height: 86vh; z-index: 10; display: flex; flex-direction: column; gap: 10px; padding: 16px 18px; background: rgba(14, 24, 44, 0.9); border: 1px solid rgba(143, 220, 255, 0.45); border-radius: 16px; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4), 0 0 30px rgba(143, 220, 255, 0.12); color: #e6f4ff; font-size: 14px; }
+#charla h2 { margin: 0; font-size: 18px; font-weight: 600; color: #cdefff; }
+#charla .sub { margin: 4px 0 0; font-size: 11px; color: #8fb3cc; line-height: 1.4; }
+#charla .crisis { padding: 10px 12px; background: rgba(255, 170, 120, 0.16); border: 1px solid rgba(255, 180, 130, 0.6); border-radius: 10px; font-size: 13px; line-height: 1.45; color: #ffe9dc; }
+#charla .mensajes { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-right: 4px; }
+#charla .mensajes div { max-width: 86%; padding: 8px 12px; border-radius: 14px; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
+#charla .mensajes .yo { align-self: flex-end; background: rgba(90, 108, 255, 0.35); border-bottom-right-radius: 4px; }
+#charla .mensajes .espiritu { align-self: flex-start; background: rgba(143, 220, 255, 0.14); border: 1px solid rgba(143, 220, 255, 0.25); border-bottom-left-radius: 4px; }
+#charla .mensajes .pensando { color: #8fdcff; letter-spacing: 3px; }
+#charla .fila { display: flex; gap: 8px; align-items: stretch; }
+#charla textarea { flex: 1; resize: none; padding: 8px 10px; background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(143, 220, 255, 0.35); border-radius: 10px; color: #fff; font: inherit; }
+#charla button { padding: 6px 12px; background: rgba(143, 220, 255, 0.14); border: 1px solid rgba(143, 220, 255, 0.45); border-radius: 10px; color: #dff4ff; font: inherit; font-size: 13px; cursor: pointer; }
+#charla button:hover { background: rgba(143, 220, 255, 0.25); }
+#charla button.mic { font-size: 18px; }
+#charla button.mic.oyendo { background: rgba(255, 120, 120, 0.35); border-color: #ff9a9a; animation: latido 1s infinite; }
+@keyframes latido { 50% { box-shadow: 0 0 0 6px rgba(255, 120, 120, 0.15); } }
+#charla .mover { display: flex; flex-wrap: wrap; gap: 6px; }
+#charla .memoria { font-size: 12px; color: #a9c6da; }
+#charla .memoria summary { cursor: pointer; }
+#charla .memoria ul { margin: 6px 0; padding-left: 16px; max-height: 18vh; overflow-y: auto; }
+#charla .memoria li { margin: 3px 0; }
+#charla .memoria .fecha { color: #6f8ba0; }
+#charla .memoria .quitar { margin-left: 6px; padding: 0 6px; font-size: 12px; }
+#charla .memoria .olvidar { margin-top: 4px; font-size: 12px; }
+#charla .pie { margin: 0; font-size: 11px; color: #6f8ba0; }
 /* Ficha de un nodo (clic): a la derecha, como el panel de galaxy-brain. */
 #nodo { position: fixed; top: 70px; right: 20px; width: min(380px, 34vw); max-height: calc(100vh - 140px); overflow: auto; padding: 14px 16px; background: rgba(12, 16, 40, 0.92); border: 1px solid #3a4480; border-radius: 8px; pointer-events: none; font-size: 13px; }
 #nodo h2 { margin: 0 0 4px; font-size: 16px; font-weight: 600; overflow-wrap: anywhere; }

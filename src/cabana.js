@@ -11,8 +11,8 @@ import { madera as texMadera, piedra as texPiedra, tejas as texTejas, tela as te
 
 /** @typedef {import("./andar.js").Caja} Caja */
 /**
- * @typedef {{objeto: THREE.Object3D, texto: () => string, accion: (z: Acciones) => void, asiento?: boolean}} Interactivo
- *   `asiento`: se sienta uno en él (también con la taza en la mano)
+ * @typedef {{objeto: THREE.Object3D, texto: () => string, accion: (z: Acciones) => void, asiento?: boolean, sentado?: boolean}} Interactivo
+ *   `asiento`: se sienta uno en él (también con la taza en la mano); `sentado`: se puede usar sin levantarse
  * @typedef {{sentarse: (pos: THREE.Vector3, mirar: THREE.Vector3) => void, avisar: (t: string) => void, sonar: (que: "chispa" | "sorbo" | "puerta") => void}} Acciones
  *   lo que la zona pone a disposición de los objetos (posiciones en coordenadas de la zona)
  */

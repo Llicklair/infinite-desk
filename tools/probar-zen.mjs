@@ -127,6 +127,30 @@ comprobar("with the mug, E on the armchair sits you down without leaving it", (a
 await ev("__zen.zen.saltar()");
 await ev("__zen.zen.interactuar(__zen.camara)");
 
+console.log("the spirit");
+await ev("__en(-8.2, 3, 23.6)");
+const zorro = await ev("(() => { const p = __zen.zen.espiritu.grupo.position; return [p.x, p.y + 0.5, p.z]; })()");
+await ev(`__mira(${zorro.join(",")})`);
+const pistaZorro = await ev("__zen.zen.pista(__zen.camara)");
+comprobar("aiming at the spirit offers to talk", /talk to the spirit/.test(pistaZorro), JSON.stringify(pistaZorro));
+const lejosDe = () => ev("(() => { const e = __zen.zen.espiritu.grupo.position, c = __zen.camara.position; return Math.hypot(e.x - c.x, e.z - (c.z + 2600)); })()");
+await ev("__zen.zen.espiritu.seguir()");
+await ev("__anda(0.1, -0.08, 120)"); // unos 15 m hacia la poza
+/** Hace pasar `s` segundos de zona (el render por software pinta pocos fotogramas). @param {number} s */
+const pasar = (s) => ev(`(() => { for (let i = 0; i < ${s * 30}; i++) __zen.zen.tick(1000 + i / 30, 1 / 30, __zen.camara); return 1; })()`);
+await pasar(6); // seis segundos de zona: el espíritu vuela hasta uno
+const siguiendo = await lejosDe();
+comprobar("\"follow me\": it flies to your side", siguiendo < 3.2, `${siguiendo.toFixed(2)} m away`);
+await ev("__zen.zen.espiritu.quedarse()");
+await ev("__anda(-0.1, 0, 100)");
+await pasar(4);
+const quieto = await lejosDe();
+comprobar("\"stay here\": it stays behind", quieto > 7, `${quieto.toFixed(2)} m away`);
+await ev("__zen.zen.espiritu.volver()");
+await pasar(8);
+const enBanco = await ev("(() => { const p = __zen.zen.espiritu.grupo.position; return Math.hypot(p.x - " + zorro[0] + ", p.z - " + zorro[2] + "); })()");
+comprobar("\"back to the bench\": it goes back", enBanco < 0.6, `${enBanco.toFixed(2)} m from its seat`);
+
 console.log(errores.length ? `JS ERRORS: ${errores.join(" | ")}` : "no JavaScript errors");
 console.log(fallos.length ? `${fallos.length} failed` : "all good");
 ws.close();

@@ -263,3 +263,10 @@ guia        -/-> mundo
 guia        -/-> grafo3d
 guia        -/-> puente
 guia        -/-> zen
+
+# El espíritu de la zona zen: su forma de ser y sus recuerdos (apoyo) son núcleo puro.
+apoyo       -/-> charla
+apoyo       -/-> espiritu
+apoyo       -/-> zen
+apoyo       -/-> mundo
+apoyo       -/-> puente

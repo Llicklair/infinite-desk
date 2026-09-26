@@ -14,6 +14,7 @@ import { mergeVertices } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { fuerzaDeCarga, posicionEn, recorrido } from "./lago.js";
 import { IMPULSO, caer, deslizar, sueloBajo } from "./andar.js";
 import { crearCabana } from "./cabana.js";
+import { crearEspiritu } from "./espiritu.js";
 import { cesped as texCesped, piedra as texPiedra, triplanar } from "./texturas.js";
 import { H_LABIO, RISCO_Z, Z_LABIO, cajasRisco, cima, enRisco, hendidura, mallaRisco, ruido } from "./risco.js";
 
@@ -427,8 +428,8 @@ function crearSonido() {
 
 /**
  * @param {THREE.Scene} escena
- * @param {{hemi: THREE.HemisphereLight, sol: THREE.DirectionalLight, niebla: THREE.FogExp2, cieloMundo: THREE.Object3D, renderer: THREE.WebGLRenderer, avisar: (t: string) => void}} mundo
- *   lo del mundo que la zona cambia mientras se está en ella (y devuelve al salir)
+ * @param {{hemi: THREE.HemisphereLight, sol: THREE.DirectionalLight, niebla: THREE.FogExp2, cieloMundo: THREE.Object3D, renderer: THREE.WebGLRenderer, avisar: (t: string) => void, alHablar?: () => void}} mundo
+ *   lo del mundo que la zona cambia mientras se está en ella (y devuelve al salir); `alHablar`: E sobre el espíritu
  */
 export function crearZen(escena, mundo) {
   const grupo = new THREE.Group();
@@ -592,12 +593,16 @@ export function crearZen(escena, mundo) {
   banco.position.set(-8, 0.9, R_LAGO + 6);
   banco.rotation.y = 0.5;
   roca(-8, R_LAGO + 6, 5, 1.6, 0.45, 1.5, 0.5);
+  // El espíritu de luz (src/espiritu.js), sentado en el banco a tu lado (entre los cojines), mirando a la poza.
+  const asiento = new THREE.Vector3(0.62, 0, 0.05).applyAxisAngle(new THREE.Vector3(0, 1, 0), 0.5).add(new THREE.Vector3(-8, 1.66, R_LAGO + 6));
+  const espiritu = crearEspiritu({ asiento, mirando: Math.atan2(-asiento.x, -asiento.z) });
+  grupo.add(espiritu.grupo);
   const cojin = sombra(new THREE.Mesh(caja(4.6, 0.35, 1.4, 0.16), new THREE.MeshStandardMaterial({ color: "#9cba74", roughness: 1 })));
   // Y dos cojines pequeños, redondos y blanditos.
   for (const x of [-1.6, 1.4]) {
     const cp = sombra(new THREE.Mesh(caja(0.9, 0.7, 0.3, 0.14), new THREE.MeshStandardMaterial({ color: x < 0 ? "#b5c98a" : "#e8d9b0", roughness: 1 })));
-    cp.position.set(x, 0.95, -0.45);
-    cp.rotation.x = -0.25;
+    cp.position.set(x, 0.95, 0.45); // el respaldo, del lado contrario a la poza (se mira al agua)
+    cp.rotation.x = 0.25;
     cojin.add(cp);
   }
   cojin.position.set(0, 0.6, 0);
@@ -1148,6 +1153,12 @@ export function crearZen(escena, mundo) {
   const interactivos = [
     ...cabana.interactivos,
     {
+      objeto: espiritu.grupo,
+      texto: () => "E: talk to the spirit (V: just talk, by voice)",
+      accion: () => mundo.alHablar?.(),
+      sentado: true,
+    },
+    {
       objeto: banco,
       texto: () => "E: sit on the bench",
       asiento: true,
@@ -1180,6 +1191,8 @@ export function crearZen(escena, mundo) {
 
   return {
     get activa() { return activa; },
+    /** El espíritu de luz: que siga, se quede o vuelva; y cuándo habla o escucha (brilla más). */
+    espiritu,
     get ambiente() { return ambiente; },
     /**
      * Dónde se aparece al llegar (en el mundo) y hacia dónde mira: en el patio, de cara a la cascada;
@@ -1223,7 +1236,7 @@ export function crearZen(escena, mundo) {
         if (!sentado && d?.asiento) return `${sorbo} · ${d.texto()} (with your hot chocolate)`;
         return `${sorbo} · E: leave it on the table${cabana.taza.nivel > 0.02 ? "" : " to refill it"}${levantarse}`;
       }
-      if (sentado) return d?.objeto === cabana.taza.grupo ? `E: take the hot chocolate${levantarse}` : "E or Space: stand up";
+      if (sentado) return d?.objeto === cabana.taza.grupo || d?.sentado ? `${d.texto()}${levantarse}` : "E or Space: stand up";
       return d?.texto() ?? "";
     },
     /** E: tocar lo que se tiene delante (o levantarse, o dejar la taza). @param {THREE.Camera} camara @returns {boolean} si hizo algo */
@@ -1237,7 +1250,7 @@ export function crearZen(escena, mundo) {
           mundo.avisar(cabana.taza.dejar() ? "Back on the table, and freshly refilled" : "Back on the table");
           return true;
         }
-      } else if (sentado && i?.objeto !== cabana.taza.grupo) {
+      } else if (sentado && i?.objeto !== cabana.taza.grupo && !i?.sentado) {
         levantarse();
         return true;
       }
@@ -1388,6 +1401,7 @@ export function crearZen(escena, mundo) {
       viento.value = t;
       uMotas.uTiempo.value = t;
       cabana.tick(t, dt);
+      espiritu.tick(t, dt, camara.position.clone().sub(CENTRO_ZEN), cuerpo.pies);
       // La lluvia, alrededor de donde se está; y cómo suena: fuera, o apagada dentro de la cabaña.
       const aqui = camara.position.clone().sub(CENTRO_ZEN);
       uLluvia.uTiempo.value = t;

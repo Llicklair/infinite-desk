@@ -23,6 +23,7 @@ import { crearPuente, releerScript } from "./puente.js";
 import { crearPanelFicheros } from "./ficheros.js";
 import { crearPanelAjustes } from "./ajustes.js";
 import { crearTutorial } from "./tutorial.js";
+import { crearCharla } from "./charla.js";
 
 const VELOCIDAD = 9; // metros por segundo; Shift la triplica
 const ALTURA_OJOS = 1.7;
@@ -35,7 +36,7 @@ const RELEER_NOTICIAS_MS = 5 * 60000; // noticias.js lo rehace el puente cada 30
  * @typedef {import("./grafo3d.js").GrafoExportado} GrafoExportado
  * @typedef {import("./grafo3d.js").Grafo3D} Grafo3D
  * @typedef {import("./pantallas.js").Pantalla} Pantalla
- * @typedef {{portada: HTMLElement, info: HTMLElement, aviso: HTMLElement, ayuda: HTMLElement, ficheros: HTMLElement | null, nodo: HTMLElement | null, ajustes?: HTMLElement | null, lector?: HTMLElement | null, juego?: HTMLElement | null, maestra?: HTMLElement | null, tutorial?: HTMLElement | null}} Interfaz
+ * @typedef {{portada: HTMLElement, info: HTMLElement, aviso: HTMLElement, ayuda: HTMLElement, ficheros: HTMLElement | null, nodo: HTMLElement | null, ajustes?: HTMLElement | null, lector?: HTMLElement | null, juego?: HTMLElement | null, maestra?: HTMLElement | null, tutorial?: HTMLElement | null, charla?: HTMLElement | null}} Interfaz
  */
 
 /**
@@ -266,7 +267,7 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
   mirar.addEventListener("lock", () => (ui.portada.hidden = true));
   // Al entrar a escribir en una pantalla se suelta el ratón, pero no es para salir del mundo.
   // Con el lector abierto también: se suelta el ratón para leer, y la portada lo tapaba.
-  mirar.addEventListener("unlock", () => (ui.portada.hidden = escribiendo !== null || Boolean(panel?.abierto) || Boolean(ajustes?.abierto) || Boolean(lector?.abierto) || Boolean(maestra?.abierto)));
+  mirar.addEventListener("unlock", () => (ui.portada.hidden = escribiendo !== null || Boolean(panel?.abierto) || Boolean(ajustes?.abierto) || Boolean(lector?.abierto) || Boolean(maestra?.abierto) || Boolean(charla?.abierto)));
   // Soltar el ratón (Esc) a media ronda de Chispas la acaba.
   mirar.addEventListener("unlock", () => chispas?.terminar());
   ui.portada.addEventListener("click", () => mirar.lock());
@@ -279,7 +280,7 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
     const pie = ui.portada.querySelector("p");
     if (pie) pie.textContent = "Click to enter · Esc: back to the desktop (the space stays open) · Shift+Esc: close it";
     document.addEventListener("keydown", async (e) => {
-      if (e.code !== "Escape" || mirar.isLocked || escribiendo || panel?.abierto || ajustes?.abierto || lector?.abierto || maestra?.abierto) return;
+      if (e.code !== "Escape" || mirar.isLocked || escribiendo || panel?.abierto || ajustes?.abierto || lector?.abierto || maestra?.abierto || charla?.abierto) return;
       if (e.shiftKey) return window.close();
       // Sin puente no hay quien lo minimice: se cierra, como antes.
       if (!(puente?.conectado && await puente.alEscritorio())) window.close();
@@ -793,7 +794,21 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
   // La capa de marca (B): el logo encima de la consola maestra.
   marca = !fondo ? crearMarca(escena, { alturaLogo: palantir.cima + 10.8 }) : null;
   // La zona zen (Z), lejos de las islas; con su cielo, y las luces y la niebla de su ambiente.
-  zen = !fondo ? crearZen(escena, { hemi, sol, niebla, cieloMundo: cielo.objeto, renderer, avisar: (t) => avisar(t) }) : null;
+  zen = !fondo ? crearZen(escena, { hemi, sol, niebla, cieloMundo: cielo.objeto, renderer, avisar: (t) => avisar(t), alHablar: () => abrirCharla() }) : null;
+  // El espíritu de la zona zen (E sobre él: el panel; V: hablarle por voz sin abrir nada).
+  const charla = ui.charla && zen
+    ? crearCharla(ui.charla, {
+      orquestador: (args) => (puente ? puente.orquestador(args) : Promise.resolve({ ok: false, error: "no bridge (come in from the desktop right-click menu)" })),
+      espiritu: () => zen?.espiritu ?? null,
+      avisar: (t) => avisar(t),
+      alCerrar: () => { if (!mirar.isLocked && !escribiendo) ui.portada.hidden = false; },
+    })
+    : null;
+  function abrirCharla() {
+    if (!charla) return;
+    void charla.abrir();
+    mirar.unlock();
+  }
   const laMarca = marca;
   if (laMarca) {
     releerScript("marca.js").then(() => {
@@ -871,6 +886,7 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
   }
   document.addEventListener("keydown", (e) => {
     if (maestra?.abierto && !mirar.isLocked && e.code === "Escape") maestra.cerrar();
+    if (charla?.abierto && !mirar.isLocked && e.code === "Escape") charla.cerrar();
     if (lector?.abierto && !mirar.isLocked && e.code === "Escape") lector.cerrar();
     // Con el ratón aún bloqueado es la misma F (o P) que acaba de abrirlo: no se cierra.
     if (panel?.abierto && !mirar.isLocked && (e.code === "Escape" || e.code === "KeyF")) panel.cerrar();
@@ -1202,6 +1218,7 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
       camara.lookAt(l.mirar);
       avisar("Zen zone · hold click to throw a stone · Space: jump · E: use things (the cabin!) · L: day / sunset / night / rain · Z to go back");
     } else {
+      charla?.terminar();
       zen.activar(false);
       cargaDesde = null;
       if (antesDeZen) {
@@ -1222,6 +1239,7 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
       const a = zen.siguienteAmbiente();
       avisar(`Zen: ${a === "dia" ? "day" : a === "atardecer" ? "sunset" : a === "noche" ? "night" : "rain"} · L to change it`);
     }
+    else if (codigo === "KeyV" && zen?.activa && charla && apuntado?.tipo !== "pantalla") void charla.hablarPorVoz();
     else if (codigo === "KeyN") nuevaPantalla();
     else if (codigo === "KeyO" && maestra) abrirMaestra();
     else if (codigo === "KeyB" && marca) {
@@ -1364,6 +1382,8 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
     /** @type {any} */ (window).__zen = { zen, camara };
     const c = new URLSearchParams(location.search).get("cabana");
     alternarZen(new URLSearchParams(location.search).get("mirar") === "cascada" ? "cascada" : c === "fuera" ? "fuera" : c !== null);
+    // `&espiritu`: el panel del espíritu abierto (para verlo sin manos).
+    if (new URLSearchParams(location.search).has("espiritu")) abrirCharla();
   }
 
   // --- bucle --------------------------------------------------------------------------------

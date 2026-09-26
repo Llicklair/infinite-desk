@@ -9,6 +9,9 @@
 //   node tools/orquestador.mjs abrir <id>         (su worktree en una ventana nueva de VS Code)
 //   node tools/orquestador.mjs traza <id>         (la traza legible de un fallo capturado por gb)
 //   node tools/orquestador.mjs instalarGb         (galaxy-brain con pip: de tu carpeta o de GitHub)
+//   node tools/orquestador.mjs hablar <turnos en base64>    (el espíritu de la zona zen contesta)
+//   node tools/orquestador.mjs recordar <turnos en base64>  (al acabar: lo que merece recordar)
+//   node tools/orquestador.mjs recuerdos | olvidar <id|todo>  (lo que recuerda, a la vista y borrable)
 //
 // Los repos se nombran por su carpeta y tienen que estar en la carpeta de proyectos: quien llama
 // no elige rutas. Los agentes, uno por repo, con tools/agente.mjs en segundo plano.
@@ -23,6 +26,7 @@ import { claveDeFallo, estadoDeFallo, fallosDeRepos, trazaLegible } from "../src
 import { FORMATO_LOG, commitsDeLog, fallosNuevos } from "../src/actividad.js";
 import { carpetaDeProyectos, reposEn } from "./proyectos.mjs";
 import { buscarGb } from "./gb.mjs";
+import { hablar, leerRecuerdos, olvidar, recordar } from "./espiritu.mjs";
 import { ENLAZADAS, WORKTREES, anotar, fichaDeAgente, guardarArreglados, guardarVistos, leerActividad, leerAgentes, leerArreglados, leerVistos } from "./orquestador-datos.mjs";
 
 const aqui = dirname(fileURLToPath(import.meta.url));
@@ -324,6 +328,11 @@ try {
     : orden === "instalarGb" ? await instalarGb()
     : orden === "arreglado" ? await marcarArreglado(resto[0], true)
     : orden === "reabrir" ? await marcarArreglado(resto[0], false)
+    // El espíritu de la zona zen (tools/espiritu.mjs): la charla va en base64 (JSON de turnos).
+    : orden === "hablar" ? await hablar(JSON.parse(Buffer.from(resto[0] ?? "", "base64").toString("utf8")))
+    : orden === "recordar" ? await recordar(JSON.parse(Buffer.from(resto[0] ?? "", "base64").toString("utf8")))
+    : orden === "recuerdos" ? { recuerdos: leerRecuerdos() }
+    : orden === "olvidar" ? olvidar(resto[0] ?? "")
     : (() => { throw new Error(`unknown order: ${orden ?? "(none)"}`); })();
   process.stdout.write(`${JSON.stringify({ ok: true, r })}\n`);
 } catch (e) {

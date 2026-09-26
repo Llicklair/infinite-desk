@@ -13,6 +13,7 @@ const carpeta = join(dirname(fileURLToPath(import.meta.url)), "..", "wallpaper")
 const PAGINAS = [
   pathToFileURL(join(carpeta, "index.html")).href + "?vista=demo&agentes",
   pathToFileURL(join(carpeta, "index.html")).href + "?vista=demo&tutorial", // la demo, con la tarjeta del tutorial corriendo
+  pathToFileURL(join(carpeta, "index.html")).href + "?vista=dentro&zen=noche&espiritu", // la zona zen, con el panel del espíritu
   pathToFileURL(join(carpeta, "fondo.html")).href + "?monitor=0",
 ];
 const ESPERA_MS = 5000;
