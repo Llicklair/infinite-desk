@@ -270,3 +270,9 @@ apoyo       -/-> espiritu
 apoyo       -/-> zen
 apoyo       -/-> mundo
 apoyo       -/-> puente
+
+# Atlas, el asistente del mundo: su forma de ser, su contexto y sus acciones (asistente) son núcleo puro.
+asistente   -/-> charla
+asistente   -/-> atlas3d
+asistente   -/-> mundo
+asistente   -/-> puente

@@ -43,17 +43,22 @@ function ejecutable() {
 }
 
 /**
- * `claude -p` sin herramientas, sin ajustes ni CLAUDE.md de nadie (corre en la carpeta del espíritu),
- * sin sesión guardada. El prompt de sistema va en un fichero y la charla por la entrada estándar.
- * @param {string} sistema @param {string} texto @returns {Promise<string>}
+ * `claude -p` sin ajustes ni CLAUDE.md de nadie (corre en su carpeta de datos), sin sesión
+ * guardada; sin herramientas, o solo las de leer que se le den, en las carpetas que se le den (Atlas
+ * lee el código de los repos). El prompt de sistema va en un fichero y la charla por la entrada estándar.
+ * @param {string} sistema @param {string} texto
+ * @param {{casa?: string, leer?: string[]}} [op] `leer`: carpetas que puede leer (con Read, Grep y Glob)
+ * @returns {Promise<string>}
  */
-function claude(sistema, texto) {
-  mkdirSync(CASA, { recursive: true });
-  const fichero = join(CASA, `sistema-${process.pid}.txt`);
+export function claude(sistema, texto, op = {}) {
+  const casa = op.casa ?? CASA;
+  mkdirSync(casa, { recursive: true });
+  const fichero = join(casa, `sistema-${process.pid}.txt`);
   writeFileSync(fichero, sistema);
-  const args = ["-p", "--tools", "", "--system-prompt-file", fichero, "--no-session-persistence", "--setting-sources", "", "--strict-mcp-config", "--output-format", "text"];
+  const herramientas = op.leer?.length ? ["--tools", "Read,Grep,Glob", "--allowedTools", "Read", "Grep", "Glob", ...op.leer.flatMap((d) => ["--add-dir", d])] : ["--tools", ""];
+  const args = ["-p", ...herramientas, "--system-prompt-file", fichero, "--no-session-persistence", "--setting-sources", "", "--strict-mcp-config", "--output-format", "text"];
   return new Promise((resolver, fallar) => {
-    const p = spawn(ejecutable(), args, { cwd: CASA, windowsHide: true });
+    const p = spawn(ejecutable(), args, { cwd: casa, windowsHide: true });
     let salida = "", error = "";
     p.stdout.on("data", (d) => (salida += d));
     p.stderr.on("data", (d) => (error += d));

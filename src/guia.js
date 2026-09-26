@@ -6,7 +6,7 @@
 /**
  * Lo que el mundo cuenta al tutorial cada poco (src/mundo.js).
  * @typedef {{andado: number, girado: number, apuntaIsla: boolean, pantallas: number, escribiendo: boolean,
- *   ficheros: boolean, lector: boolean, maestra: boolean, zen: boolean}} Foto
+ *   ficheros: boolean, lector: boolean, maestra: boolean, atlas: boolean, zen: boolean}} Foto
  *   `andado`: metros recorridos desde que empezó el tutorial; `girado`: radianes girados mirando
  */
 
@@ -84,9 +84,17 @@ export const PASOS = [
     hecho: (a) => a.maestra,
   },
   {
+    id: "atlas",
+    titulo: "Atlas, your work assistant",
+    texto: "The little drone by your side. Ask it about your repos (it can read their code), the news or the top repos, and it opens things for you: a repo in VS Code, an island, an article, a web page as a screen, the master console.",
+    teclas: [["K", "talk to Atlas"], ["V", "just talk, by voice"]],
+    pide: "Press K and ask it something (\"what is galaxy-brain?\").",
+    hecho: (a) => a.atlas,
+  },
+  {
     id: "zen",
     titulo: "The zen zone",
-    texto: "When you need a break: a waterfall, a pool to skip stones on and a cabin with a fire and hot chocolate. Z takes you there and back.",
+    texto: "When you need a break: a waterfall, a pool to skip stones on, a cabin with a fire and hot chocolate, and Kiri, a fox spirit to talk to. Z takes you there and back.",
     teclas: [["Z", "go / come back"], ["hold click", "throw a stone"], ["E", "use things"], ["L", "day, sunset, night, rain"]],
     pide: "Press Z (and Z again to come back).",
     hecho: (a) => a.zen,

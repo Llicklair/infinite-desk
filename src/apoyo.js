@@ -135,24 +135,39 @@ export function fusionar(recuerdos, cambios, fecha, nuevoId) {
 const AMBIENTES = ["dia", "atardecer", "noche", "lluvia"];
 
 /**
- * La respuesta sin sus líneas de acción ("ACCION: {...}"), y las acciones válidas que traía (como
- * mucho una). Lo que no se entiende se quita del texto igualmente: no se lee en voz alta.
- * @param {string} respuesta @returns {{texto: string, acciones: Accion[]}}
+ * Las de Kiri: música o un vídeo (con su búsqueda) y el cielo del santuario.
+ * @param {any} a lo que venía en la línea @returns {Accion | null}
  */
-export function separarAcciones(respuesta) {
-  /** @type {Accion[]} */
+function accionDeKiri(a) {
+  const busqueda = typeof a?.busqueda === "string" ? a.busqueda.trim().slice(0, 100) : "";
+  if ((a?.tipo === "musica" || a?.tipo === "video") && busqueda) return { tipo: a.tipo, busqueda };
+  if (a?.tipo === "ambiente" && AMBIENTES.includes(a?.valor)) return { tipo: "ambiente", valor: a.valor };
+  return null;
+}
+
+/**
+ * La respuesta sin sus líneas de acción ("ACCION: {...}"), y las acciones válidas que traía (como
+ * mucho `max`). Lo que no se entiende se quita del texto igualmente: no se lee en voz alta. Cada
+ * personaje dice qué acciones valen (`validar`: la acción limpia, o null).
+ * @template T
+ * @param {string} respuesta @param {(a: any) => T | null} validar @param {number} [max]
+ * @returns {{texto: string, acciones: T[]}}
+ */
+export function separarAccionesCon(respuesta, validar, max = 1) {
+  /** @type {T[]} */
   const acciones = [];
   const texto = respuesta.replace(/^[ \t]*ACCI[OÓ]N\s*:\s*(.*)$/gim, (_, json) => {
     try {
-      const a = JSON.parse(json);
-      const busqueda = typeof a?.busqueda === "string" ? a.busqueda.trim().slice(0, 100) : "";
-      if ((a?.tipo === "musica" || a?.tipo === "video") && busqueda) acciones.push({ tipo: a.tipo, busqueda });
-      else if (a?.tipo === "ambiente" && AMBIENTES.includes(a?.valor)) acciones.push({ tipo: "ambiente", valor: a.valor });
+      const a = validar(JSON.parse(json));
+      if (a) acciones.push(a);
     } catch { /* mal escrita: se quita y ya */ }
     return "";
   }).trim();
-  return { texto, acciones: acciones.slice(0, 1) };
+  return { texto, acciones: acciones.slice(0, max) };
 }
+
+/** Las de Kiri (una como mucho). @param {string} respuesta @returns {{texto: string, acciones: Accion[]}} */
+export const separarAcciones = (respuesta) => separarAccionesCon(respuesta, accionDeKiri, 1);
 
 /**
  * El primer vídeo (no un corto ni un anuncio) de una página de resultados de YouTube.

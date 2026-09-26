@@ -1,32 +1,53 @@
-// Hablar con el espíritu de la zona zen: el panel (E sobre él) y la voz (V, sin abrir nada). Se le
-// habla escribiendo o de viva voz (reconocimiento de voz del navegador), contesta por escrito y en
-// voz alta (las voces del sistema: en Edge, las naturales), y lo que recuerda de uno está a la vista
-// y se puede borrar. Si lo dicho suena a crisis, además de lo que diga el espíritu, sale el 024.
-// "Sígueme", "quédate aquí" y "vuelve al banco" lo mueven (src/apoyo.js). Claude contesta por el
-// puente (tools/espiritu.mjs); la conversación vive solo aquí, en memoria, hasta cerrar el mundo.
+// Hablar con un personaje del mundo: Kiri, el espíritu de la zona zen (para desahogarse, recuerda
+// cosas de uno), o Atlas, el asistente de trabajo del mundo normal. El panel y la voz (V, sin abrir
+// nada) son los mismos; cambian quién es, cómo suena y qué se le pide al puente. Se le habla
+// escribiendo o de viva voz (reconocimiento de voz del navegador), contesta por escrito y en voz
+// alta (las voces del sistema: en Edge, las naturales), y lo que recuerda (Kiri) está a la vista y
+// se puede borrar. Si lo dicho suena a crisis, además de lo que diga, sale el 024. "Sígueme",
+// "quédate aquí" y "vuelve" lo mueven (src/apoyo.js). La conversación vive solo aquí, en memoria.
 import { NOMBRE, base64, ordenDeMovimiento, paraVoz, pareceCrisis } from "./apoyo.js";
 
 /** @typedef {import("./apoyo.js").Turno} Turno */
 /** @typedef {import("./apoyo.js").Recuerdo} Recuerdo */
-/** @typedef {import("./apoyo.js").Accion} Accion */
-/** @typedef {{seguir: () => void, quedarse: () => void, volver: () => void, hablando: boolean, escuchando: boolean}} Espiritu */
+/** @typedef {{seguir: () => void, quedarse: () => void, volver: () => void, hablando: boolean, escuchando: boolean}} Figura */
+/**
+ * Quién es: nombre, presentación, cómo suena y qué se le pide al puente para que conteste.
+ * @typedef {{nombre: string, sub: string, saludo: (es: boolean) => string, pedir: (turnos: Turno[]) => string[],
+ *   recuerda: boolean, voz: {ritmo: number, tono: number, volumen: number, pausaMs: number}, claveVoz: string,
+ *   vocesPreferidas: RegExp, volver: string, pie: string, clase: string}} Persona
+ */
 
-// La voz de Kiri: más lenta y algo más grave que la de serie, frase a frase con una pausa entre
-// ellas (uso real: "¿la voz puede ser relajante y zen?"). La que se elige se recuerda en este equipo.
-const VOZ = { ritmo: 0.86, tono: 0.94, volumen: 0.9, pausaMs: 380 };
-const CLAVE_VOZ = "infinite-desk.voz-de-kiri";
+/**
+ * Kiri: la voz, más lenta y algo más grave que la de serie, frase a frase con una pausa entre ellas
+ * (uso real: "¿la voz puede ser relajante y zen?"). La que se elige se recuerda en este equipo.
+ * @type {Persona}
+ */
+export const KIRI = {
+  nombre: NOMBRE,
+  sub: `A little fox spirit born from the waterfall's mist, here to listen. ${NOMBRE} is an AI (Claude): what you say goes to Anthropic to answer; what ${NOMBRE} remembers stays on this computer.`,
+  saludo: (es) => (es ? `Hola, soy ${NOMBRE}. Aquí estoy. ¿Cómo estás, de verdad?` : `Hi, I'm ${NOMBRE}. I'm here. How are you, really?`),
+  pedir: (turnos) => ["hablar", base64(JSON.stringify(turnos))],
+  recuerda: true,
+  voz: { ritmo: 0.86, tono: 0.94, volumen: 0.9, pausaMs: 380 },
+  claveVoz: "infinite-desk.voz-de-kiri",
+  vocesPreferidas: /elvira|ximena|dalia|vera|jenny|aria/i,
+  volver: "Back to the bench",
+  pie: `Esc: close · in the zone, V talks to ${NOMBRE} by voice without opening this`,
+  clase: "kiri",
+};
 
 /**
  * @param {HTMLElement} panel
+ * @param {Persona} persona
  * @param {{
  *   orquestador: (args: string[]) => Promise<{ok: boolean, datos?: any, error?: string}>,
- *   espiritu: () => Espiritu | null,
+ *   figura: () => Figura | null,
  *   avisar: (texto: string) => void,
  *   alCerrar: () => void,
- *   hacer: (accion: Accion) => void,
- * }} op `hacer`: lo que Kiri decide hacer (música o un vídeo de YouTube, el cielo del santuario)
+ *   hacer: (accion: any) => void,
+ * }} op `hacer`: lo que decide hacer (Kiri: música, un vídeo, el cielo; Atlas: abrir repos, ventanas…)
  */
-export function crearCharla(panel, op) {
+export function crearCharla(panel, persona, op) {
   /** @type {Turno[]} */
   const turnos = [];
   /** @type {Recuerdo[]} */
@@ -47,14 +68,15 @@ export function crearCharla(panel, op) {
     return e;
   };
   const cabecera = el("div", "cabecera");
-  cabecera.append(el("h2", "", NOMBRE), el("p", "sub", `A little fox spirit born from the waterfall's mist, here to listen. ${NOMBRE} is an AI (Claude): what you say goes to Anthropic to answer; what ${NOMBRE} remembers stays on this computer.`));
+  panel.classList.add("charla", persona.clase);
+  cabecera.append(el("h2", "", persona.nombre), el("p", "sub", persona.sub));
   const crisis = el("div", "crisis");
   crisis.hidden = true;
   crisis.append(el("b", "", "You matter. "), "If you're in danger or thinking of hurting yourself, call ", el("b", "", "024"), " (free, 24 h, Spain) or ", el("b", "", "112"), ". Talking to someone you trust helps too.");
   const mensajes = el("div", "mensajes");
   const entrada = /** @type {HTMLTextAreaElement} */ (el("textarea"));
   entrada.rows = 2;
-  entrada.placeholder = `Tell ${NOMBRE} anything… (Enter to send)`;
+  entrada.placeholder = `Tell ${persona.nombre} anything… (Enter to send)`;
   const microfono = /** @type {HTMLButtonElement} */ (el("button", "mic", "🎙"));
   microfono.title = "Talk (click, speak, and it sends by itself)";
   const enviarBoton = /** @type {HTMLButtonElement} */ (el("button", "enviar", "Send"));
@@ -62,7 +84,7 @@ export function crearCharla(panel, op) {
   fila.append(entrada, microfono, enviarBoton);
   const mover = el("div", "mover");
   /** @type {[string, "seguir" | "quedarse" | "volver"][]} */
-  const botonesMover = [["Follow me", "seguir"], ["Stay here", "quedarse"], ["Back to the bench", "volver"]];
+  const botonesMover = [["Follow me", "seguir"], ["Stay here", "quedarse"], [persona.volver, "volver"]];
   for (const [texto, que] of botonesMover) {
     const b = el("button", "", texto);
     b.addEventListener("click", () => moverse(que));
@@ -74,10 +96,10 @@ export function crearCharla(panel, op) {
   vozBoton.addEventListener("click", () => { voz = !voz; if (!voz) callar(); pintarVoz(); });
   // Qué voz: las del idioma, las naturales primero (en Edge suenan mucho mejor).
   const selectorVoz = /** @type {HTMLSelectElement} */ (el("select", "elegir-voz"));
-  selectorVoz.title = `${NOMBRE}'s voice`;
+  selectorVoz.title = `${persona.nombre}'s voice`;
   selectorVoz.addEventListener("change", () => {
     laVoz = speechSynthesis.getVoices().find((v) => v.name === selectorVoz.value) ?? laVoz;
-    try { localStorage.setItem(CLAVE_VOZ, selectorVoz.value); } catch { /* sin almacenamiento: solo esta vez */ }
+    try { localStorage.setItem(persona.claveVoz, selectorVoz.value); } catch { /* sin almacenamiento: solo esta vez */ }
     decir(idioma.startsWith("es") ? "Así sueno ahora." : "This is how I sound now.");
   });
   mover.append(vozBoton, selectorVoz);
@@ -86,18 +108,19 @@ export function crearCharla(panel, op) {
   const lista = el("ul");
   const olvidarTodo = /** @type {HTMLButtonElement} */ (el("button", "olvidar", "Forget everything"));
   olvidarTodo.addEventListener("click", async () => {
-    if (!confirm(`Forget everything ${NOMBRE} remembers about you?`)) return;
+    if (!confirm(`Forget everything ${persona.nombre} remembers about you?`)) return;
     const r = await op.orquestador(["olvidar", "todo"]);
     if (r.ok) ponerRecuerdos(r.datos?.recuerdos ?? []);
   });
   memoria.append(resumen, lista, olvidarTodo);
-  const pie = el("p", "pie", `Esc: close · in the zone, V talks to ${NOMBRE} by voice without opening this`);
+  memoria.hidden = !persona.recuerda;
+  const pie = el("p", "pie", persona.pie);
   panel.replaceChildren(cabecera, crisis, mensajes, fila, mover, memoria, pie);
 
   /** @param {Recuerdo[]} r */
   function ponerRecuerdos(r) {
     recuerdos = r;
-    resumen.textContent = `What ${NOMBRE} remembers about you (${r.length})`;
+    resumen.textContent = `What ${persona.nombre} remembers about you (${r.length})`;
     lista.replaceChildren(...(r.length ? r.map((x) => {
       const li = el("li");
       const b = el("button", "quitar", "×");
@@ -115,7 +138,7 @@ export function crearCharla(panel, op) {
   function pintarMensajes() {
     mensajes.replaceChildren(...turnos.map((t) => el("div", t.quien === "yo" ? "yo" : "espiritu", t.texto)));
     if (pensando) mensajes.append(el("div", "espiritu pensando", "…"));
-    if (!turnos.length && !pensando) mensajes.append(el("div", "espiritu", idioma.startsWith("es") ? `Hola, soy ${NOMBRE}. Aquí estoy. ¿Cómo estás, de verdad?` : `Hi, I'm ${NOMBRE}. I'm here. How are you, really?`));
+    if (!turnos.length && !pensando) mensajes.append(el("div", "espiritu", persona.saludo(idioma.startsWith("es"))));
     mensajes.scrollTop = mensajes.scrollHeight;
   }
 
@@ -128,9 +151,9 @@ export function crearCharla(panel, op) {
       .filter((v) => v.lang.toLowerCase().startsWith(idioma.slice(0, 2).toLowerCase()))
       .sort((a, b) => Number(natural(b)) - Number(natural(a)) || Number(b.lang === pais) - Number(a.lang === pais));
     let guardada = null;
-    try { guardada = localStorage.getItem(CLAVE_VOZ); } catch { /* sin almacenamiento */ }
+    try { guardada = localStorage.getItem(persona.claveVoz); } catch { /* sin almacenamiento */ }
     // Por defecto, una natural y suave del país (Edge: Elvira, Ximena…), si la hay.
-    laVoz = todas.find((v) => v.name === guardada) ?? todas.find((v) => natural(v) && v.lang === pais && /elvira|ximena|dalia|vera|jenny|aria/i.test(v.name))
+    laVoz = todas.find((v) => v.name === guardada) ?? todas.find((v) => natural(v) && v.lang === pais && persona.vocesPreferidas.test(v.name))
       ?? todas.find((v) => natural(v) && v.lang === pais) ?? todas.find(natural) ?? todas[0] ?? null;
     selectorVoz.replaceChildren(...todas.map((v) => {
       const o = /** @type {HTMLOptionElement} */ (el("option", "", v.name.replace(/^Microsoft\s+/, "").replace(/\s+-\s+.*$/, "")));
@@ -148,7 +171,7 @@ export function crearCharla(panel, op) {
   function callar() {
     turnoDeVoz++;
     if (typeof speechSynthesis !== "undefined") speechSynthesis.cancel();
-    const e = op.espiritu();
+    const e = op.figura();
     if (e) e.hablando = false;
   }
   /** Lo dice despacio, frase a frase, con una pausa entre ellas. @param {string} texto */
@@ -157,18 +180,18 @@ export function crearCharla(panel, op) {
     callar();
     const mio = turnoDeVoz;
     const frases = paraVoz(texto).split(/(?<=[.!?…;:])\s+/).filter((f) => f.trim());
-    const e = op.espiritu();
+    const e = op.figura();
     const siguiente = (/** @type {number} */ i) => {
       if (mio !== turnoDeVoz) return;
       if (i >= frases.length) { if (e) e.hablando = false; return; }
       const u = new SpeechSynthesisUtterance(frases[i]);
       if (laVoz) u.voice = laVoz;
       u.lang = laVoz?.lang ?? idioma;
-      u.rate = VOZ.ritmo;
-      u.pitch = VOZ.tono;
-      u.volume = VOZ.volumen;
+      u.rate = persona.voz.ritmo;
+      u.pitch = persona.voz.tono;
+      u.volume = persona.voz.volumen;
       u.onstart = () => { if (e) e.hablando = true; };
-      u.onend = () => { if (e) e.hablando = false; setTimeout(() => siguiente(i + 1), VOZ.pausaMs); };
+      u.onend = () => { if (e) e.hablando = false; setTimeout(() => siguiente(i + 1), persona.voz.pausaMs); };
       u.onerror = () => { if (e) e.hablando = false; };
       speechSynthesis.speak(u);
     };
@@ -190,7 +213,7 @@ export function crearCharla(panel, op) {
     }
     oido?.abort();
     callar(); // si le hablas, se calla
-    const e = op.espiritu();
+    const e = op.figura();
     return new Promise((resolver) => {
       const r = new Reconocer();
       oido = r;
@@ -221,12 +244,12 @@ export function crearCharla(panel, op) {
   // --- hablar -------------------------------------------------------------------------------------
   /** @param {"seguir" | "quedarse" | "volver"} que @param {boolean} [avisando] */
   function moverse(que, avisando = true) {
-    const e = op.espiritu();
+    const e = op.figura();
     if (!e) return;
     if (que === "seguir") e.seguir();
     else if (que === "quedarse") e.quedarse();
     else e.volver();
-    if (avisando) op.avisar(que === "seguir" ? `${NOMBRE} follows you` : que === "quedarse" ? `${NOMBRE} stays here` : `${NOMBRE} goes back to the bench`);
+    if (avisando) op.avisar(que === "seguir" ? `${persona.nombre} follows you` : que === "quedarse" ? `${persona.nombre} stays here` : `${persona.nombre} goes back`);
   }
 
   /**
@@ -243,7 +266,7 @@ export function crearCharla(panel, op) {
     if (orden) moverse(orden, false);
     pensando = true;
     pintarMensajes();
-    const r = await op.orquestador(["hablar", base64(JSON.stringify(turnos))]);
+    const r = await op.orquestador(persona.pedir(turnos));
     pensando = false;
     const respuesta = r.ok && r.datos?.texto ? String(r.datos.texto) : null;
     if (respuesta) {
@@ -251,11 +274,11 @@ export function crearCharla(panel, op) {
       sinRecordar++;
       decir(respuesta);
       // Lo que decide hacer (poner música, un vídeo, cambiar el cielo): lo hace el mundo.
-      for (const a of /** @type {Accion[]} */ (r.datos?.acciones ?? [])) op.hacer(a);
+      for (const a of /** @type {any[]} */ (r.datos?.acciones ?? [])) op.hacer(a);
     } else {
       turnos.pop();
       sinRecordar--;
-      op.avisar(`${NOMBRE} can't answer right now: ${r.error ?? "no reply"}`);
+      op.avisar(`${persona.nombre} can't answer right now: ${r.error ?? "no reply"}`);
       if (!panel.hidden) entrada.value = texto;
     }
     pintarMensajes();
@@ -280,7 +303,7 @@ export function crearCharla(panel, op) {
 
   /** Guardar lo que merece recordar de lo hablado (en segundo plano). */
   function recordar() {
-    if (sinRecordar === 0 || !turnos.some((t) => t.quien === "yo")) return;
+    if (!persona.recuerda || sinRecordar === 0 || !turnos.some((t) => t.quien === "yo")) return;
     sinRecordar = 0;
     void op.orquestador(["recordar", base64(JSON.stringify(turnos))]).then((r) => { if (r.ok) ponerRecuerdos(r.datos?.recuerdos ?? []); });
   }
@@ -291,6 +314,7 @@ export function crearCharla(panel, op) {
       panel.hidden = false;
       pintarMensajes();
       entrada.focus();
+      if (!persona.recuerda) return;
       const r = await op.orquestador(["recuerdos"]);
       ponerRecuerdos(r.ok ? r.datos?.recuerdos ?? [] : recuerdos);
     },
@@ -309,7 +333,7 @@ export function crearCharla(panel, op) {
       if (!dicho) { op.avisar("I didn't catch anything"); return; }
       op.avisar(`You: ${dicho}`);
       const r = await enviar(dicho);
-      if (r) op.avisar(`${NOMBRE}: ${r}`);
+      if (r) op.avisar(`${persona.nombre}: ${r}`);
     },
     /** Al salir de la zona: que recuerde lo hablado y se calle. */
     terminar() {

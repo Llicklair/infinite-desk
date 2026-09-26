@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { PASOS, empezarGuia } from "../src/guia.js";
 
 /** @param {Partial<import("../src/guia.js").Foto>} [cambios] */
-const foto = (cambios = {}) => ({ andado: 0, girado: 0, apuntaIsla: false, pantallas: 0, escribiendo: false, ficheros: false, lector: false, maestra: false, zen: false, ...cambios });
+const foto = (cambios = {}) => ({ andado: 0, girado: 0, apuntaIsla: false, pantallas: 0, escribiendo: false, ficheros: false, lector: false, maestra: false, atlas: false, zen: false, ...cambios });
 
 test("guía: empieza en la bienvenida y acaba en el final; cada paso con título, texto, teclas y qué pide", () => {
   assert.equal(PASOS[0].id, "bienvenida");

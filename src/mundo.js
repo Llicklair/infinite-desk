@@ -23,7 +23,9 @@ import { crearPuente, releerScript } from "./puente.js";
 import { crearPanelFicheros } from "./ficheros.js";
 import { crearPanelAjustes } from "./ajustes.js";
 import { crearTutorial } from "./tutorial.js";
-import { crearCharla } from "./charla.js";
+import { KIRI, crearCharla } from "./charla.js";
+import { crearAtlas } from "./atlas3d.js";
+import { NOMBRE_ATLAS } from "./asistente.js";
 import { base64 } from "./apoyo.js";
 
 const VELOCIDAD = 9; // metros por segundo; Shift la triplica
@@ -37,7 +39,7 @@ const RELEER_NOTICIAS_MS = 5 * 60000; // noticias.js lo rehace el puente cada 30
  * @typedef {import("./grafo3d.js").GrafoExportado} GrafoExportado
  * @typedef {import("./grafo3d.js").Grafo3D} Grafo3D
  * @typedef {import("./pantallas.js").Pantalla} Pantalla
- * @typedef {{portada: HTMLElement, info: HTMLElement, aviso: HTMLElement, ayuda: HTMLElement, ficheros: HTMLElement | null, nodo: HTMLElement | null, ajustes?: HTMLElement | null, lector?: HTMLElement | null, juego?: HTMLElement | null, maestra?: HTMLElement | null, tutorial?: HTMLElement | null, charla?: HTMLElement | null}} Interfaz
+ * @typedef {{portada: HTMLElement, info: HTMLElement, aviso: HTMLElement, ayuda: HTMLElement, ficheros: HTMLElement | null, nodo: HTMLElement | null, ajustes?: HTMLElement | null, lector?: HTMLElement | null, juego?: HTMLElement | null, maestra?: HTMLElement | null, tutorial?: HTMLElement | null, charla?: HTMLElement | null, atlas?: HTMLElement | null}} Interfaz
  */
 
 /**
@@ -268,7 +270,7 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
   mirar.addEventListener("lock", () => (ui.portada.hidden = true));
   // Al entrar a escribir en una pantalla se suelta el ratón, pero no es para salir del mundo.
   // Con el lector abierto también: se suelta el ratón para leer, y la portada lo tapaba.
-  mirar.addEventListener("unlock", () => (ui.portada.hidden = escribiendo !== null || Boolean(panel?.abierto) || Boolean(ajustes?.abierto) || Boolean(lector?.abierto) || Boolean(maestra?.abierto) || Boolean(charla?.abierto)));
+  mirar.addEventListener("unlock", () => (ui.portada.hidden = escribiendo !== null || Boolean(panel?.abierto) || Boolean(ajustes?.abierto) || Boolean(lector?.abierto) || Boolean(maestra?.abierto) || Boolean(charla?.abierto) || Boolean(atlas?.abierto)));
   // Soltar el ratón (Esc) a media ronda de Chispas la acaba.
   mirar.addEventListener("unlock", () => chispas?.terminar());
   ui.portada.addEventListener("click", () => mirar.lock());
@@ -281,7 +283,7 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
     const pie = ui.portada.querySelector("p");
     if (pie) pie.textContent = "Click to enter · Esc: back to the desktop (the space stays open) · Shift+Esc: close it";
     document.addEventListener("keydown", async (e) => {
-      if (e.code !== "Escape" || mirar.isLocked || escribiendo || panel?.abierto || ajustes?.abierto || lector?.abierto || maestra?.abierto || charla?.abierto) return;
+      if (e.code !== "Escape" || mirar.isLocked || escribiendo || panel?.abierto || ajustes?.abierto || lector?.abierto || maestra?.abierto || charla?.abierto || atlas?.abierto) return;
       if (e.shiftKey) return window.close();
       // Sin puente no hay quien lo minimice: se cierra, como antes.
       if (!(puente?.conectado && await puente.alEscritorio())) window.close();
@@ -757,7 +759,7 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
     ? crearTutorial(ui.tutorial, camara, () => ({
       apuntaIsla: islaApuntada() !== null, pantallas: pantallas.length, escribiendo: escribiendo !== null,
       ficheros: Boolean(panel?.abierto), lector: Boolean(lector?.abierto), maestra: Boolean(maestra?.abierto),
-      zen: Boolean(zen?.activa),
+      atlas: Boolean(atlas?.abierto), zen: Boolean(zen?.activa),
     }))
     : null;
   // Tab, Shift+Tab y Retroceso son del tutorial mientras está abierto (salvo escribiendo en algo).
@@ -797,10 +799,12 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
   // La zona zen (Z), lejos de las islas; con su cielo, y las luces y la niebla de su ambiente.
   zen = !fondo ? crearZen(escena, { hemi, sol, niebla, cieloMundo: cielo.objeto, renderer, avisar: (t) => avisar(t), alHablar: () => abrirCharla() }) : null;
   // El espíritu de la zona zen (E sobre él: el panel; V: hablarle por voz sin abrir nada).
+  /** @param {string[]} args */
+  const alOrquestador = (args) => (puente ? puente.orquestador(args) : Promise.resolve({ ok: false, error: "no bridge (come in from the desktop right-click menu)" }));
   const charla = ui.charla && zen
-    ? crearCharla(ui.charla, {
-      orquestador: (args) => (puente ? puente.orquestador(args) : Promise.resolve({ ok: false, error: "no bridge (come in from the desktop right-click menu)" })),
-      espiritu: () => zen?.espiritu ?? null,
+    ? crearCharla(ui.charla, KIRI, {
+      orquestador: alOrquestador,
+      figura: () => zen?.espiritu ?? null,
       avisar: (t) => avisar(t),
       alCerrar: () => { if (!mirar.isLocked && !escribiendo) ui.portada.hidden = false; },
       hacer: (a) => void hacerDeKiri(a),
@@ -822,6 +826,75 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
     const error = await puente.abrirUrl(r.datos.url);
     if (error) { avisar(`Couldn't open YouTube: ${error}`); return; }
     await nuevaPantalla(`"${r.datos.titulo}" on YouTube`);
+  }
+  // Atlas, el asistente de trabajo del mundo normal (src/asistente.js): un dron que te acompaña; K
+  // abre su panel y V le habla por voz (fuera de la zona zen). Sabe de tus repos (y lee su código),
+  // de las noticias y de los repos top, y abre cosas: VS Code, islas, el lector, webs, la consola.
+  const figuraAtlas = !fondo ? crearAtlas(palantir.esfera.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(3, 0, 3))) : null;
+  if (figuraAtlas) escena.add(figuraAtlas.grupo);
+  /** @type {import("./charla.js").Persona} */
+  const ATLAS = {
+    nombre: NOMBRE_ATLAS,
+    sub: "Your work assistant: it knows your repos (and can read their code), the palantír's news and the month's top GitHub repos, and opens things for you. It's an AI (Claude): what you say goes to Anthropic to answer; the conversation isn't saved.",
+    saludo: (es) => (es ? `Hola, soy ${NOMBRE_ATLAS}. ¿En qué andamos hoy?` : `Hi, I'm ${NOMBRE_ATLAS}. What are we working on?`),
+    pedir: (turnos) => ["atlas", base64(JSON.stringify({
+      turnos, mirando: { isla: islaApuntada(), pantalla: apuntado?.tipo === "pantalla" ? apuntado.pantalla.titulo : null },
+    }))],
+    recuerda: false,
+    voz: { ritmo: 1.03, tono: 1, volumen: 1, pausaMs: 160 },
+    claveVoz: "infinite-desk.voz-de-atlas",
+    vocesPreferidas: /alvaro|jorge|guy|davis|andrew/i,
+    volver: "Back to the palantír",
+    pie: `Esc: close · K opens this · V talks to ${NOMBRE_ATLAS} by voice without opening it`,
+    clase: "atlas",
+  };
+  const atlas = ui.atlas && figuraAtlas
+    ? crearCharla(ui.atlas, ATLAS, {
+      orquestador: alOrquestador,
+      figura: () => figuraAtlas,
+      avisar: (t) => avisar(t),
+      alCerrar: () => { if (!mirar.isLocked && !escribiendo) ui.portada.hidden = false; },
+      hacer: (a) => void hacerDeAtlas(a),
+    })
+    : null;
+  function abrirAtlas() {
+    if (!atlas) return;
+    void atlas.abrir();
+    mirar.unlock();
+  }
+  /** Un viaje de la cámara (Atlas te lleva a una isla): a dónde y qué mirar. @type {{pos: THREE.Vector3, mira: THREE.Vector3} | null} */
+  let viaje = null;
+  /**
+   * Lo que Atlas decide hacer en el mundo.
+   * @param {import("./asistente.js").AccionAtlas} a
+   */
+  async function hacerDeAtlas(a) {
+    if (a.tipo === "zen") { if (!zen?.activa) alternarZen(); return; }
+    if (a.tipo === "ventana") { await nuevaPantalla(); return; }
+    if (a.tipo === "consola") { maestra?.abrir(a.pestana); mirar.unlock(); return; }
+    if (a.tipo === "leer") {
+      const t = palantir.tarjetas[a.tarjeta];
+      const enlace = t && palantir.enlaceDe(t);
+      if (enlace) leer(enlace);
+      return;
+    }
+    if (a.tipo === "web") {
+      if (!puente?.conectado) { avisar("No bridge, so it can't open the browser"); return; }
+      const error = await puente.abrirUrl(a.url);
+      if (error) { avisar(`Couldn't open it: ${error}`); return; }
+      await nuevaPantalla(new URL(a.url).hostname);
+      return;
+    }
+    if (a.tipo === "grafo") { void regenerar([a.repo]); return; }
+    const g = grafoDe(a.repo);
+    if (a.tipo === "vscode") { if (g) abrirEnVSCode(g); return; }
+    // "ir": volando hasta su isla, mirándola (de la zona zen, primero de vuelta).
+    const isla = islas.find((i) => i.grafo.nombre === a.repo);
+    if (!isla) return;
+    if (zen?.activa) alternarZen();
+    const objetivo = isla.g3d.objeto.getWorldPosition(new THREE.Vector3());
+    const desde = camara.position.clone().sub(objetivo).setY(0).normalize();
+    viaje = { pos: objetivo.clone().addScaledVector(desde, 22).setY(objetivo.y + 5), mira: objetivo };
   }
   function abrirCharla() {
     if (!charla) return;
@@ -906,6 +979,7 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
   document.addEventListener("keydown", (e) => {
     if (maestra?.abierto && !mirar.isLocked && e.code === "Escape") maestra.cerrar();
     if (charla?.abierto && !mirar.isLocked && e.code === "Escape") charla.cerrar();
+    if (atlas?.abierto && !mirar.isLocked && e.code === "Escape") atlas.cerrar();
     if (lector?.abierto && !mirar.isLocked && e.code === "Escape") lector.cerrar();
     // Con el ratón aún bloqueado es la misma F (o P) que acaba de abrirlo: no se cierra.
     if (panel?.abierto && !mirar.isLocked && (e.code === "Escape" || e.code === "KeyF")) panel.cerrar();
@@ -1259,6 +1333,8 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
       avisar(`Zen: ${a === "dia" ? "day" : a === "atardecer" ? "sunset" : a === "noche" ? "night" : "rain"} · L to change it`);
     }
     else if (codigo === "KeyV" && zen?.activa && charla && apuntado?.tipo !== "pantalla") void charla.hablarPorVoz();
+    else if (codigo === "KeyV" && !zen?.activa && atlas && apuntado?.tipo !== "pantalla") void atlas.hablarPorVoz();
+    else if (codigo === "KeyK" && atlas && !zen?.activa) abrirAtlas();
     else if (codigo === "KeyN") nuevaPantalla();
     else if (codigo === "KeyO" && maestra) abrirMaestra();
     else if (codigo === "KeyB" && marca) {
@@ -1394,6 +1470,8 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
   // final: la tarjeta mira el lector y la consola, que se crean más arriba.
   const pasoTutorial = new URLSearchParams(location.search).get("tutorial");
   if (tutorial && pasoTutorial !== null) tutorial.empezar(Number(pasoTutorial) || 0);
+  // `?atlas`: el panel de Atlas abierto (para verlo sin manos).
+  if (new URLSearchParams(location.search).has("atlas")) { ui.portada.hidden = true; abrirAtlas(); }
   if (zenInicial !== null && zen) {
     ui.portada.hidden = true;
     zen.ponerAmbiente(/** @type {any} */ (zenInicial));
@@ -1424,6 +1502,20 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
     // Pero nunca antes de haber pintado: si arranca ya tapado, se quedaba en blanco (uso real).
     if (fondo && fotograma > 30 && window.INFINITE_DESK_FONDO?.tapado?.[monitor]) return;
 
+    // Atlas te lleva a una isla: la cámara vuela y gira hacia ella (moverse lo corta).
+    if (viaje) {
+      const k = 1 - Math.exp(-dt * 2.2);
+      camara.position.lerp(viaje.pos, k);
+      const q = camara.quaternion.clone();
+      camara.lookAt(viaje.mira);
+      const hacia = camara.quaternion.clone();
+      camara.quaternion.copy(q).slerp(hacia, k);
+      if (camara.position.distanceTo(viaje.pos) < 0.3 || ["KeyW", "KeyA", "KeyS", "KeyD"].some((t) => teclas.has(t))) viaje = null;
+    }
+    if (figuraAtlas) {
+      figuraAtlas.grupo.visible = !zen?.activa;
+      if (!zen?.activa) figuraAtlas.tick(instante / 1000, dt, camara);
+    }
     if (mirar.isLocked) {
       const antesDeAndar = zen?.activa ? camara.position.clone() : null;
       const correr = teclas.has("ShiftLeft") || teclas.has("ShiftRight") ? 3 : 1;
