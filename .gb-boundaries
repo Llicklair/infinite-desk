@@ -276,3 +276,9 @@ asistente   -/-> charla
 asistente   -/-> atlas3d
 asistente   -/-> mundo
 asistente   -/-> puente
+
+# La voz de entrada (audio: micrófono, nivel, reconocimiento) no conoce el mundo ni a los personajes.
+audio       -/-> mundo
+audio       -/-> charla
+audio       -/-> ajustes
+audio       -/-> puente

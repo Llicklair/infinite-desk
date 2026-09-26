@@ -91,10 +91,10 @@ export function nivel(flujo, ms) {
 
 /**
  * El audio del micrófono elegido; si da silencio absoluto, el primero que suene (se guarda y se dice).
- * @param {(aviso: string) => void} avisar
+ * @param {(aviso: string) => void} contar lo que conviene saber (se cambió de micrófono)
  * @returns {Promise<{flujo: MediaStream, nombre: string}>}
  */
-export async function micQueOye(avisar) {
+export async function micQueOye(contar) {
   const lista = await micros();
   const nombre = (/** @type {string} */ id) => {
     const d = lista.find((x) => x.deviceId === (id || "default"));
@@ -110,7 +110,7 @@ export async function micQueOye(avisar) {
     if ((await nivel(otro, 300)) > 0) {
       for (const t of flujo.getTracks()) t.stop();
       guardarMic(d.deviceId);
-      avisar(`${nombre(elegido)} gave only silence (muted or off?): using ${nombreDeMic(d)} (change it in Settings → Audio)`);
+      contar(`${nombre(elegido)} gave only silence (muted or off?): using ${nombreDeMic(d)} (change it in Settings → Audio)`);
       return { flujo: otro, nombre: nombreDeMic(d) };
     }
     for (const t of otro.getTracks()) t.stop();
