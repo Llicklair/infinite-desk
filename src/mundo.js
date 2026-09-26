@@ -1320,6 +1320,8 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
   function alternarZen(enCabana = false) {
     if (!zen) return;
     if (!zen.activa) {
+      // Atlas no entra en la zona zen: se despide (panel, voz, lo que estuviera diciendo).
+      atlas?.terminar();
       antesDeZen = { pos: camara.position.clone(), rot: camara.quaternion.clone() };
       zen.activar(true);
       const l = zen.llegada(enCabana);
@@ -1351,6 +1353,7 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
     else if (codigo === "KeyV" && zen?.activa && charla && apuntado?.tipo !== "pantalla") void charla.hablarPorVoz();
     else if (codigo === "KeyV" && !zen?.activa && atlas && apuntado?.tipo !== "pantalla") void atlas.hablarPorVoz();
     else if (codigo === "KeyK" && atlas && !zen?.activa) abrirAtlas();
+    else if (codigo === "KeyK" && zen?.activa) avisar(`${NOMBRE_ATLAS} stays outside the zen zone: here it's Kiri (E on the fox, or V). Z to go back.`);
     else if (codigo === "KeyN") nuevaPantalla();
     else if (codigo === "KeyO" && maestra) abrirMaestra();
     else if (codigo === "KeyB" && marca) {

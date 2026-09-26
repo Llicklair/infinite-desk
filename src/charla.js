@@ -54,6 +54,9 @@ export function crearCharla(panel, persona, op) {
   let recuerdos = [];
   let sinRecordar = 0; // turnos nuevos desde la última vez que se guardó lo que recuerda
   let pensando = false;
+  // Cada personaje vive en su mundo (Kiri en la zona zen, Atlas fuera): al salir de él se despide
+  // del todo, y lo que contestara después ya no se dice ni se hace.
+  let ausente = false;
   let voz = true;
   const idioma = navigator.language?.startsWith("es") ? navigator.language : "es-ES";
   // El país de la voz: el del navegador, o el "propio" del idioma si no lo dice (es -> es-ES).
@@ -381,6 +384,8 @@ export function crearCharla(panel, persona, op) {
     if (respuesta) {
       turnos.push({ quien: "espiritu", texto: respuesta });
       sinRecordar++;
+      pintarMensajes();
+      if (ausente) return null; // ya no está: ni lo dice ni lo hace
       decir(respuesta);
       // Lo que decide hacer (poner música, un vídeo, cambiar el cielo): lo hace el mundo.
       for (const a of /** @type {any[]} */ (r.datos?.acciones ?? [])) op.hacer(a);
@@ -420,6 +425,7 @@ export function crearCharla(panel, persona, op) {
   return {
     get abierto() { return !panel.hidden; },
     async abrir() {
+      ausente = false;
       panel.hidden = false;
       pintarMensajes();
       entrada.focus();
@@ -437,6 +443,7 @@ export function crearCharla(panel, persona, op) {
     },
     /** V en la zona: escucha una frase y contesta en voz alta, sin abrir el panel (subtítulos en el aviso). */
     async hablarPorVoz() {
+      ausente = false;
       if (oido) { oido.stop(); return; }
       op.avisar("🎙 Listening… (V again to stop)");
       const dicho = await escuchar((p) => op.avisar(`🎙 ${p}`));
@@ -445,10 +452,12 @@ export function crearCharla(panel, persona, op) {
       const r = await enviar(dicho);
       if (r) op.avisar(`${persona.nombre}: ${r}`);
     },
-    /** Al salir de la zona: que recuerde lo hablado y se calle. */
+    /** Al irse de su mundo: se cierra el panel, se calla, deja de escuchar y recuerda lo hablado. */
     terminar() {
+      ausente = true;
       oido?.abort();
       callar();
+      if (!panel.hidden) { panel.hidden = true; op.alCerrar(); }
       recordar();
     },
   };
