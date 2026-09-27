@@ -889,12 +889,17 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
   /** @type {import("./charla.js").Persona} */
   const ATLAS = {
     nombre: NOMBRE_ATLAS,
-    sub: "Your work assistant: it knows your repos (and can read their code), the palantír's news and the month's top GitHub repos, and opens things for you. It's an AI (Claude): what you say goes to Anthropic to answer; the conversation isn't saved.",
+    sub: "Your work assistant: it knows your repos (and can read their code), the palantír's news and the month's top GitHub repos, opens things for you and sends agents to change code. It's an AI (Claude): what you say goes to Anthropic to answer. It remembers work things about you on this computer, apart from Kiri.",
     saludo: (es) => (es ? `Hola, soy ${NOMBRE_ATLAS}. ¿En qué andamos hoy?` : `Hi, I'm ${NOMBRE_ATLAS}. What are we working on?`),
     pedir: (turnos) => ["atlas", base64(JSON.stringify({
       turnos, mirando: { isla: islaApuntada(), pantalla: apuntado?.tipo === "pantalla" ? apuntado.pantalla.titulo : null },
     }))],
-    recuerda: false,
+    recuerda: true,
+    memoria: {
+      recordar: (turnos) => ["atlasRecordar", base64(JSON.stringify(turnos))],
+      recuerdos: ["recuerdos", "atlas"],
+      olvidar: (id) => ["olvidar", id, "atlas"],
+    },
     voz: { ritmo: 1.03, tono: 1, volumen: 1, pausaMs: 160 },
     claveVoz: "infinite-desk.voz-de-atlas",
     vocesPreferidas: /alvaro|jorge|guy|davis|andrew/i,

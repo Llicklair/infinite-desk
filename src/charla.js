@@ -16,7 +16,9 @@ import { PORQUE, Reconocer, abrirMic, guardarMic, idiomaDeVoz, micGuardado, micQ
  * Quién es: nombre, presentación, cómo suena y qué se le pide al puente para que conteste.
  * @typedef {{nombre: string, sub: string, saludo: (es: boolean) => string, pedir: (turnos: Turno[]) => string[],
  *   recuerda: boolean, voz: {ritmo: number, tono: number, volumen: number, pausaMs: number}, claveVoz: string,
- *   vocesPreferidas: RegExp, volver: string, pie: string, clase: string}} Persona
+ *   vocesPreferidas: RegExp, volver: string, pie: string, clase: string,
+ *   memoria: {recordar: (turnos: Turno[]) => string[], recuerdos: string[], olvidar: (id: string) => string[]}}} Persona
+ *   `memoria`: las órdenes del orquestador para su memoria (cada personaje tiene la suya, aparte)
  */
 
 /**
@@ -36,6 +38,11 @@ export const KIRI = {
   volver: "Back to the bench",
   pie: `Esc: close · in the zone, V talks to ${NOMBRE} by voice without opening this`,
   clase: "kiri",
+  memoria: {
+    recordar: (turnos) => ["recordar", base64(JSON.stringify(turnos))],
+    recuerdos: ["recuerdos"],
+    olvidar: (id) => ["olvidar", id],
+  },
 };
 
 /**
@@ -124,7 +131,7 @@ export function crearCharla(panel, persona, op) {
   const olvidarTodo = /** @type {HTMLButtonElement} */ (el("button", "olvidar", "Forget everything"));
   olvidarTodo.addEventListener("click", async () => {
     if (!confirm(`Forget everything ${persona.nombre} remembers about you?`)) return;
-    const r = await op.orquestador(["olvidar", "todo"]);
+    const r = await op.orquestador(persona.memoria.olvidar("todo"));
     if (r.ok) ponerRecuerdos(r.datos?.recuerdos ?? []);
   });
   memoria.append(resumen, lista, olvidarTodo);
@@ -141,12 +148,12 @@ export function crearCharla(panel, persona, op) {
       const b = el("button", "quitar", "×");
       b.title = "Forget this";
       b.addEventListener("click", async () => {
-        const res = await op.orquestador(["olvidar", x.id]);
+        const res = await op.orquestador(persona.memoria.olvidar(x.id));
         if (res.ok) ponerRecuerdos(res.datos?.recuerdos ?? []);
       });
       li.append(el("span", "", x.texto), el("span", "fecha", ` · ${x.fecha}`), b);
       return li;
-    }) : [el("li", "vacio", "Nothing yet. After you talk, it keeps what a good friend would remember.")]));
+    }) : [el("li", "vacio", "Nothing yet. After you talk, it keeps what's worth remembering.")]));
     olvidarTodo.hidden = !r.length;
   }
 
@@ -313,6 +320,8 @@ export function crearCharla(panel, persona, op) {
       pintarMensajes();
       if (ausente) return null; // ya no está: ni lo dice ni lo hace
       decir(respuesta);
+      // Hablando solo por voz (V) no se cierra el panel: cada pocos turnos, se guarda lo que recuerda.
+      if (sinRecordar >= 8) recordar();
       // Lo que decide hacer (poner música, un vídeo, cambiar el cielo): lo hace el mundo.
       for (const a of /** @type {any[]} */ (r.datos?.acciones ?? [])) op.hacer(a);
     } else {
@@ -345,7 +354,7 @@ export function crearCharla(panel, persona, op) {
   function recordar() {
     if (!persona.recuerda || sinRecordar === 0 || !turnos.some((t) => t.quien === "yo")) return;
     sinRecordar = 0;
-    void op.orquestador(["recordar", base64(JSON.stringify(turnos))]).then((r) => { if (r.ok) ponerRecuerdos(r.datos?.recuerdos ?? []); });
+    void op.orquestador(persona.memoria.recordar(turnos)).then((r) => { if (r.ok) ponerRecuerdos(r.datos?.recuerdos ?? []); });
   }
 
   return {
@@ -357,7 +366,7 @@ export function crearCharla(panel, persona, op) {
       entrada.focus();
       void listarMicros().catch(() => {});
       if (!persona.recuerda) return;
-      const r = await op.orquestador(["recuerdos"]);
+      const r = await op.orquestador(persona.memoria.recuerdos);
       ponerRecuerdos(r.ok ? r.datos?.recuerdos ?? [] : recuerdos);
     },
     cerrar() {

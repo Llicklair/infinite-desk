@@ -7,8 +7,8 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { conversacion, separarAccionesCon } from "../src/apoyo.js";
-import { contextoDelMundo, instruccionesAtlas, validarAtlas } from "../src/asistente.js";
-import { claude } from "./espiritu.mjs";
+import { contextoDelMundo, instruccionesAtlas, pedirRecuerdosAtlas, validarAtlas } from "../src/asistente.js";
+import { claude, leerRecuerdos, recordarCon } from "./espiritu.mjs";
 import { DATOS } from "./orquestador-datos.mjs";
 import { carpetaDeProyectos } from "./proyectos.mjs";
 
@@ -34,11 +34,20 @@ export async function hablarAtlas(peticion) {
   const grafos = leerScript("grafos.js") ?? [];
   const noticias = leerScript("noticias.js");
   const hoy = new Date().toLocaleDateString("es-ES", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
-  const sistema = instruccionesAtlas(contextoDelMundo(grafos, noticias, Date.now()), peticion.mirando ?? {}, hoy);
+  const sistema = instruccionesAtlas(contextoDelMundo(grafos, noticias, Date.now()), peticion.mirando ?? {}, hoy, leerRecuerdos("atlas"));
   const salida = await claude(sistema, conversacion(turnos).replace(/como el espíritu/, "como Atlas").replace(/Tú \(espíritu\)/g, "Tú (Atlas)"), {
     casa: join(DATOS, "atlas"),
     leer: [carpetaDeProyectos()],
   });
   const tarjetas = (noticias?.titulares?.length ?? 0) + (noticias?.repos?.length ?? 0);
   return separarAccionesCon(salida, validarAtlas({ repos: grafos.map((/** @type {any} */ g) => g.nombre), tarjetas }), 2);
+}
+
+/**
+ * Al acabar una charla con Atlas: lo que merece recordar de trabajo (su propia memoria, aparte de
+ * la de Kiri: DATOS/atlas/recuerdos.json), a la vista y borrable desde su panel.
+ * @param {import("../src/apoyo.js").Turno[]} turnos
+ */
+export function recordarAtlas(turnos) {
+  return recordarCon("atlas", turnos, pedirRecuerdosAtlas);
 }

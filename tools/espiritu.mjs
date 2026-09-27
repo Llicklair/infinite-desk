@@ -11,20 +11,40 @@ import { conversacion, fusionar, instrucciones, leerCambios, pedirRecuerdos, pri
 import { DATOS } from "./orquestador-datos.mjs";
 
 const CASA = join(DATOS, "espiritu");
-const RECUERDOS = join(CASA, "recuerdos.json");
 const WIN = process.platform === "win32";
 
-/** @returns {import("../src/apoyo.js").Recuerdo[]} */
-export function leerRecuerdos() {
-  try { return JSON.parse(readFileSync(RECUERDOS, "utf8")).recuerdos ?? []; } catch { return []; }
+// Cada personaje, su memoria, aparte: lo que se le cuenta a Kiri para desahogarse no lo sabe Atlas
+// (el de trabajo), ni al revés. Kiri en DATOS/espiritu, Atlas en DATOS/atlas.
+/** @typedef {"kiri" | "atlas"} Quien */
+/** @param {Quien} quien */
+const ficheroDe = (quien) => join(DATOS, quien === "atlas" ? "atlas" : "espiritu", "recuerdos.json");
+
+/** @param {Quien} [quien] @returns {import("../src/apoyo.js").Recuerdo[]} */
+export function leerRecuerdos(quien = "kiri") {
+  try { return JSON.parse(readFileSync(ficheroDe(quien), "utf8")).recuerdos ?? []; } catch { return []; }
 }
 
-/** @param {import("../src/apoyo.js").Recuerdo[]} recuerdos */
-function guardar(recuerdos) {
-  mkdirSync(CASA, { recursive: true });
-  const tmp = `${RECUERDOS}.tmp`;
+/** @param {Quien} quien @param {import("../src/apoyo.js").Recuerdo[]} recuerdos */
+function guardar(quien, recuerdos) {
+  const fichero = ficheroDe(quien);
+  mkdirSync(join(fichero, ".."), { recursive: true });
+  const tmp = `${fichero}.tmp`;
   writeFileSync(tmp, JSON.stringify({ recuerdos }, null, 2));
-  renameSync(tmp, RECUERDOS);
+  renameSync(tmp, fichero);
+}
+
+/**
+ * Lo que merece recordar de una charla, con el prompt de cada personaje, y guardado.
+ * @param {Quien} quien @param {import("../src/apoyo.js").Turno[]} turnos
+ * @param {(turnos: import("../src/apoyo.js").Turno[], antes: import("../src/apoyo.js").Recuerdo[]) => string} consulta el prompt de ese personaje para decidir qué recordar
+ */
+export async function recordarCon(quien, turnos, consulta) {
+  const antes = leerRecuerdos(quien);
+  if (!turnos?.some((t) => t.quien === "yo")) return { recuerdos: antes };
+  const salida = await claude("Eres quien decide qué recordar de una charla. Contestas solo con JSON.", consulta(turnos, antes), { casa: join(ficheroDe(quien), "..") });
+  const despues = fusionar(antes, leerCambios(salida), fecha(), () => randomUUID().slice(0, 8));
+  guardar(quien, despues);
+  return { recuerdos: despues };
 }
 
 /**
@@ -93,12 +113,7 @@ export async function hablar(turnos) {
  * @param {import("../src/apoyo.js").Turno[]} turnos
  */
 export async function recordar(turnos) {
-  const antes = leerRecuerdos();
-  if (!turnos?.some((t) => t.quien === "yo")) return { recuerdos: antes };
-  const salida = await claude("Eres quien decide qué recordar de una charla. Contestas solo con JSON.", pedirRecuerdos(turnos, antes));
-  const despues = fusionar(antes, leerCambios(salida), fecha(), () => randomUUID().slice(0, 8));
-  guardar(despues);
-  return { recuerdos: despues };
+  return recordarCon("kiri", turnos, pedirRecuerdos);
 }
 
 /**
@@ -121,9 +136,9 @@ export async function buscarVideo(busqueda) {
   return { url: resultados, titulo: `YouTube: ${busqueda}` };
 }
 
-/** Olvidar uno (por id) o todo ("todo"). @param {string} id */
-export function olvidar(id) {
-  const quedan = id === "todo" ? [] : leerRecuerdos().filter((r) => r.id !== id);
-  if (id === "todo" || existsSync(RECUERDOS)) guardar(quedan);
+/** Olvidar uno (por id) o todo ("todo"). @param {string} id @param {Quien} [quien] */
+export function olvidar(id, quien = "kiri") {
+  const quedan = id === "todo" ? [] : leerRecuerdos(quien).filter((r) => r.id !== id);
+  if (id === "todo" || existsSync(ficheroDe(quien))) guardar(quien, quedan);
   return { recuerdos: quedan };
 }

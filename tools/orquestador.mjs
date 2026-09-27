@@ -11,7 +11,8 @@
 //   node tools/orquestador.mjs instalarGb         (galaxy-brain con pip: de tu carpeta o de GitHub)
 //   node tools/orquestador.mjs hablar <turnos en base64>    (el espíritu de la zona zen contesta)
 //   node tools/orquestador.mjs recordar <turnos en base64>  (al acabar: lo que merece recordar)
-//   node tools/orquestador.mjs recuerdos | olvidar <id|todo>  (lo que recuerda, a la vista y borrable)
+//   node tools/orquestador.mjs recuerdos [atlas] | olvidar <id|todo> [atlas]  (lo que recuerda Kiri, o Atlas; a la vista y borrable)
+//   node tools/orquestador.mjs atlasRecordar <turnos en base64>  (Atlas, al acabar: lo que merece recordar de trabajo)
 //   node tools/orquestador.mjs atlas <{turnos, mirando} en base64>  (Atlas, el asistente del mundo, contesta)
 //   node tools/orquestador.mjs video <búsqueda en base64>  (el primer vídeo de YouTube: música o algo para distraerse)
 //
@@ -29,7 +30,7 @@ import { FORMATO_LOG, commitsDeLog, fallosNuevos } from "../src/actividad.js";
 import { carpetaDeProyectos, reposEn } from "./proyectos.mjs";
 import { buscarGb } from "./gb.mjs";
 import { buscarVideo, hablar, leerRecuerdos, olvidar, recordar } from "./espiritu.mjs";
-import { hablarAtlas } from "./asistente.mjs";
+import { hablarAtlas, recordarAtlas } from "./asistente.mjs";
 import { ENLAZADAS, WORKTREES, anotar, fichaDeAgente, guardarArreglados, guardarVistos, leerActividad, leerAgentes, leerArreglados, leerVistos } from "./orquestador-datos.mjs";
 
 const aqui = dirname(fileURLToPath(import.meta.url));
@@ -334,8 +335,9 @@ try {
     // El espíritu de la zona zen (tools/espiritu.mjs): la charla va en base64 (JSON de turnos).
     : orden === "hablar" ? await hablar(JSON.parse(Buffer.from(resto[0] ?? "", "base64").toString("utf8")))
     : orden === "recordar" ? await recordar(JSON.parse(Buffer.from(resto[0] ?? "", "base64").toString("utf8")))
-    : orden === "recuerdos" ? { recuerdos: leerRecuerdos() }
-    : orden === "olvidar" ? olvidar(resto[0] ?? "")
+    : orden === "recuerdos" ? { recuerdos: leerRecuerdos(resto[0] === "atlas" ? "atlas" : "kiri") }
+    : orden === "olvidar" ? olvidar(resto[0] ?? "", resto[1] === "atlas" ? "atlas" : "kiri")
+    : orden === "atlasRecordar" ? await recordarAtlas(JSON.parse(Buffer.from(resto[0] ?? "", "base64").toString("utf8")))
     : orden === "atlas" ? await hablarAtlas(JSON.parse(Buffer.from(resto[0] ?? "", "base64").toString("utf8")))
     : orden === "video" ? await buscarVideo(Buffer.from(resto[0] ?? "", "base64").toString("utf8"))
     : (() => { throw new Error(`unknown order: ${orden ?? "(none)"}`); })();

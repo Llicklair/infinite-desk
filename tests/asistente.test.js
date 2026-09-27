@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { NOMBRE_ATLAS, contextoDelMundo, instruccionesAtlas, validarAtlas } from "../src/asistente.js";
+import { NOMBRE_ATLAS, contextoDelMundo, instruccionesAtlas, pedirRecuerdosAtlas, validarAtlas } from "../src/asistente.js";
 import { separarAccionesCon } from "../src/apoyo.js";
 
 const AHORA = Date.UTC(2026, 8, 26, 12);
@@ -49,4 +49,12 @@ test("acciones de Atlas: solo repos que existen (con su nombre exacto), tarjetas
   assert.equal(validar({ tipo: "agente", repo: "no-existe", tarea: "Añade un test para el parser" }), null);
   assert.deepEqual(validar({ tipo: "consola", pestana: "inventada" }), { tipo: "consola", pestana: "repos" });
   assert.deepEqual(validar({ tipo: "web", url: " https://github.com/owner/cool " }), { tipo: "web", url: "https://github.com/owner/cool" });
+});
+
+test("memoria de Atlas: la usa al contestar y pide recordar solo lo de trabajo, sin secretos", () => {
+  const con = instruccionesAtlas("", {}, "hoy", [{ id: "a", texto: "Prioriza galaxy-brain", fecha: "2026-09-27" }]);
+  assert.ok(con.includes("Prioriza galaxy-brain (2026-09-27)"));
+  assert.ok(instruccionesAtlas("", {}, "hoy").includes("Aún no recuerdas nada"));
+  const p = pedirRecuerdosAtlas([{ quien: "yo", texto: "esta semana quiero cerrar forja" }], [{ id: "r1", texto: "Usa VS Code", fecha: "x" }]);
+  for (const debe of ["jefe de gabinete", "Nada personal", "contraseñas", "[r1] Usa VS Code", "Persona: esta semana quiero cerrar forja", '{"nuevos"']) assert.ok(p.includes(debe), debe);
 });

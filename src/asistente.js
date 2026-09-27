@@ -57,8 +57,9 @@ export function contextoDelMundo(grafos, noticias, ahora) {
 /**
  * Quién es Atlas y qué puede hacer: el prompt de sistema.
  * @param {string} contexto de contextoDelMundo @param {Mirando} mirando @param {string} hoy
+ * @param {import("./apoyo.js").Recuerdo[]} [recuerdos] lo que recuerda de otras veces (de trabajo)
  */
-export function instruccionesAtlas(contexto, mirando, hoy) {
+export function instruccionesAtlas(contexto, mirando, hoy, recuerdos = []) {
   const delante = mirando.pantalla ? `Ahora mismo mira una pantalla: "${mirando.pantalla}".`
     : mirando.isla ? `Ahora mismo mira la isla de ${mirando.isla}.` : "";
   return [
@@ -86,6 +87,10 @@ export function instruccionesAtlas(contexto, mirando, hoy) {
     "",
     `Hoy es ${hoy}. ${delante}`,
     "",
+    recuerdos.length
+      ? `Lo que recuerdas de esta persona de otras veces (úsalo con naturalidad, sin recitarlo; si algo ya no vale, no pasa nada):\n${recuerdos.map((r) => `- ${r.texto} (${r.fecha})`).join("\n")}`
+      : "Aún no recuerdas nada de esta persona: primera vez, o lo ha borrado.",
+    "",
     contexto,
   ].join("\n");
 }
@@ -106,4 +111,27 @@ export function validarAtlas(mundo) {
     if (a?.tipo === "consola") return { tipo: "consola", pestana: PESTANAS.includes(a.pestana) ? a.pestana : "repos" };
     return null;
   };
+}
+
+/**
+ * Qué pedir al acabar una charla con Atlas: lo que un buen jefe de gabinete apuntaría para la
+ * próxima vez (de trabajo; lo personal es cosa de Kiri, que tiene su propia memoria aparte).
+ * @param {import("./apoyo.js").Turno[]} turnos @param {import("./apoyo.js").Recuerdo[]} recuerdos
+ */
+export function pedirRecuerdosAtlas(turnos, recuerdos) {
+  const charla = turnos.map((t) => `${t.quien === "yo" ? "Persona" : "Atlas"}: ${t.texto.trim()}`).join("\n\n").slice(-16000);
+  return [
+    "Acaba de terminar una charla de trabajo entre una persona y Atlas, su asistente. Decide qué merece la pena recordar para la próxima vez, como lo apuntaría un buen jefe de gabinete:",
+    "en qué proyectos anda y cuáles le importan más, qué quiere conseguir, cómo le gusta que se hagan las cosas (herramientas, estilo, lo que no quiere), decisiones tomadas, tareas pendientes o encargadas (y cómo acabaron), y datos útiles de su trabajo.",
+    "Nada personal que no sea de trabajo, ni secretos (claves, contraseñas), ni detalles pasajeros. Cada recuerdo, una frase corta en tercera persona (\"Prioriza terminar infinite-desk antes del lunes\").",
+    "Si algo de lo que ya recuerdas ha cambiado o se ha resuelto, cámbialo; si ya no tiene sentido, olvídalo.",
+    "",
+    "Lo que ya recuerdas:",
+    recuerdos.length ? recuerdos.map((r) => `[${r.id}] ${r.texto}`).join("\n") : "(nada)",
+    "",
+    "La charla:",
+    charla,
+    "",
+    'Contesta SOLO con un JSON, sin nada más: {"nuevos": ["..."], "cambiar": [{"id": "...", "texto": "..."}], "olvidar": ["id"]} (listas vacías si no hay nada).',
+  ].join("\n");
 }
