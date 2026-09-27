@@ -22,8 +22,8 @@
     "puente": "dotnet build puente -c Release --nologo -v q"
   },
   "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "author": "Marcos Recio (Llicklair)",
+  "license": "Apache-2.0",
   "type": "module",
   "dependencies": {
     "three": "^0.186.1"

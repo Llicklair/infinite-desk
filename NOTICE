@@ -1,0 +1,8 @@
+infinite-desk
+Copyright 2026 Marcos Recio (Llicklair)
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+It uses third-party open-source software, each under its own license (see
+node_modules/*/LICENSE and the NuGet packages of puente/): among others,
+three.js (MIT) and esbuild (MIT).

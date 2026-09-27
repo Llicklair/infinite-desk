@@ -6,6 +6,9 @@
     <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
     <OutputType>Exe</OutputType>
     <AssemblyName>infinite-desk-bridge</AssemblyName>
+    <Authors>Marcos Recio (Llicklair)</Authors>
+    <Copyright>Copyright 2026 Marcos Recio (Llicklair)</Copyright>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
     <RootNamespace>InfiniteDesk.Puente</RootNamespace>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>

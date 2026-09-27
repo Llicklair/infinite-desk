@@ -107,3 +107,8 @@ to restart File Explorer too. It uninstalls nothing: the wallpaper comes back at
 - **Minimizing a shared window hides it instead** while the space is open: Windows stops painting
   minimized windows, so a real minimize would freeze its screen. Enter brings it back; leaving
   the space minimizes it for real.
+
+## License
+
+Licensed under the [Apache License, Version 2.0](LICENSE). Copyright 2026 Marcos Recio
+(Llicklair); see [NOTICE](NOTICE). Third-party libraries keep their own licenses.
