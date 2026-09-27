@@ -35,6 +35,9 @@ const REINTENTO_MS = 3000;
  *   abrirWeb(url: string): Promise<{hwnd: number, titulo: string} | {error: string}>,
  *   vscodeComoPantalla(ruta: string): Promise<{hwnd: number, titulo: string} | {error: string}>,
  *   anotar(texto: string): void,
+ *   espacio(datos?: object): Promise<any>,
+ *   ventanas(): Promise<import("./espacio.js").Ventana[]>,
+ *   traer(hwnd: number): Promise<boolean>,
  *   escuchar(op: {micro: string, idioma: string}, mientras: (parcial: string) => void): {promesa: Promise<{texto: string | null, error: string | null, eventos: string[], alternativas?: string[]}>, parar: () => void},
  *   orquestador(args: string[]): Promise<{ok: boolean, datos?: any, error?: string}>,
  *   alAgentes(f: (m: EstadoAgentes) => void): void,
@@ -306,6 +309,21 @@ export function crearPuente(tituloMundo) {
         return { texto: r.ok && r.texto ? String(r.texto) : null, error: r.ok ? (r.error ?? (r.texto ? null : "no-speech")) : String(r.error ?? "unknown"), eventos: String(r.eventos ?? "").split(" ").filter(Boolean), alternativas: String(r.alternativas ?? "").split(" || ").filter(Boolean) };
       });
       return { promesa, parar: () => void pedir({ op: "pararEscucha", escucha }) };
+    },
+    /** El espacio de trabajo guardado (sin datos, lo lee; con datos, lo guarda). */
+    async espacio(datos) {
+      const r = await pedir(datos ? { op: "espacio", accion: "guardar", datos } : { op: "espacio", accion: "leer" });
+      return datos ? r.ok : r.ok ? r.datos : null;
+    },
+    /** Las ventanas de aplicación abiertas ahora (HWND, título, programa). */
+    async ventanas() {
+      const r = await pedir({ op: "ventanas" });
+      return r.ok ? r.ventanas.map((/** @type {any} */ v) => ({ hwnd: Number(v.hwnd), titulo: String(v.titulo), proceso: String(v.proceso) })) : [];
+    },
+    /** Una ventana, viva detrás del mundo (para volver a ser pantalla). */
+    async traer(hwnd) {
+      const r = await pedir({ op: "traer", hwnd });
+      return Boolean(r.ok);
     },
     /** Una línea en el registro del puente (diagnóstico: cómo fue la voz, nunca lo que se dijo). */
     anotar(texto) { void pedir({ op: "anotar", texto }); },

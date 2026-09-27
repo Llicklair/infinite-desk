@@ -285,6 +285,12 @@ export function crearPantalla(captura) {
     },
     /** Su imagen la manda siempre el puente (una web abierta por un asistente). */
     nativa,
+    /**
+     * De dónde vino (para el espacio de trabajo, src/espacio.js): un repo abierto en VS Code, una
+     * web abierta por un asistente, o una ventana traída con N.
+     * @type {{tipo: "vscode" | "web" | "ventana", url?: string, raiz?: string}}
+     */
+    origen: { tipo: "ventana" },
     cerrar() {
       cerrada = true;
       for (const t of stream.getTracks()) t.stop();

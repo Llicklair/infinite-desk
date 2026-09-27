@@ -44,6 +44,7 @@ test("acciones de Atlas: solo repos que existen (con su nombre exacto), tarjetas
     assert.equal(validar(mala), null, JSON.stringify(mala));
   }
   assert.deepEqual(validar({ tipo: "consola", pestana: "errores" }), { tipo: "consola", pestana: "errores" });
+  assert.deepEqual(validar({ tipo: "trabajar", repo: "FORJA" }), { tipo: "trabajar", repo: "forja" });
   assert.deepEqual(validar({ tipo: "agente", repo: "forja", tarea: " Añade un test para el parser de rutas " }), { tipo: "agente", repo: "forja", tarea: "Añade un test para el parser de rutas" });
   assert.equal(validar({ tipo: "agente", repo: "forja", tarea: "hazlo" }), null, "una tarea vacía o de dos palabras no vale");
   assert.equal(validar({ tipo: "agente", repo: "no-existe", tarea: "Añade un test para el parser" }), null);

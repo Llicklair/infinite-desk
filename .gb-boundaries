@@ -296,3 +296,8 @@ dictado     -/-> puente
 malla-sdf   -/-> espiritu
 malla-sdf   -/-> zen
 malla-sdf   -/-> mundo
+
+# El espacio de trabajo (espacio) es núcleo puro.
+espacio     -/-> mundo
+espacio     -/-> pantallas
+espacio     -/-> puente

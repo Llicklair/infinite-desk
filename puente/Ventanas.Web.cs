@@ -69,6 +69,28 @@ static partial class Ventanas
         return (h, Titulo(h), null);
     }
 
+    /// <summary>
+    /// Las ventanas de aplicación abiertas (visibles o minimizadas, con título, sin dueña, que no son
+    /// del mundo ni de Windows): su HWND, su título y su programa.
+    /// </summary>
+    public static object[] DeAplicacion()
+    {
+        var lista = new List<object>();
+        EnumWindows((h, _) =>
+        {
+            if (h == mundo || DeWindows(h) || (!IsWindowVisible(h) && !IsIconic(h)) || GetWindowTextLength(h) == 0 || GetWindow(h, 4 /*GW_OWNER*/) != IntPtr.Zero) return true;
+            if (Titulo(h).StartsWith("infinite-desk ·")) return true; // el mundo, el oído: nuestras
+            string proceso;
+            try { proceso = Process.GetProcessById((int)Proceso(h)).ProcessName; } catch { return true; }
+            lista.Add(new { hwnd = (long)h, titulo = Titulo(h), proceso });
+            return true;
+        }, IntPtr.Zero);
+        return lista.ToArray();
+    }
+
+    /// <summary>Una ventana que vuelve a ser pantalla (el espacio guardado): viva, detrás del mundo.</summary>
+    public static void Traer(IntPtr h) { if (IsWindow(h)) AtrasYMundoDelante(h); }
+
     /// <summary>La primera ventana de aplicación nueva (no estaba en <paramref name="antes"/>) del proceso dado, o nada.</summary>
     static async Task<IntPtr> EsperarNueva(HashSet<IntPtr> antes, string proceso, int ms)
     {

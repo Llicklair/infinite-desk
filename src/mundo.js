@@ -6,6 +6,7 @@ import { colocarIslas, firmaGrafos, islasNuevas } from "./islas.js";
 import { crearGrafo3D, liberar } from "./grafo3d.js";
 import { rotulo } from "./rotulo.js";
 import { capturaDeDemostracion, capturaNativa, capturarVentana, crearPantalla, puedeCapturar } from "./pantallas.js";
+import { espacioParaGuardar, leerEspacio, planDeRestauracion } from "./espacio.js";
 import { colorDeAgente, encendidosPorAgentes, repoDeTitulo, senalesDeAgentes, siguienteRepo, vigorOnda } from "./vinculo.js";
 import { crearConsola } from "./consola3d.js";
 import { paletaConMarca, paletaDeHora, vidaDeRepo } from "./ambiente.js";
@@ -650,8 +651,8 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
     colocarPantalla(captura);
   }
 
-  /** @param {Parameters<typeof crearPantalla>[0]} captura */
-  function colocarPantalla(captura) {
+  /** @param {Parameters<typeof crearPantalla>[0]} captura @param {boolean} [callado] sin avisar (al restaurar el espacio) */
+  function colocarPantalla(captura, callado = false) {
     const p = crearPantalla(captura);
     const dir = camara.getWorldDirection(new THREE.Vector3());
     p.objeto.position.copy(camara.position).addScaledVector(dir, 5);
@@ -667,7 +668,8 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
     escena.add(p.objeto);
     pantallas.push(p);
     p.alTerminar(() => quitar(p));
-    avisar(repo
+    cambioEnEspacio();
+    if (!callado) avisar(repo
       ? `Screen with the ${repo} graph (${porque}). Wrong one? Aim at it and press G. Click to go back in.`
       : `No repo recognised in "${captura.titulo}": aim at the screen and press G. Click to go back in.`);
     return p;
@@ -705,6 +707,7 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
     if (encendido?.g3d === p.grafo3d) encendido = null;
     if (p.hwnd !== null) puente?.soltar(p.hwnd);
     p.cerrar();
+    cambioEnEspacio();
   }
 
   // --- escribir dentro de una pantalla (fase 2, ADR 0002) -----------------------------------
@@ -820,51 +823,117 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
   /**
    * Una web como pantalla, directamente (sin el selector de N): el puente la abre en su Edge, que no
    * deja de pintar tapado, y manda su imagen en vivo. Sin puente nuevo, como antes (navegador + N).
-   * @param {string} url @param {string} nombre para los avisos
+   * @param {string} url @param {string} nombre para los avisos @param {boolean} [callado]
+   * @returns {Promise<Pantalla | null>}
    */
-  async function abrirComoPantalla(url, nombre) {
-    if (!puente?.conectado) { avisar("No bridge, so it can't open the browser"); return; }
-    avisar(`Opening ${nombre}…`);
+  async function abrirComoPantalla(url, nombre, callado = false) {
+    if (!puente?.conectado) { avisar("No bridge, so it can't open the browser"); return null; }
+    if (!callado) avisar(`Opening ${nombre}…`);
     const r = await puente.abrirWeb(url);
     if ("error" in r) {
-      if (!/unknown/i.test(r.error)) { avisar(`Couldn't open ${nombre}: ${r.error}`); return; }
+      if (!/unknown/i.test(r.error)) { avisar(`Couldn't open ${nombre}: ${r.error}`); return null; }
       const error = await puente.abrirUrl(url); // un puente antiguo: como antes
-      if (error) { avisar(`Couldn't open it: ${error}`); return; }
+      if (error) { avisar(`Couldn't open it: ${error}`); return null; }
       await nuevaPantalla(nombre);
-      return;
+      return null;
     }
-    await pantallaNativa(r.hwnd, r.titulo);
+    return pantallaNativa(r.hwnd, r.titulo, { tipo: "web", url }, callado);
   }
   /**
    * Una ventana (por su HWND) como pantalla que va siempre por el puente, en vivo; si ya hay una
    * pantalla de esa ventana, no se duplica: se avisa.
    * @param {number} hwnd @param {string} titulo
+   * @param {Pantalla["origen"]} [origen] de dónde vino (para el espacio de trabajo) @param {boolean} [callado]
    */
-  async function pantallaNativa(hwnd, titulo) {
+  async function pantallaNativa(hwnd, titulo, origen = { tipo: "ventana" }, callado = false) {
     const ya = pantallas.find((q) => q.hwnd === hwnd);
-    if (ya) { avisar(`"${titulo}" is already a screen here: look around (or press Enter on it to work in it)`); return ya; }
+    if (ya) { if (!callado) avisar(`"${titulo}" is already a screen here: look around (or press Enter on it to work in it)`); return ya; }
     if (!puente) return null;
-    const p = colocarPantalla(await capturaNativa(hwnd, titulo));
     const puenteAhora = puente;
+    void puenteAhora.titulo(hwnd); // desde ahora es una pantalla para el puente (minimizarla la esconde viva)
+    const p = colocarPantalla(await capturaNativa(hwnd, titulo), callado);
+    p.origen = origen;
     vistasNativas.set(p, puenteAhora.vistaDirecta(hwnd, (datos) => p.aplicarDirecto(datos)));
     return p;
   }
   /**
    * Un repo en VS Code DENTRO del mundo (Atlas): antes se abría fuera y había que traerlo con N.
    * Con un puente antiguo, como antes.
-   * @param {GrafoExportado} g
+   * @param {GrafoExportado} g @param {boolean} [callado]
+   * @returns {Promise<Pantalla | null>}
    */
-  async function abrirRepoComoPantalla(g) {
-    if (!puente?.conectado) { abrirEnVSCode(g); return; }
-    avisar(`Opening ${g.nombre} in VS Code…`);
+  async function abrirRepoComoPantalla(g, callado = false) {
+    if (!puente?.conectado) { abrirEnVSCode(g); return null; }
+    if (!callado) avisar(`Opening ${g.nombre} in VS Code…`);
     const r = await puente.vscodeComoPantalla(g.raiz);
     if ("error" in r) {
       if (/unknown/i.test(r.error)) abrirEnVSCode(g);
       else avisar(`Couldn't open ${g.nombre}: ${r.error}`);
-      return;
+      return null;
     }
     ultimoAbierto = { repo: g.nombre, cuando: Date.now() };
-    await pantallaNativa(r.hwnd, r.titulo);
+    const p = await pantallaNativa(r.hwnd, r.titulo, { tipo: "vscode", raiz: g.raiz }, callado);
+    if (p && !p.repo) p.enganchar(g);
+    return p;
+  }
+
+  // --- el espacio de trabajo: al volver, como se dejó (src/espacio.js) ---------------------------
+  // Uso real: "que se quede como lo dejaste" (al salir se perdían las pantallas y dónde estaban).
+  // Se guarda solo tras cada cambio (traer, mover, redimensionar, cambiar de grafo, cerrar) y se
+  // restaura al entrar: lo que sigue abierto vuelve a su sitio sin el selector de N; los repos y
+  // las webs cerrados se reabren.
+  let restaurando = false;
+  /** @type {ReturnType<typeof setTimeout> | null} */
+  let guardarLuego = null;
+  function cambioEnEspacio() {
+    if (restaurando || fondo || opciones.vista !== "dentro") return;
+    if (guardarLuego) clearTimeout(guardarLuego);
+    guardarLuego = setTimeout(() => void guardarEspacio(), 1500);
+  }
+  async function guardarEspacio() {
+    if (!puente?.conectado || restaurando) return;
+    const programas = new Map((await puente.ventanas()).map((v) => [v.hwnd, v.proceso]));
+    const entradas = pantallas.filter((p) => p.hwnd !== null).map((p) => ({
+      tipo: p.origen.tipo, titulo: p.titulo, repo: p.repo, raiz: p.origen.raiz, url: p.origen.url,
+      proceso: programas.get(/** @type {number} */ (p.hwnd)),
+      pos: p.objeto.position.toArray(), giro: p.objeto.quaternion.toArray(), escala: p.objeto.scale.x,
+    }));
+    await puente.espacio(espacioParaGuardar(entradas));
+  }
+  async function restaurarEspacio() {
+    if (!puente?.conectado || fondo || opciones.vista !== "dentro") return;
+    const entradas = leerEspacio(await puente.espacio());
+    if (!entradas.length) return;
+    restaurando = true;
+    try {
+      const plan = planDeRestauracion(entradas, await puente.ventanas(), pantallas.flatMap((p) => (p.hwnd === null ? [] : [p.hwnd])));
+      let traidas = 0, reabiertas = 0;
+      for (const paso of plan) {
+        const e = paso.entrada;
+        /** @type {Pantalla | null} */
+        let p = null;
+        if (paso.hacer === "traer" && paso.hwnd !== null) {
+          await puente.traer(paso.hwnd);
+          p = await pantallaNativa(paso.hwnd, e.titulo, { tipo: e.tipo, url: e.url, raiz: e.raiz }, true);
+          if (p) traidas++;
+        } else if (paso.hacer === "abrirRepo") {
+          const g = (window.GB_GRAFOS ?? []).find((x) => x.raiz === e.raiz || x.nombre === e.repo);
+          if (g) p = await abrirRepoComoPantalla(g, true);
+          if (p) reabiertas++;
+        } else if (paso.hacer === "abrirWeb" && e.url) {
+          p = await abrirComoPantalla(e.url, e.titulo, true);
+          if (p) reabiertas++;
+        }
+        if (!p) continue;
+        p.objeto.position.fromArray(e.pos);
+        p.objeto.quaternion.fromArray(e.giro);
+        p.objeto.scale.setScalar(e.escala);
+        if (e.repo && p.repo !== e.repo) p.enganchar(grafoDe(e.repo));
+      }
+      if (traidas + reabiertas) avisar(`Your workspace is back: ${traidas + reabiertas} screen${traidas + reabiertas === 1 ? "" : "s"}${reabiertas ? ` (${reabiertas} reopened)` : ""}`);
+    } finally {
+      restaurando = false;
+    }
   }
   /**
    * Lo que Kiri decide hacer: música o algo para distraerse (el primer vídeo de YouTube para su
@@ -944,6 +1013,22 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
     if (a.tipo === "grafo") { void regenerar([a.repo]); return; }
     const g = grafoDe(a.repo);
     if (a.tipo === "vscode") { if (g) await abrirRepoComoPantalla(g); return; }
+    if (a.tipo === "trabajar") {
+      // A su isla, y su VS Code como pantalla delante de ella (uso real: "prepárame para trabajar en X").
+      const isla = islas.find((i) => i.grafo.nombre === a.repo);
+      if (!isla || !g) return;
+      if (zen?.activa) alternarZen();
+      const objetivo = isla.g3d.objeto.getWorldPosition(new THREE.Vector3());
+      const desde = camara.position.clone().sub(objetivo).setY(0).normalize();
+      viaje = { pos: objetivo.clone().addScaledVector(desde, 22).setY(objetivo.y + 5), mira: objetivo };
+      const p = await abrirRepoComoPantalla(g);
+      if (p) {
+        p.objeto.position.copy(objetivo).addScaledVector(desde, 12).setY(objetivo.y + 5);
+        p.objeto.lookAt(viaje?.pos ?? camara.position);
+        cambioEnEspacio();
+      }
+      return;
+    }
     if (a.tipo === "agente") {
       // Un agente de Claude en su rama y su worktree (tools/agente.mjs): commitea ahí, nunca hace push.
       const r = await puente?.orquestador(["lanzar", "claude", base64(a.tarea), a.repo]);
@@ -1455,6 +1540,7 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
         const repo = siguienteRepo(p.repo, nombres);
         p.enganchar(repo ? grafoDe(repo) : null);
         avisar(repo ? `${repo} graph` : "Screen with no graph");
+        cambioEnEspacio();
       }
     }
   }
@@ -1504,6 +1590,7 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
       cargaDesde = null;
       if (botes) avisar(`${botes} skip${botes === 1 ? "" : "s"}`);
     }
+    if (agarrada) cambioEnEspacio(); // se soltó una pantalla que se movía
     agarrada = null;
     arrastrada = null;
   });
@@ -1518,6 +1605,7 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
     } else if (apuntado?.tipo === "pantalla") {
       const s = THREE.MathUtils.clamp(apuntado.pantalla.objeto.scale.x * f, 0.3, 8);
       apuntado.pantalla.objeto.scale.setScalar(s);
+      cambioEnEspacio();
     } else {
       const g = grafoApuntado();
       if (g) g.objeto.scale.setScalar(THREE.MathUtils.clamp(g.objeto.scale.x * f, 0.3, 4));
@@ -1536,6 +1624,11 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
   // final: la tarjeta mira el lector y la consola, que se crean más arriba.
   const pasoTutorial = new URLSearchParams(location.search).get("tutorial");
   if (tutorial && pasoTutorial !== null) tutorial.empezar(Number(pasoTutorial) || 0);
+  // El espacio de trabajo: al conectar con el puente por primera vez, como se dejó.
+  let espacioRestaurado = false;
+  const alPuente = () => { if (!espacioRestaurado) { espacioRestaurado = true; void restaurarEspacio(); } };
+  puente?.alConectar(alPuente);
+  if (puente?.conectado) alPuente();
   // `?ajustes`: los ajustes abiertos (el audio, para comprobarlo sin manos).
   if (new URLSearchParams(location.search).has("ajustes") && ajustes) { ui.portada.hidden = true; void ajustes.abrir(); }
   // `?atlas`: el panel de Atlas abierto (para verlo sin manos).

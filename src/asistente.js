@@ -5,7 +5,7 @@
 // abrirte ventanas". El de la zona zen, Kiri, es para desahogarse (src/apoyo.js); este, para trabajar.
 
 /**
- * @typedef {{tipo: "vscode" | "ir" | "grafo", repo: string}
+ * @typedef {{tipo: "vscode" | "ir" | "grafo" | "trabajar", repo: string}
  *   | {tipo: "agente", repo: string, tarea: string}
  *   | {tipo: "web", url: string}
  *   | {tipo: "leer", tarjeta: number}
@@ -77,6 +77,7 @@ export function instruccionesAtlas(contexto, mirando, hoy, recuerdos = []) {
     'ACCION: {"tipo": "vscode", "repo": "NombreExacto"} abre el repo en VS Code DENTRO del mundo, como pantalla en vivo (la persona trabaja en ella con Enter).',
     'ACCION: {"tipo": "agente", "repo": "NombreExacto", "tarea": "..."} manda un agente de Claude a hacer cambios en el repo: trabaja en su propia rama y su propia copia (worktree), hace commits ahí y nunca hace push; la persona lo ve trabajar sobre la isla y decide qué integra. Tú no editas ficheros: para cambiar código, mandas un agente. La tarea, concreta y completa (qué cambiar, dónde y cómo comprobarlo). Antes de mandarlo, confirma la tarea en una frase, salvo que la persona ya lo haya pedido con claridad.',
     'ACCION: {"tipo": "ir", "repo": "NombreExacto"} le lleva volando a la isla de ese repo.',
+    'ACCION: {"tipo": "trabajar", "repo": "NombreExacto"} le prepara para trabajar en ese repo: le lleva a su isla y le pone delante su VS Code como pantalla (para "prepárame para trabajar en X", "vamos con X").',
     'ACCION: {"tipo": "grafo", "repo": "NombreExacto"} regenera el grafo de ese repo con galaxy-brain.',
     'ACCION: {"tipo": "leer", "tarjeta": N} abre en el lector el titular o repo top número N del palantír.',
     'ACCION: {"tipo": "web", "url": "https://..."} abre esa página en el navegador y la trae al mundo como pantalla (por ejemplo, un repo de GitHub o un artículo).',
@@ -103,7 +104,7 @@ export function instruccionesAtlas(contexto, mirando, hoy, recuerdos = []) {
 export function validarAtlas(mundo) {
   return (a) => {
     const repo = typeof a?.repo === "string" ? mundo.repos.find((r) => r.toLowerCase() === a.repo.trim().toLowerCase()) : undefined;
-    if ((a?.tipo === "vscode" || a?.tipo === "ir" || a?.tipo === "grafo") && repo) return { tipo: a.tipo, repo };
+    if ((a?.tipo === "vscode" || a?.tipo === "ir" || a?.tipo === "grafo" || a?.tipo === "trabajar") && repo) return { tipo: a.tipo, repo };
     if (a?.tipo === "agente" && repo && typeof a.tarea === "string" && a.tarea.trim().length >= 10) return { tipo: "agente", repo, tarea: a.tarea.trim().slice(0, 4000) };
     if (a?.tipo === "web" && typeof a.url === "string" && /^https?:\/\/[^\s]+$/i.test(a.url.trim())) return { tipo: "web", url: a.url.trim() };
     if (a?.tipo === "leer" && Number.isInteger(a.tarjeta) && a.tarjeta >= 0 && a.tarjeta < mundo.tarjetas) return { tipo: "leer", tarjeta: a.tarjeta };

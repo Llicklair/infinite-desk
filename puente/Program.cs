@@ -375,6 +375,29 @@ object? Responder(JsonElement m, WebSocket ws)
         case "pararEscucha":
             if (oido is { } oidoAhora) _ = Enviar(oidoAhora, new { t = "parar", escucha = Texto(m, "escucha") });
             return new { id, ok = true };
+        case "espacio":
+        {
+            // El espacio de trabajo del mundo (src/espacio.js): qué pantallas había y dónde. Un
+            // fichero en DATOS; el puente solo lo guarda y lo da, no lo interpreta.
+            var ficheroEspacio = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "infinite-desk", "espacio.json");
+            if (Texto(m, "accion") == "guardar" && m.TryGetProperty("datos", out var datosEspacio))
+            {
+                var json = datosEspacio.GetRawText();
+                if (json.Length > 200_000) return new { id, ok = false, error = "workspace too large" };
+                File.WriteAllText(ficheroEspacio + ".tmp", json);
+                File.Move(ficheroEspacio + ".tmp", ficheroEspacio, overwrite: true);
+                return new { id, ok = true };
+            }
+            try { return new { id, ok = true, datos = File.Exists(ficheroEspacio) ? JsonDocument.Parse(File.ReadAllText(ficheroEspacio)).RootElement.Clone() : (JsonElement?)null }; }
+            catch (JsonException) { return new { id, ok = true, datos = (JsonElement?)null }; }
+        }
+        case "ventanas":
+            // Las ventanas de aplicación abiertas ahora (para emparejarlas con el espacio guardado).
+            return new { id, ok = true, ventanas = Ventanas.DeAplicacion() };
+        case "traer":
+            // Una ventana del espacio guardado, viva detrás del mundo (sin minimizar: así se captura).
+            Ventanas.Traer(h);
+            return new { id, ok = Ventanas.Existe(h) };
         case "anotar":
             // Lo que la página quiere dejar en el registro para diagnosticar (la voz: qué micrófono,
             // qué eventos, qué error). Corto y en una línea: nunca lo que se dice, solo cómo fue.
