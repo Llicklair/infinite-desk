@@ -19,6 +19,7 @@
     "parar": "node tools/parar.mjs",
     "diagnostico": "node tools/diagnostico.mjs",
     "empaquetar": "node tools/empaquetar.mjs",
+    "grabar": "cmd /c tools\\grabar.cmd",
     "probar-puente": "node tools/probar-puente.mjs",
     "puente": "dotnet build puente -c Release --nologo -v q"
   },

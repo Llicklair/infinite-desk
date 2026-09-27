@@ -1,0 +1,144 @@
+<!doctype html>
+<!--
+  Grabar la pantalla sin instalar nada (npm run grabar, o doble clic en tools\grabar.cmd): la
+  pantalla entera, una ventana o una pestaña, con el sonido del sistema y el micrófono para narrar,
+  a un .mp4 (o .webm si el navegador no sabe mp4). Uso real: "no me deja Windows usar la función de
+  grabar pantalla; quería hacer el vídeo de presentación" (la Game Bar de Windows 10 no graba el
+  escritorio). Todo en el navegador: getDisplayMedia (lo mismo que las pantallas del mundo) y
+  MediaRecorder; nada sale del equipo, el vídeo se guarda en Descargas.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>infinite-desk · record the screen</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root { --fondo: #0d1020; --panel: #171b33; --texto: #e8eaf6; --suave: #9aa3c7; --acento: #7c9cff; --rojo: #ff5d6c; }
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: var(--fondo); color: var(--texto); font: 15px/1.5 system-ui, "Segoe UI", sans-serif; }
+  main { width: min(560px, 100% - 32px); background: var(--panel); border-radius: 16px; padding: 28px; box-shadow: 0 20px 60px #0008; }
+  h1 { margin: 0 0 4px; font-size: 22px; }
+  p.sub { margin: 0 0 20px; color: var(--suave); }
+  label { display: flex; align-items: center; gap: 10px; margin: 10px 0; }
+  select { flex: 1; background: #0d1020; color: var(--texto); border: 1px solid #333a66; border-radius: 8px; padding: 6px 8px; font: inherit; }
+  .fila { display: flex; gap: 10px; margin-top: 22px; }
+  button { flex: 1; border: 0; border-radius: 10px; padding: 12px 16px; font: 600 15px system-ui, sans-serif; cursor: pointer; background: var(--acento); color: #0d1020; }
+  button.parar { background: var(--rojo); }
+  button:disabled { opacity: .4; cursor: default; }
+  #estado { margin-top: 18px; min-height: 1.5em; color: var(--suave); }
+  #estado.grabando { color: var(--rojo); font-weight: 600; }
+  video { width: 100%; margin-top: 16px; border-radius: 10px; background: #000; display: none; }
+  .nota { font-size: 13px; color: var(--suave); margin-top: 18px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Record the screen</h1>
+  <p class="sub">The whole screen, a window or a tab, with sound, to a video file. Nothing leaves this computer.</p>
+  <label><input type="checkbox" id="sistema" checked> System sound (pick "Share system audio" in the next step)</label>
+  <label><input type="checkbox" id="conMicro" checked> Microphone, to narrate</label>
+  <label>Microphone <select id="micro"><option value="">Default</option></select></label>
+  <label>Quality <select id="calidad">
+    <option value="8000000">High (8 Mbit/s, 1080p and up)</option>
+    <option value="4000000" selected>Normal (4 Mbit/s)</option>
+    <option value="2000000">Light (2 Mbit/s, small file)</option>
+  </select></label>
+  <div class="fila">
+    <button id="empezar">Start recording</button>
+    <button id="parar" class="parar" disabled>Stop and save</button>
+  </div>
+  <div id="estado"></div>
+  <video id="ver" controls></video>
+  <p class="nota">Tip: hide this tab's "sharing" bar with "Hide" so it doesn't show in the video. Stopping from that bar also saves.</p>
+</main>
+<script>
+  const $ = (id) => document.getElementById(id);
+  let grabador = null, flujos = [], contexto = null, reloj = null, inicio = 0;
+
+  // mp4 si el navegador lo sabe grabar (Chrome/Edge recientes): se abre en cualquier sitio.
+  const TIPOS = ["video/mp4;codecs=avc1.640028,mp4a.40.2", "video/mp4", "video/webm;codecs=vp9,opus", "video/webm"];
+  const tipo = TIPOS.find((t) => MediaRecorder.isTypeSupported(t)) ?? "";
+  const extension = tipo.startsWith("video/mp4") ? "mp4" : "webm";
+
+  async function listarMicros() {
+    try {
+      // Los nombres solo salen con permiso: se pide una vez y se suelta.
+      const s = await navigator.mediaDevices.getUserMedia({ audio: true });
+      s.getTracks().forEach((t) => t.stop());
+    } catch { return; }
+    const micros = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === "audioinput");
+    for (const m of micros) $("micro").append(new Option(m.label || "Microphone", m.deviceId));
+    try { const guardado = localStorage.getItem("grabar.micro"); if (guardado) $("micro").value = guardado; } catch {}
+  }
+
+  function estado(texto, grabando = false) { $("estado").textContent = texto; $("estado").className = grabando ? "grabando" : ""; }
+
+  async function empezar() {
+    $("ver").style.display = "none";
+    let pantalla;
+    try {
+      pantalla = await navigator.mediaDevices.getDisplayMedia({
+        video: { frameRate: 30 }, audio: $("sistema").checked, systemAudio: "include", selfBrowserSurface: "exclude",
+      });
+    } catch { estado("Cancelled."); return; }
+    flujos = [pantalla];
+    const pistas = [...pantalla.getVideoTracks()];
+    // El sonido del sistema y el micrófono, mezclados en una sola pista.
+    const sonidos = pantalla.getAudioTracks().length ? [pantalla] : [];
+    if ($("conMicro").checked) {
+      try {
+        const id = $("micro").value;
+        const micro = await navigator.mediaDevices.getUserMedia({ audio: id ? { deviceId: { exact: id }, echoCancellation: true, noiseSuppression: true } : { echoCancellation: true, noiseSuppression: true } });
+        flujos.push(micro); sonidos.push(micro);
+        try { localStorage.setItem("grabar.micro", id); } catch {}
+      } catch { estado("No microphone: recording without narration."); }
+    }
+    if (sonidos.length) {
+      contexto = new AudioContext();
+      const destino = contexto.createMediaStreamDestination();
+      for (const s of sonidos) contexto.createMediaStreamSource(s).connect(destino);
+      pistas.push(...destino.stream.getAudioTracks());
+    }
+    const partes = [];
+    grabador = new MediaRecorder(new MediaStream(pistas), { mimeType: tipo || undefined, videoBitsPerSecond: Number($("calidad").value), audioBitsPerSecond: 160000 });
+    grabador.ondataavailable = (e) => { if (e.data.size) partes.push(e.data); };
+    grabador.onstop = () => guardar(partes);
+    // Parar desde la barra de "compartiendo" del navegador también guarda.
+    pantalla.getVideoTracks()[0].addEventListener("ended", parar);
+    grabador.start(1000);
+    inicio = Date.now();
+    reloj = setInterval(() => {
+      const s = Math.floor((Date.now() - inicio) / 1000);
+      estado(`● Recording ${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`, true);
+    }, 250);
+    $("empezar").disabled = true; $("parar").disabled = false;
+  }
+
+  function parar() {
+    if (!grabador || grabador.state === "inactive") return;
+    grabador.stop();
+    clearInterval(reloj);
+    for (const f of flujos) f.getTracks().forEach((t) => t.stop());
+    contexto?.close(); contexto = null;
+    $("empezar").disabled = false; $("parar").disabled = true;
+  }
+
+  function guardar(partes) {
+    const video = new Blob(partes, { type: tipo || "video/webm" });
+    const url = URL.createObjectURL(video);
+    const d = new Date(), dos = (n) => String(n).padStart(2, "0");
+    const nombre = `infinite-desk-${d.getFullYear()}${dos(d.getMonth() + 1)}${dos(d.getDate())}-${dos(d.getHours())}${dos(d.getMinutes())}.${extension}`;
+    const a = document.createElement("a");
+    a.href = url; a.download = nombre; a.click();
+    $("ver").src = url; $("ver").style.display = "block";
+    estado(`Saved to Downloads: ${nombre} (${(video.size / 1048576).toFixed(1)} MB)`);
+  }
+
+  $("empezar").onclick = empezar;
+  $("parar").onclick = parar;
+  $("conMicro").onchange = () => { $("micro").disabled = !$("conMicro").checked; };
+  estado(tipo ? `Records to .${extension}` : "This browser can't record video.");
+  void listarMicros();
+</script>
+</body>
+</html>
