@@ -39,6 +39,9 @@ function windows() {
   const copia = join(datos, "fondo");
   const exe = join(copia, "infinite-desk-bridge.exe");
   const reg = (/** @type {string[]} */ ...args) => execFileSync("reg", args, { stdio: "ignore" });
+  // "Entrar" también en el menú Inicio (se busca escribiendo "infinite-desk"): el clic derecho del
+  // escritorio no lo descubre nadie en una máquina nueva.
+  const acceso = join(process.env.APPDATA ?? "", "Microsoft", "Windows", "Start Menu", "Programs", "infinite-desk.lnk");
 
   // Parar el fondo que haya (el de esta copia o uno anterior): si no, la copia está bloqueada.
   if (existsSync(exe)) execFileSync(exe, ["--fondo", "--parar"], { stdio: "ignore" });
@@ -53,7 +56,8 @@ function windows() {
     for (const args of [[MENU, "/f"], [ARRANQUE, "/v", "infinite-desk-fondo", "/f"]]) {
       try { reg("delete", ...args); } catch { /* ya no estaba */ }
     }
-    console.log("removed: animated wallpaper, its autostart and the desktop right-click entry");
+    rmSync(acceso, { force: true });
+    console.log("removed: animated wallpaper, its autostart, the desktop right-click entry and the Start menu entry");
     return;
   }
 
@@ -85,9 +89,21 @@ function windows() {
   const entrar = join(raiz, "tools", "entrar.ps1");
   reg("add", MENU, "/ve", "/d", "Enter infinite-desk", "/f");
   reg("add", MENU, "/v", "Icon", "/d", `"${navegador}",0`, "/f");
-  reg("add", `${MENU}\\command`, "/ve", "/d",
-    `powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "${entrar}" -Navegador "${navegador}" -Perfil "${perfil}" -Url "${url}"`, "/f");
+  const argumentos = `-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "${entrar}" -Navegador "${navegador}" -Perfil "${perfil}" -Url "${url}"`;
+  reg("add", `${MENU}\\command`, "/ve", "/d", `powershell ${argumentos}`, "/f");
   console.log("right-click the desktop -> Enter infinite-desk (Esc twice to come back)");
+  // El acceso lo crea el shell de Windows (WScript.Shell): viene con el sistema.
+  const comillas = (/** @type {string} */ t) => `'${t.replaceAll("'", "''")}'`;
+  execFileSync("powershell", ["-NoProfile", "-Command", [
+    `$a = (New-Object -ComObject WScript.Shell).CreateShortcut(${comillas(acceso)})`,
+    "$a.TargetPath = 'powershell.exe'",
+    `$a.Arguments = ${comillas(argumentos)}`,
+    `$a.IconLocation = ${comillas(`${navegador},0`)}`,
+    "$a.Description = 'Enter infinite-desk'",
+    "$a.WindowStyle = 7",
+    "$a.Save()",
+  ].join("; ")], { stdio: "ignore" });
+  console.log("Start -> infinite-desk does the same");
 }
 
 function mac() {

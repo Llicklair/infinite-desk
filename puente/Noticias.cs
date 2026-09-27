@@ -1,4 +1,4 @@
-// Las noticias del palantír (`npm run noticias`): al arrancar el puente, es decir, al entrar, y
+// Las noticias del palantír (tools/noticias.mjs, `npm run noticias`): al arrancar el puente, es decir, al entrar, y
 // luego cada 30 minutos. El mundo relee wallpaper/noticias.js por su cuenta cada 5, así que no hace
 // falta avisarle. Una a la vez: si la anterior aún corre (X va despacio a propósito), se salta.
 using System.Diagnostics;
@@ -18,7 +18,8 @@ sealed class Noticias(string raiz)
         if (Interlocked.Exchange(ref enCurso, 1) == 1) return;
         try
         {
-            var psi = new ProcessStartInfo("cmd.exe", "/c npm run --silent noticias")
+            // node directo (sin npm): en el paquete de instalación no hay npm (Hijos.Node).
+            var psi = new ProcessStartInfo(Hijos.Node(raiz))
             {
                 WorkingDirectory = raiz,
                 RedirectStandardOutput = true,
@@ -26,6 +27,7 @@ sealed class Noticias(string raiz)
                 UseShellExecute = false,
                 CreateNoWindow = true,
             };
+            psi.ArgumentList.Add(Path.Combine(raiz, "tools", "noticias.mjs"));
             using var p = Hijos.Lanzar(psi, TimeSpan.FromMinutes(5), "noticias");
             var salida = p.StandardOutput.ReadToEndAsync();
             var errores = p.StandardError.ReadToEndAsync();
@@ -36,7 +38,7 @@ sealed class Noticias(string raiz)
                 .LastOrDefault() ?? "";
             Registro.Anotar($"noticias: {(p.ExitCode == 0 ? "" : "FALLÓ: ")}{ultima}");
         }
-        catch (Exception e) { Registro.Anotar($"noticias: no se pudo correr npm ({e.Message})"); }
+        catch (Exception e) { Registro.Anotar($"noticias: no se pudo correr node ({e.Message})"); }
         finally { Interlocked.Exchange(ref enCurso, 0); }
     }
 }

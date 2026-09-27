@@ -14,7 +14,7 @@ static class Orquestador
     public static async Task<(bool ok, JsonElement? datos, string? error)> Correr(string raiz, string[] args)
     {
         if (args.Length == 0 || !Ordenes.Contains(args[0])) return (false, null, "unknown order");
-        var psi = new ProcessStartInfo("node")
+        var psi = new ProcessStartInfo(Hijos.Node(raiz))
         {
             WorkingDirectory = raiz,
             RedirectStandardOutput = true,

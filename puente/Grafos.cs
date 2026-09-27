@@ -59,7 +59,7 @@ sealed class Regenerador(string raiz, Func<object, Task> difundir, Action alTerm
         {
             // node directo (sin cmd): los nombres de repo van tal cual como argumentos, sin que un
             // nombre raro pueda colarse como otra orden.
-            var psi = new ProcessStartInfo("node")
+            var psi = new ProcessStartInfo(Hijos.Node(raiz))
             {
                 WorkingDirectory = raiz,
                 RedirectStandardOutput = true,

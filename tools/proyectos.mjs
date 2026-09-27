@@ -7,6 +7,7 @@
 // npm run carpeta -- <ruta>    la fija sin preguntar
 import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -19,6 +20,9 @@ export function carpetaDeProyectos() {
     const { proyectos } = JSON.parse(readFileSync(FICHERO, "utf8"));
     if (typeof proyectos === "string" && existsSync(proyectos)) return resolve(proyectos);
   } catch { /* sin fichero, o roto: lo de siempre */ }
+  // Instalado con Instalar.cmd (lleva su node): la carpeta de al lado es la de programas, no la de
+  // proyectos; a falta de elegirla, la del usuario.
+  if (existsSync(join(raiz, "node", "node.exe"))) return homedir();
   return dirname(raiz);
 }
 
@@ -65,6 +69,8 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   writeFileSync(FICHERO, JSON.stringify({ ...datos, proyectos: elegida }, null, 2) + "\n");
   const repos = reposEn(elegida);
   console.log(`Projects folder: ${elegida} (${repos.length} repo${repos.length === 1 ? "" : "s"} with git)`);
-  console.log(repos.length ? "Now run npm run grafo to rebuild the islands (the bridge does it on its own when you step in)."
-    : "No repos with git in there: the islands would come out empty.");
+  // Instalado (Instalar.cmd), las islas las hace el instalador justo después; y ahí no hay npm.
+  const instalado = existsSync(join(raiz, "node", "node.exe"));
+  if (!repos.length) console.log("No repos with git in there: the islands would come out empty.");
+  else if (!instalado) console.log("Now run npm run grafo to rebuild the islands (the bridge does it on its own when you step in).");
 }

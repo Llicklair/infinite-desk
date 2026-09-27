@@ -18,6 +18,7 @@
     "alternar-fondo": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/alternar-fondo.ps1",
     "parar": "node tools/parar.mjs",
     "diagnostico": "node tools/diagnostico.mjs",
+    "empaquetar": "node tools/empaquetar.mjs",
     "probar-puente": "node tools/probar-puente.mjs",
     "puente": "dotnet build puente -c Release --nologo -v q"
   },

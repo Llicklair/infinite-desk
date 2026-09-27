@@ -27,6 +27,7 @@ tools/fondo.cmd             # doble clic: si el fondo está parado, instala la v
 npm run medir [-- --pantallas 0,4,8 --res 1920x1080] # GPU real (Windows): fps, ms/fotograma, % de GPU y VRAM con N pantallas de vídeo; no está en terminado
 npm run marca -- --nombre "X" --colores "#rrggbb,#rrggbb" [--logo f] # capa de marca (tecla B) -> wallpaper/marca.js, sin versionar; --quitar la borra
 npm run parar [-- --explorador] # lo para todo y devuelve las ventanas escondidas; con --explorador, reinicia el Explorador
+npm run empaquetar          # dist\infinite-desk-<versión>-win-x64.zip para un Windows limpio: mundo construido, puente autocontenido en un .exe, Node portátil e Instalar.cmd (tools/instalar.mjs; Desinstalar.cmd, tools/desinstalar.mjs); no está en terminado
 npm run diagnostico         # foto de Windows e infinite-desk (barra de tareas, foco, qué la tapa) ANTES de reiniciar nada
 npm run probar-puente       # pruebas de extremo a extremo con el puente y el mundo abiertos (rueda, esconder, Esc, N)
 ```

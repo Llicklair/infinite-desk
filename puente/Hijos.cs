@@ -10,6 +10,16 @@ namespace InfiniteDesk.Puente;
 
 static class Hijos
 {
+    /// <summary>
+    /// El node con el que correr las herramientas: el del paquete (node/node.exe junto a wallpaper,
+    /// tools, …: la instalación en una máquina limpia no pide instalar Node) o, si no, el del PATH.
+    /// </summary>
+    public static string Node(string raiz)
+    {
+        var propio = Path.Combine(raiz, "node", "node.exe");
+        return File.Exists(propio) ? propio : "node";
+    }
+
     static readonly ConcurrentDictionary<int, (Process p, string que)> vivos = new();
     static Timer? salud;
 

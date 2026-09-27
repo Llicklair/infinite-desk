@@ -28,7 +28,21 @@ they're not screenshots: they're your real windows, live, and **you can type and
 - **As your wallpaper.** The same space, slowly turning behind your desktop icons (Windows);
   right-click the desktop (Windows) or open *Enter infinite-desk* (macOS) to step in.
 
-## Requirements
+## Install (Windows, nothing else needed)
+
+Get `infinite-desk-<version>-win-x64.zip`, unzip it anywhere and double-click **Instalar.cmd**. It
+installs for your user only (no administrator rights, nothing else to install: it carries its own
+Node and its bridge needs no .NET), asks for your projects folder, builds the islands and sets up
+the animated wallpaper plus **Enter infinite-desk** (desktop right-click and the Start menu). Then
+you can delete the zip. To update, do the same with a newer zip: your projects folder, islands and
+memories stay. To uninstall: Settings → Apps → infinite-desk (your data in
+`%LOCALAPPDATA%\infinite-desk` stays unless you delete it). Optional: Google Chrome (better voice
+recognition), [Claude Code](https://claude.com/claude-code) (to talk to Kiri and Atlas and send
+agents) and galaxy-brain (code maps; install it from inside the space: O → Accounts).
+
+To build that zip from a clone: `npm run empaquetar` (it needs what's listed below) leaves it in `dist\`.
+
+## Requirements (to develop, or on macOS)
 
 - Windows 10 or 11 (Edge and its WebView2 engine ship with Windows), or macOS with Google Chrome.
 - [Node.js](https://nodejs.org) 20 or newer.
