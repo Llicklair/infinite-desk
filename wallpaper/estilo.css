@@ -208,3 +208,13 @@ body[data-escribiendo] #mira { display: none; }
 #maestra .evento .texto { overflow-wrap: anywhere; }
 #maestra .evento.fallo .texto, #maestra .evento.agente-fallo .texto { color: #ffb3bd; }
 #maestra .evento.agente-hecho .texto { color: #b8ffd0; }
+/* La revisión de un agente (Agents -> Review): commits, qué cambió y el diff en colores. */
+#maestra .revision h3 { margin: 12px 0 4px; }
+#maestra .revision pre { max-height: 38vh; overflow: auto; padding: 8px 10px; background: rgba(0, 0, 0, 0.35); border-radius: 6px; font: 12px/1.45 Consolas, monospace; white-space: pre; }
+#maestra .revision pre.stat { max-height: 16vh; color: #b6bff0; }
+#maestra .revision pre.consola { max-height: 18vh; color: #8d96c8; }
+#maestra .revision .diff .mas { color: #7ee2a0; background: rgba(60, 170, 110, 0.12); }
+#maestra .revision .diff .menos { color: #ff9a9a; background: rgba(255, 90, 90, 0.1); }
+#maestra .revision .diff .salto { color: #8fb4ff; }
+#maestra .revision .diff .fichero { color: #ffd89a; font-weight: 600; }
+#maestra .revision .acciones { display: flex; gap: 8px; margin: 10px 0; flex-wrap: wrap; }

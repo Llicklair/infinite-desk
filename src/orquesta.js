@@ -92,7 +92,7 @@ export function lineaDeClaude(evento) {
 
 /**
  * @typedef {{id: string, repo: string, proveedor: Proveedor, tarea: string, rama: string, worktree: string,
- *   inicio: string, fin?: string, estado: "trabajando" | "hecho" | "fallo" | "descartado", cambios?: number, commit?: boolean, pid?: number}} Agente
+ *   inicio: string, fin?: string, estado: "trabajando" | "hecho" | "fallo" | "descartado" | "integrado", cambios?: number, commit?: boolean, pid?: number}} Agente
  *   `cambios`: ficheros que tocó; `commit`: si se pudieron commitear en su rama (el hook del repo
  *   puede no dejar: entonces se quedan en el worktree)
  */

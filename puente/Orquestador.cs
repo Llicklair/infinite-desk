@@ -9,7 +9,7 @@ namespace InfiniteDesk.Puente;
 
 static class Orquestador
 {
-    public static readonly HashSet<string> Ordenes = ["estado", "accion", "lanzar", "descartar", "abrir", "traza", "instalarGb", "arreglado", "reabrir", "hablar", "recordar", "recuerdos", "olvidar", "video", "atlas", "atlasRecordar"];
+    public static readonly HashSet<string> Ordenes = ["estado", "accion", "lanzar", "descartar", "abrir", "traza", "instalarGb", "arreglado", "reabrir", "hablar", "recordar", "recuerdos", "olvidar", "video", "atlas", "atlasRecordar", "revisar", "integrar"];
 
     public static async Task<(bool ok, JsonElement? datos, string? error)> Correr(string raiz, string[] args)
     {

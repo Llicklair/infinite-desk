@@ -6,6 +6,8 @@
 //   node tools/orquestador.mjs accion <pull|fetch> <repo> [repo ...]
 //   node tools/orquestador.mjs lanzar <claude|codex|gemini> <tarea en base64> <repo> [repo ...]
 //   node tools/orquestador.mjs descartar <id>     (borra su worktree y su rama)
+//   node tools/orquestador.mjs revisar <id>       (sus commits, qué cambió y el diff, para revisarlo en el mundo)
+//   node tools/orquestador.mjs integrar <id>      (merge --no-ff en la rama del repo; con el repo limpio y sin conflictos)
 //   node tools/orquestador.mjs abrir <id>         (su worktree en una ventana nueva de VS Code)
 //   node tools/orquestador.mjs traza <id>         (la traza legible de un fallo capturado por gb)
 //   node tools/orquestador.mjs instalarGb         (galaxy-brain con pip: de tu carpeta o de GitHub)
@@ -19,7 +21,7 @@
 // Los repos se nombran por su carpeta y tienen que estar en la carpeta de proyectos: quien llama
 // no elige rutas. Los agentes, uno por repo, con tools/agente.mjs en segundo plano.
 import { execFile, spawn } from "node:child_process";
-import { existsSync, lstatSync, rmSync, rmdirSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, readFileSync, rmSync, rmdirSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -313,6 +315,74 @@ async function descartar(id) {
   return { id, descartado: true };
 }
 
+/**
+ * Revisar lo que hizo un agente sin salir del mundo: sus commits, qué ficheros cambió, el diff
+ * (recortado si es enorme), lo último de su consola, y en qué rama y cómo está el repo (para
+ * integrarlo). Uso real: "cerrar el círculo de los agentes".
+ * @param {string} id
+ */
+async function revisar(id) {
+  const a = leerAgentes().find((x) => x.id === id);
+  if (!a) throw new Error(`no agent ${id}`);
+  const ruta = repos().get(a.repo);
+  if (!ruta) throw new Error(`${a.repo} is no longer in the projects folder`);
+  const [rama, sucio, log, stat, diff] = await Promise.all([
+    correr("git", ["branch", "--show-current"], { cwd: ruta }),
+    correr("git", ["status", "--porcelain"], { cwd: ruta }),
+    correr("git", ["log", "--format=%h %s", `HEAD..${a.rama}`], { cwd: ruta }),
+    correr("git", ["diff", "--stat", `HEAD...${a.rama}`], { cwd: ruta }),
+    correr("git", ["diff", `HEAD...${a.rama}`], { cwd: ruta, ms: 30000 }),
+  ]);
+  let consola = "";
+  try { consola = readFileSync(`${a.worktree}.consola.log`, "utf8").split("\n").slice(-25).join("\n"); } catch { /* sin consola */ }
+  const MAX = 150000;
+  return {
+    id, repo: a.repo, rama: a.rama, tarea: a.tarea, estado: a.estado,
+    enRama: rama.salida.trim() || "(detached)", limpio: !sucio.salida.trim(),
+    commits: log.salida.split("\n").filter(Boolean),
+    stat: stat.salida.trim(),
+    diff: diff.salida.length > MAX ? `${diff.salida.slice(0, MAX)}\n… (the diff goes on: open it in VS Code to see it all)` : diff.salida,
+    consola,
+  };
+}
+
+/**
+ * Integrar lo de un agente en la rama en la que está el repo: merge --no-ff (queda claro qué vino
+ * del agente). Solo con el repo sin cambios a medias; con conflictos, se deshace y se dice. Hecho,
+ * se quitan su worktree y su rama (ya está dentro).
+ * @param {string} id
+ */
+async function integrar(id) {
+  const a = leerAgentes().find((x) => x.id === id);
+  if (!a) throw new Error(`no agent ${id}`);
+  const ruta = repos().get(a.repo);
+  if (!ruta) throw new Error(`${a.repo} is no longer in the projects folder`);
+  if (a.estado === "trabajando") throw new Error("it's still working: wait until it's done");
+  const sucio = await correr("git", ["status", "--porcelain"], { cwd: ruta });
+  if (sucio.salida.trim()) throw new Error(`${a.repo} has uncommitted changes: commit or stash them first, then merge`);
+  const pendientes = await correr("git", ["log", "--format=%h", `HEAD..${a.rama}`], { cwd: ruta });
+  if (!pendientes.salida.trim()) throw new Error("nothing to merge: its branch has no commits beyond yours");
+  const rama = (await correr("git", ["branch", "--show-current"], { cwd: ruta })).salida.trim();
+  const fusion = await correr("git", ["merge", "--no-ff", "--no-edit", a.rama, "-m", `Merge ${a.rama}: ${a.tarea.split("\n")[0].slice(0, 70)}`], { cwd: ruta, ms: 60000 });
+  if (!fusion.ok) {
+    await correr("git", ["merge", "--abort"], { cwd: ruta });
+    throw new Error(`conflicts merging ${a.rama} into ${rama}: nothing was changed; open it and merge by hand`);
+  }
+  const commit = (await correr("git", ["rev-parse", "--short", "HEAD"], { cwd: ruta })).salida.trim();
+  // Ya está dentro: fuera su worktree y su rama (como al descartar, sin perder nada).
+  for (const d of ENLAZADAS) {
+    const p = join(a.worktree, d);
+    try { if (lstatSync(p).isSymbolicLink()) rmdirSync(p); } catch { /* no estaba */ }
+  }
+  await correr("git", ["worktree", "remove", "--force", a.worktree], { cwd: ruta });
+  await correr("git", ["branch", "-d", a.rama], { cwd: ruta });
+  try { rmdirSync(a.worktree); } catch { /* git dejó algo o ya no estaba */ }
+  rmSync(`${a.worktree}.consola.log`, { force: true });
+  writeFileSync(fichaDeAgente(id), JSON.stringify({ ...a, estado: "integrado", fin: a.fin ?? new Date().toISOString() }, null, 2));
+  anotar([{ ts: new Date().toISOString(), tipo: "agente-integrado", repo: a.repo, texto: `Merged ${a.rama} into ${rama} (${commit})`, ref: id }]);
+  return { id, integrado: true, en: rama, commit };
+}
+
 /** @param {string} id */
 function abrir(id) {
   const a = leerAgentes().find((x) => x.id === id);
@@ -327,6 +397,8 @@ try {
     : orden === "accion" ? await accion(resto[0], resto.slice(1))
     : orden === "lanzar" ? lanzar(resto[0], resto[1], resto.slice(2))
     : orden === "descartar" ? await descartar(resto[0])
+    : orden === "revisar" ? await revisar(resto[0])
+    : orden === "integrar" ? await integrar(resto[0])
     : orden === "abrir" ? abrir(resto[0])
     : orden === "traza" ? await traza(resto[0])
     : orden === "instalarGb" ? await instalarGb()

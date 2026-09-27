@@ -1059,7 +1059,8 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
   }
   const maestra = ui.maestra && holograma
     ? crearMaestra(ui.maestra,
-      (args) => (demoMaestra ? Promise.resolve(args[0] === "estado" ? { ok: true, datos: estadoDeDemostracion(nombres) } : { ok: false, error: "demo" })
+      (args) => (demoMaestra ? Promise.resolve(args[0] === "estado" ? { ok: true, datos: estadoDeDemostracion(nombres) }
+        : args[0] === "revisar" ? { ok: true, datos: revisionDeDemostracion(nombres) } : { ok: false, error: "demo" })
         : puente ? puente.orquestador(args) : Promise.resolve({ ok: false, error: "no bridge" })),
       (e) => { holograma.actualizar(e); aplicarFallos(e.fallos ?? []); actividad = e.actividad ?? []; },
       () => { if (!mirar.isLocked && !escribiendo) ui.portada.hidden = false; },
@@ -1763,6 +1764,22 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
 
     renderer.render(escena, camara);
   });
+}
+
+/**
+ * La revisión de un agente de mentira (`?vista=demo&maestra=agentes`, Review): para verla sin manos.
+ * @param {string[]} repos
+ */
+function revisionDeDemostracion(repos) {
+  return {
+    id: "b", repo: repos[1] ?? "repo", rama: "agente/20260926-1150-add-a-readme-section", tarea: "Add a README section about the architecture",
+    estado: "hecho", enRama: "main", limpio: true, commits: ["3f2a91c docs: architecture section in the README"],
+    stat: " README.md | 14 ++++++++++++--\n 1 file changed, 12 insertions(+), 2 deletions(-)",
+    diff: ["diff --git a/README.md b/README.md", "--- a/README.md", "+++ b/README.md", "@@ -40,6 +40,16 @@ How to run it",
+      " npm run terminado", "-## Notes", "-Work in progress.", "+## Architecture", "+", "+A pure core (tested in Node), the 3D world (Three.js) and a native bridge (C#).",
+      "+The bridge captures windows with WGC and talks to the world over a local WebSocket."].join("\n"),
+    consola: "Reading README.md…\nWriting the architecture section…\nCommitted: docs: architecture section in the README",
+  };
 }
 
 /**

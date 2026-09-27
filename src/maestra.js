@@ -73,6 +73,12 @@ export function crearMaestra(panel, orquestador, alEstado, alCerrar, regenerar, 
   const filtro = { repo: null, grupo: null };
   /** @type {import("./fallos.js").Fallo | null} el fallo abierto en la pestaña Errors */
   let fallo = null;
+  /**
+   * El agente que se está revisando (pestaña Agents): lo que hizo, para integrarlo o descartarlo
+   * sin salir del mundo (uso real: "cerrar el círculo de los agentes").
+   * @type {{id: string, cargando: boolean, datos: any, error?: string} | null}
+   */
+  let revision = null;
   /** @type {Map<string, string>} trazas ya pedidas, por id */
   const trazas = new Map();
   /** @type {Set<string>} */
@@ -262,7 +268,68 @@ export function crearMaestra(panel, orquestador, alEstado, alCerrar, regenerar, 
     return mal.length ? `${r.length - mal.length} ok · failed: ${mal.map((x) => `${x.repo} (${x.salida})`).join("; ")}` : `${r.length} repo(s) ok`;
   }
 
+  /** @param {string} id */
+  async function revisar(id) {
+    revision = { id, cargando: true, datos: null };
+    pintar();
+    const r = await orquestador(["revisar", id]);
+    if (revision?.id !== id) return;
+    revision = r.ok ? { id, cargando: false, datos: r.datos } : { id, cargando: false, datos: null, error: r.error };
+    pintar();
+  }
+
+  /** El diff, en colores: lo añadido en verde, lo quitado en rojo, los saltos en azul. @param {string} diff */
+  function pintarDiff(diff) {
+    const pre = el("pre", "diff");
+    for (const linea of diff.split("\n")) {
+      const clase = linea.startsWith("+++") || linea.startsWith("---") ? "fichero"
+        : linea.startsWith("+") ? "mas" : linea.startsWith("-") ? "menos" : linea.startsWith("@@") ? "salto"
+        : linea.startsWith("diff ") ? "fichero" : undefined;
+      pre.append(el("span", clase, `${linea}\n`));
+    }
+    return pre;
+  }
+
+  /** Lo que hizo un agente: sus commits, qué cambió, el diff y su consola; integrar o descartar. */
+  function vistaDeRevision() {
+    const d = el("div", "revision");
+    const r = /** @type {NonNullable<typeof revision>} */ (revision);
+    d.append(boton("← Back to the agents", () => { revision = null; pintar(); }));
+    if (r.cargando) { d.append(el("p", "nota", "Reading what it did…")); return d; }
+    if (!r.datos) { d.append(el("p", "error", `Couldn't read it: ${r.error ?? "unknown"}`)); return d; }
+    const x = r.datos;
+    d.append(el("h3", undefined, `${x.repo} · ${x.rama}`), el("div", "tarea", x.tarea));
+    d.append(el("p", "nota", x.commits.length ? `${x.commits.length} commit(s): ${x.commits.join(" · ")}` : "No commits beyond your branch: nothing to merge."));
+    if (x.stat) d.append(el("pre", "stat", x.stat));
+    const acciones = el("div", "acciones");
+    if (x.commits.length) {
+      const integrar = boton(`Merge into ${x.enRama}`, () => {
+        if (!confirm(`Merge ${x.rama} into ${x.enRama} of ${x.repo}? (merge --no-ff; its worktree and branch are removed after)`)) return;
+        revision = null;
+        void orden(["integrar", x.id], "Merging…", (/** @type {any} */ res) => `Merged into ${res.en} (${res.commit}). Its worktree and branch are gone: it's in your code now.`);
+      }, "principal");
+      if (!x.limpio) {
+        /** @type {HTMLButtonElement} */ (integrar).disabled = true;
+        d.append(el("p", "error", `${x.repo} has uncommitted changes: commit or stash them to merge.`));
+      }
+      acciones.append(integrar);
+    }
+    acciones.append(
+      boton("Open in VS Code", () => void orden(["abrir", x.id], "Opening…", () => `Opened ${x.rama} in a new VS Code window`)),
+      boton("Discard", () => {
+        if (!confirm(`Discard ${x.rama}? Its worktree and branch are deleted (unmerged work is lost).`)) return;
+        revision = null;
+        void orden(["descartar", x.id], "Discarding…", () => `Discarded ${x.rama}`);
+      }),
+    );
+    d.append(acciones);
+    if (x.diff) d.append(pintarDiff(x.diff));
+    if (x.consola) d.append(el("h3", undefined, "Its console (last lines)"), el("pre", "consola", x.consola));
+    return d;
+  }
+
   function agentes() {
+    if (revision) return vistaDeRevision();
     const d = el("div", "agentes");
     if (!estado) return d;
     // Lanzar: proveedor, tarea y los repos elegidos en la pestaña Repos.
@@ -298,8 +365,8 @@ export function crearMaestra(panel, orquestador, alEstado, alCerrar, regenerar, 
     d.append(f);
 
     const lista = el("div", "lista");
-    lista.append(el("h3", undefined, `Agents (${estado.agentes.filter((a) => a.estado !== "descartado").length})`));
-    for (const a of estado.agentes.filter((x) => x.estado !== "descartado")) {
+    lista.append(el("h3", undefined, `Agents (${estado.agentes.filter((a) => a.estado !== "descartado" && a.estado !== "integrado").length})`));
+    for (const a of estado.agentes.filter((x) => x.estado !== "descartado" && x.estado !== "integrado")) {
       const fila = el("div", `agente ${a.estado}`);
       const hecho = a.estado === "hecho" ? (a.cambios ? (a.commit ? `✓ ${a.cambios} file(s) committed` : `⚠ ${a.cambios} file(s), not committed`) : "✓ no changes")
         : a.estado === "trabajando" ? "● working…" : "✗ failed";
@@ -309,6 +376,7 @@ export function crearMaestra(panel, orquestador, alEstado, alCerrar, regenerar, 
         el("div", "rama", `${a.rama} · ${hecho}`),
       );
       const acciones = el("div", "acciones");
+      if (a.estado === "hecho" && a.commit) acciones.append(boton("Review", () => void revisar(a.id), "principal"));
       acciones.append(
         boton("Open in VS Code", () => void orden(["abrir", a.id], "Opening…", () => `Opened ${a.rama} in a new VS Code window`)),
         boton("Discard", () => {
