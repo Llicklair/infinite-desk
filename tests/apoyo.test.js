@@ -79,6 +79,13 @@ test("base64: UTF-8 de ida y vuelta, también largo", () => {
   assert.equal(Buffer.from(base64(t), "base64").toString("utf8"), t);
 });
 
+test("dictado: lo que llega por voz se marca, con sus otras lecturas, y el espíritu sabe tratarlo", () => {
+  const c = conversacion([{ quien: "yo", texto: "ponme música en la cabaña", voz: true, alternativas: ["ponme música en la campaña"] }, { quien: "yo", texto: "escrito" }]);
+  assert.match(c, /Persona \(por voz\): ponme música en la cabaña \[otras lecturas del dictado: ponme música en la campaña\]/);
+  assert.match(c, /Persona: escrito/);
+  assert.ok(instrucciones([], "hoy").includes("(por voz)"));
+});
+
 test("voz: sin markdown, enlaces ni emojis", () => {
   assert.equal(paraVoz("**Hola** 🙂, mira [esto](http://x) y `aquello`\n\n# ya"), "Hola , mira esto y aquello ya");
 });

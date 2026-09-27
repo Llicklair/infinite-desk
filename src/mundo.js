@@ -812,6 +812,7 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
       hacer: (a) => void hacerDeKiri(a),
       anotar: (t) => puente?.anotar(t),
       oido: () => (puente?.conectado ? puente.escuchar : null),
+      nombres: () => ["Kiri", "Atlas", "palantír", "galaxy-brain", ...nombres],
     })
     : null;
   /** Lo que corta la vista nativa de cada pantalla que va siempre por el puente. @type {Map<Pantalla, () => void>} */
@@ -881,6 +882,7 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
       hacer: (a) => void hacerDeAtlas(a),
       anotar: (t) => puente?.anotar(t),
       oido: () => (puente?.conectado ? puente.escuchar : null),
+      nombres: () => ["Kiri", "Atlas", "palantír", "galaxy-brain", ...nombres],
     })
     : null;
   function abrirAtlas() {

@@ -152,7 +152,7 @@ app.Map("/oido", async (HttpContext ctx) =>
             if (Texto(m, "t") == "parcial" && escuchas.TryGetValue(escucha, out var q))
                 await Enviar(q.mundo, new { evento = "oido", escucha, parcial = Texto(m, "texto") });
             else if (Texto(m, "t") == "fin" && escuchas.TryRemove(escucha, out var f))
-                await Enviar(f.mundo, new { id = f.id, ok = true, texto = Texto(m, "texto"), error = Texto(m, "error"), eventos = Texto(m, "eventos") });
+                await Enviar(f.mundo, new { id = f.id, ok = true, texto = Texto(m, "texto"), error = Texto(m, "error"), eventos = Texto(m, "eventos"), alternativas = Texto(m, "alternativas") });
         }
     }
     catch (WebSocketException) { /* se cerró Chrome */ }

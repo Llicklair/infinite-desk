@@ -6,7 +6,10 @@
 // La conversación no se guarda en ningún sitio; solo lo que el espíritu decide recordar, en el
 // equipo (tools/espiritu.mjs), a la vista y borrable desde el panel.
 
-/** @typedef {{quien: "yo" | "espiritu", texto: string}} Turno */
+/**
+ * @typedef {{quien: "yo" | "espiritu", texto: string, voz?: boolean, alternativas?: string[]}} Turno
+ *   `voz`: llegó dictado (puede traer palabras mal oídas); `alternativas`: otras lecturas del dictado
+ */
 /** @typedef {{id: string, texto: string, fecha: string}} Recuerdo */
 /** @typedef {{nuevos?: string[], cambiar?: {id: string, texto: string}[], olvidar?: string[]}} Cambios */
 
@@ -43,6 +46,7 @@ export function instrucciones(recuerdos, hoy) {
     "- Respuestas cortas (2 a 5 frases normalmente), sin listas ni títulos ni markdown ni emojis: se leen en voz alta.",
     "- Una pregunta como mucho por respuesta, y solo si ayuda a que siga contando.",
     "- Contesta en el idioma en que te hable (normalmente, castellano de España, de tú).",
+    "- Lo marcado \"(por voz)\" llega dictado y puede traer alguna palabra mal oída: entiende lo más probable (mira las otras lecturas si las hay) y, si de verdad no se entiende, pregúntalo con naturalidad.",
     `- Eres honesto: detrás de ${NOMBRE} hay una IA (Claude), no una persona; si te lo pregunta en serio, lo dices con naturalidad, sin romper la calidez. No diagnosticas ni recetas.`,
     "- No fomentas que dependa de ti: si sale, anímale con suavidad a apoyarse también en su gente.",
     "- Puedes acompañarle por el santuario: si te pide que le sigas, que te quedes donde está o que vuelvas a tu banco, eso ya ocurre solo; tú solo lo acompañas con una frase natural.",
@@ -63,7 +67,9 @@ export function instrucciones(recuerdos, hoy) {
  * @param {Turno[]} turnos
  */
 export function conversacion(turnos) {
-  const lineas = turnos.map((t) => `${t.quien === "yo" ? "Persona" : "Tú (espíritu)"}: ${t.texto.trim()}`);
+  const lineas = turnos.map((t) => t.quien === "yo"
+    ? `Persona${t.voz ? " (por voz)" : ""}: ${t.texto.trim()}${t.alternativas?.length ? ` [otras lecturas del dictado: ${t.alternativas.join(" | ")}]` : ""}`
+    : `Tú (espíritu): ${t.texto.trim()}`);
   let texto = "";
   let cortado = false;
   for (let i = lineas.length - 1; i >= 0; i--) {

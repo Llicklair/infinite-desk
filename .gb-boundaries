@@ -285,3 +285,9 @@ audio       -/-> puente
 
 # El oído (oido): la página del Chrome escondido que transcribe; no importa nada del mundo.
 FUERA = oido
+
+# Corregir lo dictado (dictado) es núcleo puro.
+dictado     -/-> charla
+dictado     -/-> mundo
+dictado     -/-> audio
+dictado     -/-> puente

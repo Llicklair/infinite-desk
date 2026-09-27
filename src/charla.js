@@ -6,6 +6,7 @@
 // se puede borrar. Si lo dicho suena a crisis, además de lo que diga, sale el 024. "Sígueme",
 // "quédate aquí" y "vuelve" lo mueven (src/apoyo.js). La conversación vive solo aquí, en memoria.
 import { NOMBRE, base64, ordenDeMovimiento, paraVoz, pareceCrisis } from "./apoyo.js";
+import { corregirNombres } from "./dictado.js";
 import { PORQUE, Reconocer, abrirMic, guardarMic, idiomaDeVoz, micGuardado, micQueOye, micros, nombreDeMic, oidoDelPuente as hayOido, permiso, sinChrome, unaFrase } from "./audio.js";
 
 /** @typedef {import("./apoyo.js").Turno} Turno */
@@ -48,6 +49,7 @@ export const KIRI = {
  *   hacer: (accion: any) => void,
  *   anotar?: (texto: string) => void,
  *   oido?: () => import("./puente.js").Puente["escuchar"] | null,
+ *   nombres?: () => string[],
  * }} op `oido`: el oído del puente (un Chrome que transcribe), si está; si no, el del navegador `hacer`: lo que decide hacer (Kiri: música, un vídeo, el cielo; Atlas: abrir repos, ventanas…)
  */
 export function crearCharla(panel, persona, op) {
@@ -232,7 +234,7 @@ export function crearCharla(panel, persona, op) {
    * intento queda en el registro del puente (qué micrófono, qué eventos, qué error): uso real,
    * "pulso V, hablo y dice I didn't catch anything" sin más pista.
    * @param {(parcial: string) => void} mientras lo que va entendiendo
-   * @returns {Promise<string | null>}
+   * @returns {Promise<{texto: string, alternativas: string[]} | null>}
    */
   async function escuchar(mientras) {
     if (!Reconocer) {
@@ -269,7 +271,11 @@ export function crearCharla(panel, persona, op) {
     microfono.classList.remove("oyendo");
     op.anotar?.(`voz (${persona.nombre}, ${oidoDelPuente ? "oído Chrome" : "navegador"}, ${mic?.nombre ?? "sin micro"}): ${r.texto ? `entendido ${r.texto.length} letras` : `nada: ${r.error}`} [${r.eventos.join(" ")}]`);
     if (!r.texto && r.error && r.error !== "aborted") op.avisar(PORQUE[r.error] ?? `Couldn't listen: ${r.error}`);
-    return r.texto;
+    if (!r.texto) return null;
+    // Los nombres que el dictado no conoce (Kiri, Atlas, los repos), en su sitio (src/dictado.js).
+    const nombres = [persona.nombre, ...(op.nombres?.() ?? [])];
+    const alternativas = /** @type {string[]} */ ((/** @type {any} */ (r).alternativas ?? [])).map((a) => corregirNombres(a, nombres));
+    return { texto: corregirNombres(r.texto, nombres), alternativas };
   }
 
   // --- hablar -------------------------------------------------------------------------------------
@@ -285,12 +291,13 @@ export function crearCharla(panel, persona, op) {
 
   /**
    * Lo que uno dice: se apunta, se mira si hay que moverse o dar el 024, y contesta el espíritu.
-   * @param {string} texto @returns {Promise<string | null>} lo que contestó
+   * @param {string} texto @param {string[]} [alternativas] si llegó dictado, sus otras lecturas
+   * @returns {Promise<string | null>} lo que contestó
    */
-  async function enviar(texto) {
+  async function enviar(texto, alternativas) {
     texto = texto.trim();
     if (!texto || pensando) return null;
-    turnos.push({ quien: "yo", texto });
+    turnos.push(alternativas ? { quien: "yo", texto, voz: true, alternativas } : { quien: "yo", texto });
     sinRecordar++;
     if (pareceCrisis(texto)) crisis.hidden = false;
     const orden = ordenDeMovimiento(texto);
@@ -331,7 +338,7 @@ export function crearCharla(panel, persona, op) {
     if (oido) { oido.parar(); return; }
     const dicho = await escuchar((p) => (entrada.value = p));
     entrada.value = "";
-    if (dicho) void enviar(dicho);
+    if (dicho) void enviar(dicho.texto, dicho.alternativas);
   });
 
   /** Guardar lo que merece recordar de lo hablado (en segundo plano). */
@@ -367,8 +374,8 @@ export function crearCharla(panel, persona, op) {
       op.avisar("🎙 Listening… (V again to stop)");
       const dicho = await escuchar((p) => op.avisar(`🎙 ${p}`));
       if (!dicho) return; // el porqué ya lo dijo escuchar (antes este aviso lo tapaba)
-      op.avisar(`You: ${dicho}`);
-      const r = await enviar(dicho);
+      op.avisar(`You: ${dicho.texto}`);
+      const r = await enviar(dicho.texto, dicho.alternativas);
       if (r) op.avisar(`${persona.nombre}: ${r}`);
     },
     /** Al irse de su mundo: se cierra el panel, se calla, deja de escuchar y recuerda lo hablado. */

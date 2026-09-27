@@ -34,7 +34,7 @@ const REINTENTO_MS = 3000;
  *   abrirUrl(url: string): Promise<string | null>,
  *   abrirWeb(url: string): Promise<{hwnd: number, titulo: string} | {error: string}>,
  *   anotar(texto: string): void,
- *   escuchar(op: {micro: string, idioma: string}, mientras: (parcial: string) => void): {promesa: Promise<{texto: string | null, error: string | null, eventos: string[]}>, parar: () => void},
+ *   escuchar(op: {micro: string, idioma: string}, mientras: (parcial: string) => void): {promesa: Promise<{texto: string | null, error: string | null, eventos: string[], alternativas?: string[]}>, parar: () => void},
  *   orquestador(args: string[]): Promise<{ok: boolean, datos?: any, error?: string}>,
  *   alAgentes(f: (m: EstadoAgentes) => void): void,
  *   alLista(f: (titulo: string) => void): void,
@@ -302,7 +302,7 @@ export function crearPuente(tituloMundo) {
       const tiempo = new Promise((r) => setTimeout(() => r({ ok: false, error: "the listener took too long" }), 40000));
       const promesa = Promise.race([pedir({ op: "escuchar", escucha, micro: op.micro, idioma: op.idioma }), tiempo]).then((/** @type {any} */ r) => {
         parciales.delete(escucha);
-        return { texto: r.ok && r.texto ? String(r.texto) : null, error: r.ok ? (r.error ?? (r.texto ? null : "no-speech")) : String(r.error ?? "unknown"), eventos: String(r.eventos ?? "").split(" ").filter(Boolean) };
+        return { texto: r.ok && r.texto ? String(r.texto) : null, error: r.ok ? (r.error ?? (r.texto ? null : "no-speech")) : String(r.error ?? "unknown"), eventos: String(r.eventos ?? "").split(" ").filter(Boolean), alternativas: String(r.alternativas ?? "").split(" || ").filter(Boolean) };
       });
       return { promesa, parar: () => void pedir({ op: "pararEscucha", escucha }) };
     },

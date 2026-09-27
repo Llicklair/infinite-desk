@@ -20,7 +20,8 @@ function conectar() {
     if (m.t === "escuchar") void escuchar(m.escucha, m.micro ?? "", m.idioma ?? "es-ES", enviar);
     if (m.t === "parar") enMarcha.get(m.escucha)?.stop();
   });
-  ws.addEventListener("close", () => setTimeout(conectar, 2000));
+  // Si el puente se reinicia, se recarga la página entera (y con ella el oído que haya ahora).
+  ws.addEventListener("close", () => setTimeout(() => location.reload(), 2000));
   document.title = "infinite-desk · oído";
 }
 
@@ -30,8 +31,10 @@ function conectar() {
  */
 async function escuchar(escucha, micro, idioma, enviar) {
   const eventos = /** @type {string[]} */ ([]);
+  /** @type {string[]} */
+  let otras = [];
   /** @param {string} texto @param {string | null} error */
-  const fin = (texto, error) => enviar({ t: "fin", escucha, texto, error, eventos: eventos.join(" ") });
+  const fin = (texto, error) => enviar({ t: "fin", escucha, texto, error, eventos: eventos.join(" "), alternativas: otras.join(" || ") });
   if (!Reconocer) return fin("", "no speech recognition in this browser");
   /** @type {MediaStream | null} */
   let flujo = null;
@@ -50,7 +53,10 @@ async function escuchar(escucha, micro, idioma, enviar) {
   // Continuo: una pausa al respirar no corta la frase. Se acaba tras 1,5 s sin nada nuevo después de
   // haber hablado, al pulsar V otra vez (parar) o a los 30 s.
   r.continuous = true;
+  r.maxAlternatives = 3; // otras lecturas posibles: Kiri y Atlas eligen la que tenga sentido
   let final = "", parcial = "", error = /** @type {string | null} */ (null);
+  /** @type {string[]} */
+  let alternativas = [];
   let ultimo = 0;
   const inicio = performance.now();
   const vigia = setInterval(() => {
@@ -63,6 +69,9 @@ async function escuchar(escucha, micro, idioma, enviar) {
     final = "";
     parcial = "";
     for (const res of e.results) (res.isFinal ? (final += res[0].transcript) : (parcial += res[0].transcript));
+    // Las lecturas 2.ª y 3.ª de la frase entera (cada trozo final con su alternativa, o la mejor).
+    alternativas = [1, 2].map((k) => [...e.results].filter((res) => res.isFinal).map((res) => (res[k] ?? res[0]).transcript).join("").trim())
+      .filter((a, i, todas) => a && a !== final.trim() && todas.indexOf(a) === i);
     if (!eventos.includes("result")) eventos.push("result");
     ultimo = performance.now();
     enviar({ t: "parcial", escucha, texto: final + parcial });
@@ -74,6 +83,7 @@ async function escuchar(escucha, micro, idioma, enviar) {
     enMarcha.delete(escucha);
     for (const t of flujo?.getTracks() ?? []) t.stop();
     const texto = (final || parcial).trim();
+    otras = alternativas;
     fin(texto, texto ? null : error ?? (eventos.includes("speechstart") ? "nomatch" : "no-speech"));
   };
   const pista = flujo.getAudioTracks()[0];
