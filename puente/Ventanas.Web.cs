@@ -53,7 +53,9 @@ static partial class Ventanas
         if (nueva == IntPtr.Zero) return (IntPtr.Zero, "", "the window didn't show up");
         await Task.Delay(400);
         AtrasYMundoDelante(nueva);
-        return (nueva, Titulo(nueva), null);
+        var titulo = Titulo(nueva);
+        EsWeb(nueva); // fuera de los monitores mientras el mundo esté abierto: sin recuadro amarillo encima
+        return (nueva, titulo, null);
     }
 
     /// <summary>

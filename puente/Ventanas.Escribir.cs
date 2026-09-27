@@ -31,6 +31,7 @@ static partial class Ventanas
             if (mundo == IntPtr.Zero || !IsWindow(mundo)) return "the space hasn't connected to the bridge yet: wait a moment";
             if (mundo == h) return "that window is already in front: go back to the space and press Enter";
             if (IsIconic(h)) ShowWindow(h, SW_SHOWNOACTIVATE); // minimizada no se pinta
+            Desaparcar(h); // a su sitio detrás del mundo: la rueda la necesita en pantalla (Ventanas.Aparcadas.cs)
             Limpiar(h);
             // Si estaba escondida, mientras se escribe vuelve a la normalidad DETRÁS del mundo, y al
             // salir se esconde otra vez (no se queda abierta: "cada vez que interactúo con una
@@ -69,6 +70,7 @@ static partial class Ventanas
             PonerNoActivable(mundo, false);
             Activar(mundo);
         }
+        Aparcar(h); // si es una web de los asistentes, fuera de los monitores otra vez
         // Se vuelve a esconder DESPUÉS de activar el mundo: escondida mientras aún estaba activa,
         // al perder el foco Chromium le quitaba el siempre-encima (medido).
         if (!volverAEsconder) return;

@@ -37,6 +37,7 @@ static partial class Ventanas
         {
             SalirSinCerrojo();
             if (!IsWindow(mundo)) return;
+            DesaparcarTodas(); // antes de minimizar nada: minimizada fuera de los monitores, volvería ahí
             ShowWindow(mundo, SW_MINIMIZE);
             minimizadasPorEsc.Clear();
             minimizadasPorEsc.UnionWith(escondidas);
@@ -55,6 +56,7 @@ static partial class Ventanas
         lock (cerrojo)
         {
             mundo = IntPtr.Zero;
+            DesaparcarTodas();
             minimizadasPorEsc.Clear();
             foreach (var h in escondidas.ToArray()) Mostrar(h, minimizar: true);
         }
@@ -83,6 +85,7 @@ static partial class Ventanas
                 Registro.Anotar($"de vuelta al mundo: {c} \"{Titulo(c)}\" estaba minimizada, escondida viva");
             }
             minimizadasPorEsc.Clear(); // solo al volver: después, si se abre una a mano, se respeta
+            AparcarTodas();
         }
     }
 }

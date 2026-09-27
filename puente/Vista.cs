@@ -52,15 +52,25 @@ static class Vista
     static async Task Servir(WebSocket ws, IntPtr h, CancellationTokenSource fin)
     {
         Preparar();
-        var item = Elemento(h);
         var señal = new SemaphoreSlim(0, 1);
-        var pool = Direct3D11CaptureFramePool.CreateFreeThreaded(dispositivo!, DirectXPixelFormat.B8G8R8A8UIntNormalized, 2, item.Size);
-        pool.FrameArrived += (_, _) => { if (señal.CurrentCount == 0) try { señal.Release(); } catch (SemaphoreFullException) { } };
-        using var sesion = pool.CreateCaptureSession(item);
-        try { sesion.IsCursorCaptureEnabled = false; } catch { /* Windows 10 antiguo: sale el cursor */ }
-        item.Closed += (_, _) => { try { señal.Release(); } catch (SemaphoreFullException) { } };
-        sesion.StartCapture();
-        Ventanas.Despertar(h); // si no cambia nada, WGC no manda nada: un fotograma para empezar
+        GraphicsCaptureItem item = null!;
+        Direct3D11CaptureFramePool pool = null!;
+        GraphicsCaptureSession sesion = null!;
+        // Windows no deja EMPEZAR a capturar una ventana fuera de los monitores ("El parámetro no es
+        // correcto", medido); ya empezada, sigue aunque la saquen. Las webs aparcadas de los asistentes
+        // (Ventanas.Aparcadas.cs) vuelven a su sitio, detrás del mundo, solo mientras tanto.
+        Ventanas.EnSuSitio(h, () =>
+        {
+            item = Elemento(h);
+            pool = Direct3D11CaptureFramePool.CreateFreeThreaded(dispositivo!, DirectXPixelFormat.B8G8R8A8UIntNormalized, 2, item.Size);
+            pool.FrameArrived += (_, _) => { if (señal.CurrentCount == 0) try { señal.Release(); } catch (SemaphoreFullException) { } };
+            sesion = pool.CreateCaptureSession(item);
+            try { sesion.IsCursorCaptureEnabled = false; } catch { /* Windows 10 antiguo: sale el cursor */ }
+            item.Closed += (_, _) => { try { señal.Release(); } catch (SemaphoreFullException) { } };
+            sesion.StartCapture();
+            Ventanas.Despertar(h); // si no cambia nada, WGC no manda nada: un fotograma para empezar
+        });
+        using var _sesion = sesion;
 
         // Lo que se capturó y lo que ya tiene el mundo: se compara uno con otro por trozos.
         byte[] actual = [], enviado = [];

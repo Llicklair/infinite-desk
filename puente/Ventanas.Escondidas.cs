@@ -11,7 +11,8 @@
 // 2026-09-27). Quitarlo (IsBorderRequired) solo existe desde Windows 11. Probado y descartado:
 // sacarla de los monitores mientras está escondida deja el borde fuera de la vista, pero Chromium la
 // da por tapada y deja de pintar (de 55,7 a 0,7 imágenes/s); PrintWindow no pinta borde, pero cuesta
-// ~52 ms por imagen con una ventana de 2586x1466. Se deja el borde: la pantalla sigue en vivo.
+// ~52 ms por imagen con una ventana de 2586x1466. Se deja el borde: la pantalla sigue en vivo. Las
+// webs de los asistentes sí se pueden sacar (su Edge sigue pintando fuera): Ventanas.Aparcadas.cs.
 using System.Runtime.InteropServices;
 
 namespace InfiniteDesk.Puente;

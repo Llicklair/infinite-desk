@@ -5,6 +5,7 @@
 //   Ventanas.Mundo.cs      la ventana del mundo: presentarse, minimizarse (Esc), cerrarse
 //   Ventanas.Escribir.cs   escribir en una pantalla: entrar, salir, el ratón, diálogos, el vigilante
 //   Ventanas.Escondidas.cs minimizar una pantalla con el mundo abierto la esconde viva
+//   Ventanas.Aparcadas.cs  las webs de los asistentes, fuera de los monitores con el mundo abierto
 //   Ventanas.Nuevas.cs     que lo recién abierto (F, Enter en una isla) y lo minimizado lleguen a N
 //   Ventanas.Win32.cs      las llamadas a Windows
 //
