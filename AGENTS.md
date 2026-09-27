@@ -17,7 +17,7 @@ npm run noticias            # lo último sobre IA en Bluesky, Reddit, HN y Masto
 node tools/orquestador.mjs estado # la consola maestra por debajo: cuentas (Claude, Codex, Gemini, gh, galaxy-brain), repos, agentes, fallos y actividad (también accion/lanzar/descartar/abrir/traza/instalarGb, y hablar/recordar/recuerdos/olvidar del espíritu de la zona zen)
 node tools/gb.mjs           # dónde está galaxy-brain en esta máquina (GB=ruta, PATH, carpetas Scripts de Python, pipx); lo apunta en infinite-desk.local.json para el puente
 npm run build               # esbuild -> wallpaper/infinite-desk.js (script clásico, sin módulos)
-npm run terminado           # todo lo anterior + tools/comprobar.mjs + tools/humo.mjs (el mundo corre sin errores de JS) + tools/probar-zen.mjs: el criterio
+npm run terminado           # todo lo anterior + tools/comprobar.mjs + tools/humo.mjs (el mundo corre sin errores de JS) + tools/probar-anuncios.mjs (extensiones/saltar-anuncios: el Edge de las pantallas de Kiri y Atlas pulsa "Saltar" en los anuncios de YouTube que lo permiten) + tools/probar-zen.mjs: el criterio
 npm run probar-zen          # la zona zen sin manos: chocar con rocas y cabaña, saltar, sentarse, coger la taza, beber y dejarla
 npm run mundo               # servidor en localhost (solo si el navegador no captura desde file://)
 npm run puente              # dotnet build del puente nativo (ADR 0002): escribir dentro de las pantallas

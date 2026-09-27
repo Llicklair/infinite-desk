@@ -1,0 +1,14 @@
+{
+  "manifest_version": 3,
+  "name": "infinite-desk: skip YouTube ads when allowed",
+  "description": "Presses YouTube's own Skip button as soon as it shows up, in the screens the assistants open. Ads that can't be skipped still play.",
+  "version": "1.0",
+  "content_scripts": [
+    {
+      "matches": ["https://www.youtube.com/*", "https://m.youtube.com/*", "https://music.youtube.com/*"],
+      "js": ["saltar.js"],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ]
+}

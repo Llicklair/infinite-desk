@@ -50,7 +50,7 @@ for (const f of readdirSync(join(obra, "puente", "bin", "Release", TFM))) {
 // Solo lo versionado o por versionar (git ls-files, sin lo ignorado): así no se cuela nada de esta
 // máquina ni la marca (marca.js, ignorada hasta su visto bueno). Del mundo, además, lo construido.
 console.log("- copying the world, the tools and the pure core");
-const versionados = execFileSync("git", ["ls-files", "--cached", "--others", "--exclude-standard", "wallpaper", "tools", "src", "package.json", "LICENSE", "NOTICE", "README.md"], { cwd: raiz, encoding: "utf8" })
+const versionados = execFileSync("git", ["ls-files", "--cached", "--others", "--exclude-standard", "wallpaper", "tools", "src", "extensiones", "package.json", "LICENSE", "NOTICE", "README.md"], { cwd: raiz, encoding: "utf8" })
   .split("\n").filter(Boolean);
 for (const f of [...versionados, "wallpaper/infinite-desk.js", "wallpaper/oido.js"]) {
   mkdirSync(dirname(join(obra, f)), { recursive: true });

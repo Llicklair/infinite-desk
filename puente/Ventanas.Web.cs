@@ -17,7 +17,9 @@ static partial class Ventanas
     /// Abre <paramref name="url"/> (solo http/https) en el Edge de las pantallas y devuelve su
     /// ventana y su título, o el error. Tarda lo que tarde en aparecer (como mucho ~12 s).
     /// </summary>
-    public static async Task<(IntPtr hwnd, string titulo, string? error)> AbrirWeb(string? url)
+    /// <param name="extensiones">las extensiones del Edge de las pantallas (extensiones/ del repo:
+    /// saltar los anuncios de YouTube que lo permiten); solo cuentan si ese Edge no estaba ya abierto</param>
+    public static async Task<(IntPtr hwnd, string titulo, string? error)> AbrirWeb(string? url, string extensiones)
     {
         if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || (uri.Scheme != Uri.UriSchemeHttps && uri.Scheme != Uri.UriSchemeHttp))
             return (IntPtr.Zero, "", "only web links (http, https) can be opened");
@@ -31,10 +33,19 @@ static partial class Ventanas
         foreach (var a in new[] {
             $"--user-data-dir={perfil}", "--no-first-run", "--no-default-browser-check", "--new-window",
             // Que no deje de pintar tapado ni en segundo plano: la pantalla se ve en vivo.
-            "--disable-features=CalculateNativeWinOcclusion", "--disable-backgrounding-occluded-windows",
+            // Un solo --disable-features: Chromium solo hace caso al último. El segundo, para las
+            // extensiones de abajo (Chrome dejó de cargar --load-extension en 2025 si no se apaga;
+            // Edge 154 aún las carga sin eso, medido, pero por si lo sigue).
+            "--disable-features=CalculateNativeWinOcclusion,DisableLoadExtensionCommandLineSwitch", "--disable-backgrounding-occluded-windows",
             "--disable-renderer-backgrounding", "--disable-background-timer-throttling",
             "--autoplay-policy=no-user-gesture-required", "--window-size=1280,760", $"--app={uri.AbsoluteUri}" })
             psi.ArgumentList.Add(a);
+        // Las del repo, sin empaquetar (uso real: "que se dé al botón de saltar si el anuncio lo
+        // permite"). Solo si este Edge arranca ahora: si ya estaba abierto, la ventana nueva es suya.
+        var cargar = Directory.Exists(extensiones)
+            ? string.Join(",", Directory.GetDirectories(extensiones).Where(d => File.Exists(Path.Combine(d, "manifest.json"))))
+            : "";
+        if (cargar != "") psi.ArgumentList.Add($"--load-extension={cargar}");
         try { Process.Start(psi); }
         catch (Exception e) { return (IntPtr.Zero, "", e.Message); }
 

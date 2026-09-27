@@ -409,7 +409,7 @@ object? Responder(JsonElement m, WebSocket ws)
             var urlWeb = Texto(m, "url");
             _ = Task.Run(async () =>
             {
-                var (hw, tituloWeb, errorWeb) = await Ventanas.AbrirWeb(urlWeb);
+                var (hw, tituloWeb, errorWeb) = await Ventanas.AbrirWeb(urlWeb, Path.Combine(repo, "extensiones"));
                 Registro.Anotar($"abrir como pantalla {urlWeb}: {errorWeb ?? $"ok ({hw})"}");
                 await Enviar(ws, new { id, ok = errorWeb == null, hwnd = (long)hw, titulo = tituloWeb, error = errorWeb });
             });
