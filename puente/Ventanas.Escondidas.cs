@@ -4,6 +4,14 @@
 // que estoy compartiendo"). Escondida = viva y pintándose, pero invisible, atravesable por el
 // ratón, fuera de la barra de tareas y siempre encima (si algo opaco la tapara, Chromium la
 // congelaría). Se apunta en disco (regla 6).
+//
+// El recuadro amarillo: Windows 10 pinta un borde alrededor de toda ventana que se captura con WGC
+// (la vista directa, Vista.cs), por encima de todo y aunque la ventana sea invisible o esté tapada;
+// escondida, queda un recuadro vacío (uso real: "un recuadro amarillo que se queda vacío", medido
+// 2026-09-27). Quitarlo (IsBorderRequired) solo existe desde Windows 11. Probado y descartado:
+// sacarla de los monitores mientras está escondida deja el borde fuera de la vista, pero Chromium la
+// da por tapada y deja de pintar (de 55,7 a 0,7 imágenes/s); PrintWindow no pinta borde, pero cuesta
+// ~52 ms por imagen con una ventana de 2586x1466. Se deja el borde: la pantalla sigue en vivo.
 using System.Runtime.InteropServices;
 
 namespace InfiniteDesk.Puente;

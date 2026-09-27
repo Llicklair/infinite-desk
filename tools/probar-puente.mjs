@@ -87,104 +87,122 @@ async function rueda() {
 // Delante de verdad: si mientras tanto se usó otra ventana (uso real: Chrome encima del mundo), se
 // quedaba la rueda y la prueba fallaba sin que el puente tuviera la culpa.
 async function mundoDelante() { ps("delante", mundo); await espera(1200); }
+// Solo algunas partes (`npm run probar-puente -- rueda clic`): para buscar cuál deja algo de Windows
+// tocado (uso real, 2026-09-27: el selector de salida de audio de la barra dejó de abrirse un día de
+// muchas pasadas). Sin nombres, todas.
+const PARTES = ["rueda", "clic", "escondida", "esc", "n"];
+const pedidas = process.argv.slice(2);
+for (const p of pedidas) if (!PARTES.includes(p)) { console.error(`probar-puente: unknown part "${p}" (${PARTES.join(", ")})`); process.exit(1); }
+const parte = (/** @type {string} */ p) => pedidas.length === 0 || pedidas.includes(p);
 
 try {
   await mundoDelante();
   await op({ op: "titulo", hwnd });
 
-  console.log("wheel in Enter mode");
   let antes = desplazado();
-  const e1 = await op({ op: "entrar", hwnd });
-  await rueda();
-  comprobar("normal screen scrolls", e1.ok && desplazado() > antes, `${antes} -> ${desplazado()}${e1.ok ? "" : ` (enter: ${e1.error})`}`);
-  // Con otra ventana tapando justo el punto (uso real: un Chrome por encima se quedaba la rueda).
-  const tapa = spawn("powershell", ["-NoProfile", "-STA", "-ExecutionPolicy", "Bypass", "-File", join(aqui, "probar-puente.ps1"), "tapar", h], { stdio: "ignore" });
-  await espera(2500);
-  antes = desplazado();
-  await rueda();
-  comprobar("covered in the middle, it still scrolls", desplazado() > antes, `${antes} -> ${desplazado()}`);
-  tapa.kill();
-  // La vista directa (ADR 0005): al cambiar la ventana, llegan trozos con su tamaño.
-  const vista = new WebSocket(`ws://127.0.0.1:47800/vista?token=${token}&hwnd=${hwnd}`);
-  vista.binaryType = "arraybuffer";
-  /** @type {ArrayBuffer[]} */
-  const trozos = [];
-  vista.addEventListener("message", (e) => { trozos.push(/** @type {ArrayBuffer} */ (e.data)); vista.send("1"); });
-  await new Promise((r) => vista.addEventListener("open", r));
-  await rueda();
-  // Primer byte: 0 tal cual, 1 deflate (Vista.cs, Empaquetar); luego u16 ancho y alto.
-  /** @param {ArrayBuffer} datos */
-  const plano0 = (datos) => (new Uint8Array(datos)[0] === 1 ? inflateRawSync(new Uint8Array(datos, 1)) : Buffer.from(datos, 1));
-  const plano = trozos[0] ? plano0(trozos[0]) : null;
-  const [vw, vh] = plano ? [plano.readUInt16LE(0), plano.readUInt16LE(2)] : [0, 0];
-  comprobar("the direct view sends what changes", trozos.length > 0 && vw > 100 && vh > 100, `${trozos.length} message(s), ${vw}x${vh}`);
-  vista.close();
-  await op({ op: "salir" });
+  if (parte("rueda")) {
+    console.log("wheel in Enter mode");
+    const e1 = await op({ op: "entrar", hwnd });
+    await rueda();
+    comprobar("normal screen scrolls", e1.ok && desplazado() > antes, `${antes} -> ${desplazado()}${e1.ok ? "" : ` (enter: ${e1.error})`}`);
+    // Con otra ventana tapando justo el punto (uso real: un Chrome por encima se quedaba la rueda).
+    const tapa = spawn("powershell", ["-NoProfile", "-STA", "-ExecutionPolicy", "Bypass", "-File", join(aqui, "probar-puente.ps1"), "tapar", h], { stdio: "ignore" });
+    await espera(2500);
+    antes = desplazado();
+    await rueda();
+    comprobar("covered in the middle, it still scrolls", desplazado() > antes, `${antes} -> ${desplazado()}`);
+    tapa.kill();
+    // La vista directa (ADR 0005): al cambiar la ventana, llegan trozos con su tamaño.
+    const vista = new WebSocket(`ws://127.0.0.1:47800/vista?token=${token}&hwnd=${hwnd}`);
+    vista.binaryType = "arraybuffer";
+    /** @type {ArrayBuffer[]} */
+    const trozos = [];
+    vista.addEventListener("message", (e) => { trozos.push(/** @type {ArrayBuffer} */ (e.data)); vista.send("1"); });
+    await new Promise((r) => vista.addEventListener("open", r));
+    await rueda();
+    // Primer byte: 0 tal cual, 1 deflate (Vista.cs, Empaquetar); luego u16 ancho y alto.
+    /** @param {ArrayBuffer} datos */
+    const plano0 = (datos) => (new Uint8Array(datos)[0] === 1 ? inflateRawSync(new Uint8Array(datos, 1)) : Buffer.from(datos, 1));
+    const plano = trozos[0] ? plano0(trozos[0]) : null;
+    const [vw, vh] = plano ? [plano.readUInt16LE(0), plano.readUInt16LE(2)] : [0, 0];
+    comprobar("the direct view sends what changes", trozos.length > 0 && vw > 100 && vh > 100, `${trozos.length} message(s), ${vw}x${vh}`);
+    vista.close();
+    await op({ op: "salir" });
+  }
 
   // Enter y clic: la ventana real no asoma por encima del mundo ni un instante (uso real: "al hacer
   // Enter y clic las ventanas se superponen, como que flikean"). Chromium reactiva el mundo con
   // algunos clics aunque no sea activable: se hace a propósito antes de cada uno, y el puente tiene
   // que devolverle el teclado a la ventana sin que pase por delante. Otro proceso mira el apilado
   // sin parar mientras tanto.
-  console.log("Enter and click");
-  await mundoDelante();
-  // Mira mientras dura todo (entrar, los tooltips y los clics, ~25 s: cada "delante" es un PowerShell).
-  const vigia = spawn("powershell", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", join(aqui, "probar-puente.ps1"), "vigilar", `${h},${mundo},35000`]);
-  const vigiaAcaba = new Promise((r) => vigia.on("exit", r)); // desde ya: si acabase antes de esperarlo, no se sabría
-  let visto = "";
-  vigia.stdout.on("data", (d) => { visto += d; });
-  for (let i = 0; i < 80 && !visto.includes("listo"); i++) await espera(100);
-  const e3 = await op({ op: "entrar", hwnd });
-  /** @param {string} tipo @param {number} u @param {number} v @param {number} [botones] */
-  const raton = (tipo, u, v, botones = 0) => ws.send(JSON.stringify({ op: "raton", hwnd, tipo, u, v, boton: 0, botones, delta: 0 }));
-  for (let i = 0; i < 6; i++) {
-    // Parado encima un rato: sale el tooltip (una ventana nueva de la pantalla); luego se va.
-    raton("mover", 0.45, 0.5 + i * 0.02);
-    await espera(1400);
-    raton("mover", 0.55, 0.55);
-    ps("delante", mundo);
-    await espera(150);
-    raton("bajar", 0.5, 0.6, 1);
-    raton("subir", 0.5, 0.6);
-    await espera(350);
+  if (parte("clic")) {
+    console.log("Enter and click");
+    await mundoDelante();
+    // Mira mientras dura todo (entrar, los tooltips y los clics, ~25 s: cada "delante" es un PowerShell).
+    const vigia = spawn("powershell", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", join(aqui, "probar-puente.ps1"), "vigilar", `${h},${mundo},35000`]);
+    const vigiaAcaba = new Promise((r) => vigia.on("exit", r)); // desde ya: si acabase antes de esperarlo, no se sabría
+    let visto = "";
+    vigia.stdout.on("data", (d) => { visto += d; });
+    for (let i = 0; i < 80 && !visto.includes("listo"); i++) await espera(100);
+    const e3 = await op({ op: "entrar", hwnd });
+    /** @param {string} tipo @param {number} u @param {number} v @param {number} [botones] */
+    const raton = (tipo, u, v, botones = 0) => ws.send(JSON.stringify({ op: "raton", hwnd, tipo, u, v, boton: 0, botones, delta: 0 }));
+    for (let i = 0; i < 6; i++) {
+      // Parado encima un rato: sale el tooltip (una ventana nueva de la pantalla); luego se va.
+      raton("mover", 0.45, 0.5 + i * 0.02);
+      await espera(1400);
+      raton("mover", 0.55, 0.55);
+      ps("delante", mundo);
+      await espera(150);
+      raton("bajar", 0.5, 0.6, 1);
+      raton("subir", 0.5, 0.6);
+      await espera(350);
   }
   await op({ op: "salir" });
   await vigiaAcaba;
   const [, veces, de] = /encima (\d+) de (\d+)/.exec(visto) ?? [];
   comprobar("the window never shows over the space", e3.ok && veces === "0" && Number(de) > 1000,
     e3.ok ? `over it in ${veces ?? "?"} of ${de ?? "?"} looks` : `enter: ${e3.error}`);
+  }
 
-  ps("minimizar", h);
-  await espera(1200);
-  comprobar("minimized with the space open: hidden", ps("estado", h).startsWith("atraviesa encima alfa0"), ps("estado", h));
-  await mundoDelante();
-  antes = desplazado();
-  const e2 = await op({ op: "entrar", hwnd });
-  await espera(300);
-  await rueda();
-  comprobar("hidden screen scrolls", e2.ok && desplazado() > antes, `${antes} -> ${desplazado()}${e2.ok ? "" : ` (enter: ${e2.error})`}`);
-  await op({ op: "salir" });
-  await espera(600);
-  comprobar("leaving it: hidden again, still on top", ps("estado", h) === "atraviesa encima alfa0", ps("estado", h));
+  if (parte("escondida")) {
+    console.log("hidden screen");
+    ps("minimizar", h);
+    await espera(1200);
+    comprobar("minimized with the space open: hidden", ps("estado", h).startsWith("atraviesa encima alfa0"), ps("estado", h));
+    await mundoDelante();
+    antes = desplazado();
+    const e2 = await op({ op: "entrar", hwnd });
+    await espera(300);
+    await rueda();
+    comprobar("hidden screen scrolls", e2.ok && desplazado() > antes, `${antes} -> ${desplazado()}${e2.ok ? "" : ` (enter: ${e2.error})`}`);
+    await op({ op: "salir" });
+    await espera(600);
+    comprobar("leaving it: hidden again, still on top", ps("estado", h) === "atraviesa encima alfa0", ps("estado", h));
+  }
 
-  console.log("Esc and back");
-  await op({ op: "alEscritorio" });
-  await espera(1200);
-  comprobar("Esc minimizes the space", ps("estado", mundo).includes("minimizada"), ps("estado", mundo));
-  comprobar("Esc really minimizes what was hidden", ps("estado", h) === "alfa255 minimizada", ps("estado", h));
-  execFileSync("powershell", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", join(aqui, "entrar.ps1"), "-Navegador", EDGE, "-Perfil", "sin-uso", "-Url", "sin-uso"]);
-  await espera(1500);
-  comprobar("Enter brings the same space back", !ps("estado", mundo).includes("minimizada"), ps("estado", mundo));
-  comprobar("and hides that screen again", ps("estado", h) === "atraviesa encima alfa0", ps("estado", h));
+  if (parte("esc")) {
+    console.log("Esc and back");
+    await op({ op: "alEscritorio" });
+    await espera(1200);
+    comprobar("Esc minimizes the space", ps("estado", mundo).includes("minimizada"), ps("estado", mundo));
+    comprobar("Esc really minimizes what was hidden", ps("estado", h) === "alfa255 minimizada", ps("estado", h));
+    execFileSync("powershell", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", join(aqui, "entrar.ps1"), "-Navegador", EDGE, "-Perfil", "sin-uso", "-Url", "sin-uso"]);
+    await espera(1500);
+    comprobar("Enter brings the same space back", !ps("estado", mundo).includes("minimizada"), ps("estado", mundo));
+    comprobar("and hides that screen again", ps("estado", h) === "atraviesa encima alfa0", ps("estado", h));
+  }
 
-  console.log("N and virtual desktops");
-  const limpio = await op({ op: "antesDeCapturar" });
-  comprobar("no false alarm", limpio.ok && Array.isArray(limpio.sinEscritorio), JSON.stringify(limpio.sinEscritorio));
-  const sin = spawn("powershell", ["-NoProfile", "-STA", "-ExecutionPolicy", "Bypass", "-File", join(aqui, "probar-puente.ps1"), "sin-escritorio"], { stdio: "ignore" });
-  await espera(4000);
-  const conFalta = await op({ op: "antesDeCapturar" });
-  comprobar("a window with no desktop is reported", (conFalta.sinEscritorio ?? []).includes("probar-puente sin escritorio"), JSON.stringify(conFalta.sinEscritorio));
-  sin.kill();
+  if (parte("n")) {
+    console.log("N and virtual desktops");
+    const limpio = await op({ op: "antesDeCapturar" });
+    comprobar("no false alarm", limpio.ok && Array.isArray(limpio.sinEscritorio), JSON.stringify(limpio.sinEscritorio));
+    const sin = spawn("powershell", ["-NoProfile", "-STA", "-ExecutionPolicy", "Bypass", "-File", join(aqui, "probar-puente.ps1"), "sin-escritorio"], { stdio: "ignore" });
+    await espera(4000);
+    const conFalta = await op({ op: "antesDeCapturar" });
+    comprobar("a window with no desktop is reported", (conFalta.sinEscritorio ?? []).includes("probar-puente sin escritorio"), JSON.stringify(conFalta.sinEscritorio));
+    sin.kill();
+  }
 } finally {
   await op({ op: "soltar", hwnd });
   ps("cerrar", h);
