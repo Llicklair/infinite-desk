@@ -14,6 +14,7 @@ static partial class Ventanas
     [DllImport("user32.dll")] static extern bool IsWindow(IntPtr h);
     [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr h);
     [DllImport("user32.dll")] static extern bool IsIconic(IntPtr h);
+    [DllImport("user32.dll")] static extern bool IsWindowEnabled(IntPtr h);
     [DllImport("user32.dll")] static extern bool EnumWindows(Visitar v, IntPtr l);
     [DllImport("user32.dll")] static extern IntPtr GetWindow(IntPtr h, uint c);
     [DllImport("user32.dll")] static extern IntPtr GetAncestor(IntPtr h, uint f);

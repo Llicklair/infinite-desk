@@ -29,7 +29,7 @@ namespace InfiniteDesk.Puente;
 static partial class Ventanas
 {
     const int GWL_EXSTYLE = -20;
-    const long WS_EX_NOACTIVATE = 0x08000000, WS_EX_LAYERED = 0x80000, WS_EX_TRANSPARENT = 0x20, WS_EX_TOOLWINDOW = 0x80;
+    const long WS_EX_NOACTIVATE = 0x08000000, WS_EX_LAYERED = 0x80000, WS_EX_TRANSPARENT = 0x20, WS_EX_TOOLWINDOW = 0x80, WS_EX_TOPMOST = 0x8;
     const uint SWP_NOSIZE = 0x1, SWP_NOMOVE = 0x2, SWP_NOZORDER = 0x4, SWP_NOACTIVATE = 0x10, SWP_FRAMECHANGED = 0x20, SWP_NOOWNERZORDER = 0x200;
     static readonly IntPtr HWND_TOPMOST = -1, HWND_NOTOPMOST = -2;
     const int SW_SHOWNOACTIVATE = 4, SW_MINIMIZE = 6, SW_SHOWMINNOACTIVE = 7;
@@ -83,6 +83,35 @@ static partial class Ventanas
     /// de entrada del programa de delante (AttachThreadInput): cuando ese programa era el Explorador
     /// dejó la búsqueda de la barra de tareas sorda hasta reiniciarlo.
     /// </summary>
+    /// <summary>
+    /// Activa <paramref name="h"/> sin que asome por encima del mundo ni un fotograma: al activarse,
+    /// Windows la sube arriba del todo, y aunque se devolviera detrás justo después, a veces llegaba a
+    /// pintarse delante (uso real: "al hacer Enter y clic las ventanas se superponen, como que
+    /// flikean"; con el reintento de Activar, hasta 50 ms delante). Mientras tanto, el mundo es
+    /// siempre-encima: la ventana sube como mucho hasta justo debajo de él. Después deja de serlo
+    /// (HWND_NOTOPMOST lo deja el primero de las normales, encima de ella). Que Edge le quite el
+    /// siempre-encima al rato (regla 3) aquí da igual: solo hace falta estos milisegundos.
+    /// </summary>
+    static bool ActivarDetrasDelMundo(IntPtr h)
+    {
+        if (!MundoAbierto()) return Activar(h);
+        const uint quieto = SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE;
+        SetWindowPos(mundo, HWND_TOPMOST, 0, 0, 0, 0, quieto);
+        try
+        {
+            var bien = Activar(h);
+            // La subida de la ventana al activarse la hace su propio hilo, cuando procesa la
+            // activación: un mensaje de ida y vuelta asegura que ya pasó (100 ms como mucho, si cuelga).
+            SendMessageTimeout(h, 0 /*WM_NULL*/, IntPtr.Zero, IntPtr.Zero, 0x2 /*SMTO_ABORTIFHUNG*/, 100, out _);
+            return bien;
+        }
+        finally
+        {
+            SetWindowPos(mundo, HWND_NOTOPMOST, 0, 0, 0, 0, quieto);
+            if (!escondidas.Contains(h) && !TieneDialogo(h)) DetrasDelMundo(h);
+        }
+    }
+
     static bool Activar(IntPtr h)
     {
         if (GetForegroundWindow() == h) return true;

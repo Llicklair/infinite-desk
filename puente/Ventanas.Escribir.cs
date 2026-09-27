@@ -41,12 +41,11 @@ static partial class Ventanas
 
             PonerNoActivable(mundo, true);
             objetivo = h;
-            if (!Activar(h))
+            if (!ActivarDetrasDelMundo(h))
             {
                 SalirSinCerrojo();
                 return "Windows wouldn't let the window be activated";
             }
-            if (!escondidas.Contains(h)) DetrasDelMundo(h);
             recolocadas = 0;
             vigia ??= new Timer(_ => Vigilar(), null, Timeout.Infinite, Timeout.Infinite);
             vigia.Change(0, 100);
@@ -78,7 +77,7 @@ static partial class Ventanas
     }
 
     /// <summary>
-    /// Regla 3, vigilada cada 200 ms mientras se escribe: si el objetivo se ha puesto delante del
+    /// Regla 3, vigilada cada 100 ms mientras se escribe: si el objetivo se ha puesto delante del
     /// mundo (al activarse sube arriba del todo), vuelve detrás. Antes se hacía al revés, poniendo
     /// el mundo siempre-encima, pero Edge se lo quitaba sin parar (medido: cada 200 ms) y la ventana
     /// real salía delante a pantalla completa.
@@ -94,7 +93,7 @@ static partial class Ventanas
 
     /// <summary>
     /// Al momento (EVENT_OBJECT_REORDER y al activarse): la ventana en la que se escribe, si se ha
-    /// puesto delante del mundo, vuelve detrás. Solo con el repaso de Vigilar (cada 200 ms) se veía
+    /// puesto delante del mundo, vuelve detrás. Solo con el repaso de Vigilar (cada 100 ms) se veía
     /// la ventana real tapando el mundo un instante tras cada clic (uso real: "cuando le doy a Enter
     /// y clico, se superpone la pantalla al mundo").
     /// </summary>
@@ -117,16 +116,21 @@ static partial class Ventanas
     }
 
     /// <summary>
-    /// ¿Tiene la ventana un diálogo (una ventana suya, visible) abierto? Windows mueve las ventanas
-    /// propiedad con su dueña: devolver VS Code detrás del mundo se llevaba detrás el "Open Folder",
-    /// que se abría pero nadie veía (medido: el diálogo existió; "no sale nada", uso real).
+    /// ¿Tiene la ventana un diálogo abierto? Windows mueve las ventanas propiedad con su dueña:
+    /// devolver VS Code detrás del mundo se llevaba detrás el "Open Folder", que se abría pero nadie
+    /// veía (medido: el diálogo existió; "no sale nada", uso real). Solo un diálogo de verdad: uno de
+    /// Windows (#32770) o cualquier ventana suya mientras la dueña está deshabilitada (lo que hace un
+    /// diálogo modal). Antes contaba cualquier ventana suya visible, y un menú o un desplegable
+    /// abiertos al hacer clic dejaban la ventana delante del mundo, sin volver detrás.
     /// </summary>
     static bool TieneDialogo(IntPtr dueña)
     {
+        bool modal = !IsWindowEnabled(dueña);
         bool hay = false;
         EnumWindows((h, _) =>
         {
             if (h == dueña || !IsWindowVisible(h) || GetWindow(h, 4 /*GW_OWNER*/) != dueña) return true;
+            if (!modal && Clase(h) != "#32770") return true;
             hay = true;
             return false;
         }, IntPtr.Zero);
@@ -145,7 +149,13 @@ static partial class Ventanas
         {
             if (objetivo == IntPtr.Zero || h == objetivo || h == mundo || !IsWindow(h)) return;
             if (GetAncestor(h, 2 /*GA_ROOT*/) != h || Proceso(h) != Proceso(objetivo)) return;
-            SetWindowPos(h, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+            // Chromium muestra y esconde sin parar las mismas (tooltips, tarjetas al pasar por una
+            // pestaña): la que ya es siempre-encima se queda así, sin volver a moverla.
+            if ((GetWindowLongPtr(h, GWL_EXSTYLE).ToInt64() & WS_EX_TOPMOST) != 0) return;
+            // SIN mover a su dueña: sin SWP_NOOWNERZORDER, Windows subía con ella la ventana entera
+            // por encima del mundo, y el vigilante la devolvía detrás (medido: Chrome delante del
+            // mundo 58 veces en un rato escribiendo en él; uso real: "se superponen, como que flikean").
+            SetWindowPos(h, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER);
             bool dialogo = Clase(h) == "#32770";
             if (dialogo) Activar(h);
             Registro.Anotar($"ventana nueva de la pantalla {objetivo}: {h} \"{Titulo(h)}\" por encima del mundo{(dialogo ? " y activada" : "")}");
@@ -182,14 +192,14 @@ static partial class Ventanas
                 break;
         }
         // Un clic sobre el mundo puede reactivarlo aun siendo no activable (Chromium hace su propio
-        // SetFocus): si pasa, el teclado vuelve a la ventana. Y activarla la sube arriba del todo:
-        // vuelve detrás del mundo en el acto (regla 3; uso real: "pulso Enter y después clic
-        // izquierdo, y la ventana se pone por encima a pantalla completa").
+        // SetFocus): si pasa, el teclado vuelve a la ventana. Activarla la subiría arriba del todo
+        // (uso real: "pulso Enter y después clic izquierdo, y la ventana se pone por encima a pantalla
+        // completa"): se activa sin pasar por delante del mundo (regla 3).
         if (tipo is not ("bajar" or "doble")) return;
         lock (cerrojo)
         {
-            if (objetivo != h || GetForegroundWindow() == h || !Activar(h)) return;
-            if (!escondidas.Contains(h) && MundoAbierto() && !TieneDialogo(h)) DetrasDelMundo(h);
+            if (objetivo != h || GetForegroundWindow() == h) return;
+            ActivarDetrasDelMundo(h);
         }
     }
 

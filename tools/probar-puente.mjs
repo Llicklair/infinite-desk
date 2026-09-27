@@ -66,6 +66,9 @@ const op = (o) => new Promise((r) => {
 // La pantalla de prueba.
 const dir = mkdtempSync(join(tmpdir(), "infinite-desk-probar-"));
 writeFileSync(join(dir, "larga.html"), '<!doctype html><title>probar-puente scroll 0</title><body style="height:20000px;background:linear-gradient(#fff,#888)">' +
+  // En el centro, algo con su tooltip: Chromium lo abre en una ventana propia al pararse el ratón
+  // encima, como las tarjetas y tooltips que dejaban a Chrome delante del mundo (Enter y clic, abajo).
+  '<div title="probar-puente tooltip" style="position:fixed;left:20%;top:20%;width:60%;height:60%"></div>' +
   '<script>addEventListener("scroll",()=>document.title="probar-puente scroll "+Math.round(scrollY))</script>');
 const edge = spawn(EDGE, [`--user-data-dir=${join(dir, "perfil")}`, "--no-first-run", `--app=${pathToFileURL(join(dir, "larga.html")).href}`], { stdio: "ignore" });
 let h = "";
@@ -117,6 +120,39 @@ try {
   comprobar("the direct view sends what changes", trozos.length > 0 && vw > 100 && vh > 100, `${trozos.length} message(s), ${vw}x${vh}`);
   vista.close();
   await op({ op: "salir" });
+
+  // Enter y clic: la ventana real no asoma por encima del mundo ni un instante (uso real: "al hacer
+  // Enter y clic las ventanas se superponen, como que flikean"). Chromium reactiva el mundo con
+  // algunos clics aunque no sea activable: se hace a propósito antes de cada uno, y el puente tiene
+  // que devolverle el teclado a la ventana sin que pase por delante. Otro proceso mira el apilado
+  // sin parar mientras tanto.
+  console.log("Enter and click");
+  await mundoDelante();
+  // Mira mientras dura todo (entrar, los tooltips y los clics, ~25 s: cada "delante" es un PowerShell).
+  const vigia = spawn("powershell", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", join(aqui, "probar-puente.ps1"), "vigilar", `${h},${mundo},35000`]);
+  const vigiaAcaba = new Promise((r) => vigia.on("exit", r)); // desde ya: si acabase antes de esperarlo, no se sabría
+  let visto = "";
+  vigia.stdout.on("data", (d) => { visto += d; });
+  for (let i = 0; i < 80 && !visto.includes("listo"); i++) await espera(100);
+  const e3 = await op({ op: "entrar", hwnd });
+  /** @param {string} tipo @param {number} u @param {number} v @param {number} [botones] */
+  const raton = (tipo, u, v, botones = 0) => ws.send(JSON.stringify({ op: "raton", hwnd, tipo, u, v, boton: 0, botones, delta: 0 }));
+  for (let i = 0; i < 6; i++) {
+    // Parado encima un rato: sale el tooltip (una ventana nueva de la pantalla); luego se va.
+    raton("mover", 0.45, 0.5 + i * 0.02);
+    await espera(1400);
+    raton("mover", 0.55, 0.55);
+    ps("delante", mundo);
+    await espera(150);
+    raton("bajar", 0.5, 0.6, 1);
+    raton("subir", 0.5, 0.6);
+    await espera(350);
+  }
+  await op({ op: "salir" });
+  await vigiaAcaba;
+  const [, veces, de] = /encima (\d+) de (\d+)/.exec(visto) ?? [];
+  comprobar("the window never shows over the space", e3.ok && veces === "0" && Number(de) > 1000,
+    e3.ok ? `over it in ${veces ?? "?"} of ${de ?? "?"} looks` : `enter: ${e3.error}`);
 
   ps("minimizar", h);
   await espera(1200);
