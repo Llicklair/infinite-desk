@@ -73,6 +73,7 @@ static partial class Ventanas
     {
         lock (cerrojo)
         {
+            if (h == objetivo) { RecolocarSinCerrojo(); return; } // al activarse sube arriba: detrás otra vez, ya
             if (h != mundo || !MundoAbierto()) return;
             capturadas.RemoveWhere(c => !IsWindow(c));
             foreach (var c in capturadas.Where(c => IsIconic(c) || minimizadasPorEsc.Contains(c)).ToArray())

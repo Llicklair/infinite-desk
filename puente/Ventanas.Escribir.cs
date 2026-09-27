@@ -49,7 +49,7 @@ static partial class Ventanas
             if (!escondidas.Contains(h)) DetrasDelMundo(h);
             recolocadas = 0;
             vigia ??= new Timer(_ => Vigilar(), null, Timeout.Infinite, Timeout.Infinite);
-            vigia.Change(0, 200);
+            vigia.Change(0, 100);
             return null;
         }
     }
@@ -88,10 +88,24 @@ static partial class Ventanas
         lock (cerrojo)
         {
             if (objetivo == IntPtr.Zero || !IsWindow(mundo) || !IsWindow(objetivo)) { vigia?.Change(Timeout.Infinite, Timeout.Infinite); return; }
-            if (escondidas.Contains(objetivo) || !EncimaDe(objetivo, mundo) || TieneDialogo(objetivo)) return;
-            DetrasDelMundo(objetivo);
-            if (recolocadas++ == 0) Registro.Anotar($"la ventana {objetivo} se había puesto delante del mundo: devuelta detrás");
+            RecolocarSinCerrojo();
         }
+    }
+
+    /// <summary>
+    /// Al momento (EVENT_OBJECT_REORDER y al activarse): la ventana en la que se escribe, si se ha
+    /// puesto delante del mundo, vuelve detrás. Solo con el repaso de Vigilar (cada 200 ms) se veía
+    /// la ventana real tapando el mundo un instante tras cada clic (uso real: "cuando le doy a Enter
+    /// y clico, se superpone la pantalla al mundo").
+    /// </summary>
+    public static void Recolocar() { lock (cerrojo) RecolocarSinCerrojo(); }
+
+    static void RecolocarSinCerrojo()
+    {
+        if (objetivo == IntPtr.Zero || !IsWindow(mundo) || !IsWindow(objetivo)) return;
+        if (escondidas.Contains(objetivo) || !EncimaDe(objetivo, mundo) || TieneDialogo(objetivo)) return;
+        DetrasDelMundo(objetivo);
+        if (recolocadas++ == 0) Registro.Anotar($"la ventana {objetivo} se había puesto delante del mundo: devuelta detrás");
     }
 
     /// <summary>¿Está <paramref name="a"/> por encima de <paramref name="b"/> en el apilado?</summary>
