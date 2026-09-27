@@ -38,28 +38,90 @@ static partial class Ventanas
         try { Process.Start(psi); }
         catch (Exception e) { return (IntPtr.Zero, "", e.Message); }
 
-        for (int i = 0; i < 80; i++)
+        var nueva = await EsperarNueva(antes, "msedge", 12000);
+        if (nueva == IntPtr.Zero) return (IntPtr.Zero, "", "the window didn't show up");
+        await Task.Delay(400);
+        AtrasYMundoDelante(nueva);
+        return (nueva, Titulo(nueva), null);
+    }
+
+    /// <summary>
+    /// Un repo en VS Code como pantalla del mundo (Atlas: "ábreme el repo"): VS Code lo abre en una
+    /// ventana nueva (o trae la que ya lo tiene), se encuentra esa ventana y se deja detrás del mundo,
+    /// viva, para verla y trabajar en ella con Enter. Antes se abría fuera y había que traerla con N.
+    /// </summary>
+    public static async Task<(IntPtr hwnd, string titulo, string? error)> AbrirRepoComoPantalla(string? ruta, string dev)
+    {
+        var antes = DePrimerNivel();
+        var nombre = Path.GetFileName(Path.TrimEndingDirectorySeparator(ruta ?? ""));
+        // Si ya está abierto, VS Code trae esa misma ventana: se sabe antes y no se espera a una nueva.
+        var yaAbierta = BuscarPorTitulo("Code", $" - {nombre} - ");
+        var error = Escritorio.AbrirRepo(ruta, dev);
+        if (error != null) return (IntPtr.Zero, "", error);
+        var h = yaAbierta != IntPtr.Zero ? yaAbierta : await EsperarNueva(antes, "Code", 12000);
+        // Ya estaba abierto: VS Code trae esa ventana en vez de abrir otra; se busca por su título.
+        if (h == IntPtr.Zero) h = BuscarPorTitulo("Code", $" - {nombre} - ");
+        if (h == IntPtr.Zero) h = BuscarPorTitulo("Code", nombre);
+        if (h == IntPtr.Zero) return (IntPtr.Zero, "", "VS Code's window didn't show up");
+        // VS Code a veces se minimiza él solo al nacer (Ventanas.Nuevas.cs): se le da un momento.
+        await Task.Delay(1200);
+        AtrasYMundoDelante(h);
+        return (h, Titulo(h), null);
+    }
+
+    /// <summary>La primera ventana de aplicación nueva (no estaba en <paramref name="antes"/>) del proceso dado, o nada.</summary>
+    static async Task<IntPtr> EsperarNueva(HashSet<IntPtr> antes, string proceso, int ms)
+    {
+        for (int t = 0; t < ms; t += 150)
         {
             await Task.Delay(150);
             var nueva = IntPtr.Zero;
             EnumWindows((h, _) =>
             {
-                if (antes.Contains(h) || !IsWindowVisible(h) || GetWindowTextLength(h) == 0 || GetWindow(h, 4 /*GW_OWNER*/) != IntPtr.Zero) return true;
-                var clase = new StringBuilder(64);
-                GetClassName(h, clase, 64);
-                if (clase.ToString() != "Chrome_WidgetWin_1") return true;
-                try { if (Process.GetProcessById((int)Proceso(h)).ProcessName != "msedge") return true; } catch { return true; }
+                if (antes.Contains(h) || !EsDeApp(h, proceso)) return true;
                 nueva = h;
                 return false;
             }, IntPtr.Zero);
-            if (nueva == IntPtr.Zero) continue;
-            // Detrás de todo (no minimizada: minimizada no se captura) y el mundo, delante otra vez.
-            await Task.Delay(400);
-            SetWindowPos(nueva, HWND_BOTTOM, 0, 0, 0, 0, SWP_NOSIZE | SWP_NOMOVE | SWP_NOACTIVATE);
-            lock (cerrojo) { if (MundoAbierto()) Activar(mundo); }
-            return (nueva, Titulo(nueva), null);
+            if (nueva != IntPtr.Zero) return nueva;
         }
-        return (IntPtr.Zero, "", "the window didn't show up");
+        return IntPtr.Zero;
+    }
+
+    /// <summary>Una ventana de aplicación del proceso cuyo título contiene el texto, o nada.</summary>
+    static IntPtr BuscarPorTitulo(string proceso, string contiene)
+    {
+        var hallada = IntPtr.Zero;
+        EnumWindows((h, _) =>
+        {
+            if (!EsDeApp(h, proceso) || !Titulo(h).Contains(contiene, StringComparison.OrdinalIgnoreCase)) return true;
+            hallada = h;
+            return false;
+        }, IntPtr.Zero);
+        return hallada;
+    }
+
+    /// <summary>¿Ventana principal (visible, con título, sin dueña) de una app Chromium/Electron de ese proceso?</summary>
+    static bool EsDeApp(IntPtr h, string proceso)
+    {
+        if (!IsWindowVisible(h) || GetWindowTextLength(h) == 0 || GetWindow(h, 4 /*GW_OWNER*/) != IntPtr.Zero) return false;
+        var clase = new StringBuilder(64);
+        GetClassName(h, clase, 64);
+        if (clase.ToString() != "Chrome_WidgetWin_1") return false;
+        try { return Process.GetProcessById((int)Proceso(h)).ProcessName.Equals(proceso, StringComparison.OrdinalIgnoreCase); } catch { return false; }
+    }
+
+    /// <summary>
+    /// Detrás de todo, y a la vista (minimizada no se captura), sin activarla; y el mundo, delante.
+    /// </summary>
+    static void AtrasYMundoDelante(IntPtr h)
+    {
+        if (IsIconic(h)) ShowWindow(h, 4 /*SW_SHOWNOACTIVATE*/);
+        lock (cerrojo)
+        {
+            if (!MundoAbierto()) { SetWindowPos(h, HWND_BOTTOM, 0, 0, 0, 0, SWP_NOSIZE | SWP_NOMOVE | SWP_NOACTIVATE); return; }
+            Activar(mundo);
+            DetrasDelMundo(h);
+        }
     }
 
     /// <summary>

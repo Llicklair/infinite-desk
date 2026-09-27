@@ -26,7 +26,7 @@ test("contexto: cada repo con qué es, tamaño, núcleo, ciclos, último commit 
 test("Atlas: laboral, breve, no se inventa nada, conoce sus acciones y lo que uno mira", () => {
   const s = instruccionesAtlas("CONTEXTO", { isla: "forja" }, "hoy");
   assert.ok(s.startsWith(`Eres ${NOMBRE_ATLAS}`));
-  for (const debe of ["jefe de gabinete", "nunca te lo inventas", "Read, Grep y Glob", '"tipo": "vscode"', '"tipo": "leer"', "hasta DOS", "Kiri", "la isla de forja", "CONTEXTO"]) assert.ok(s.includes(debe), debe);
+  for (const debe of ["jefe de gabinete", "nunca te lo inventas", "Read, Grep y Glob", '"tipo": "vscode"', '"tipo": "leer"', '"tipo": "agente"', "nunca hace push", "confirma la tarea", "hasta DOS", "Kiri", "la isla de forja", "CONTEXTO"]) assert.ok(s.includes(debe), debe);
   assert.ok(instruccionesAtlas("", { pantalla: "README.md - Visual Studio Code" }, "hoy").includes('pantalla: "README.md - Visual Studio Code"'));
 });
 
@@ -44,6 +44,9 @@ test("acciones de Atlas: solo repos que existen (con su nombre exacto), tarjetas
     assert.equal(validar(mala), null, JSON.stringify(mala));
   }
   assert.deepEqual(validar({ tipo: "consola", pestana: "errores" }), { tipo: "consola", pestana: "errores" });
+  assert.deepEqual(validar({ tipo: "agente", repo: "forja", tarea: " Añade un test para el parser de rutas " }), { tipo: "agente", repo: "forja", tarea: "Añade un test para el parser de rutas" });
+  assert.equal(validar({ tipo: "agente", repo: "forja", tarea: "hazlo" }), null, "una tarea vacía o de dos palabras no vale");
+  assert.equal(validar({ tipo: "agente", repo: "no-existe", tarea: "Añade un test para el parser" }), null);
   assert.deepEqual(validar({ tipo: "consola", pestana: "inventada" }), { tipo: "consola", pestana: "repos" });
   assert.deepEqual(validar({ tipo: "web", url: " https://github.com/owner/cool " }), { tipo: "web", url: "https://github.com/owner/cool" });
 });

@@ -33,6 +33,7 @@ const REINTENTO_MS = 3000;
  *   abrir(que: {ruta?: string, especial?: "explorador" | "navegador"}): Promise<string | null>,
  *   abrirUrl(url: string): Promise<string | null>,
  *   abrirWeb(url: string): Promise<{hwnd: number, titulo: string} | {error: string}>,
+ *   vscodeComoPantalla(ruta: string): Promise<{hwnd: number, titulo: string} | {error: string}>,
  *   anotar(texto: string): void,
  *   escuchar(op: {micro: string, idioma: string}, mientras: (parcial: string) => void): {promesa: Promise<{texto: string | null, error: string | null, eventos: string[], alternativas?: string[]}>, parar: () => void},
  *   orquestador(args: string[]): Promise<{ok: boolean, datos?: any, error?: string}>,
@@ -308,6 +309,11 @@ export function crearPuente(tituloMundo) {
     },
     /** Una línea en el registro del puente (diagnóstico: cómo fue la voz, nunca lo que se dijo). */
     anotar(texto) { void pedir({ op: "anotar", texto }); },
+    /** Un repo en VS Code como pantalla del mundo (Atlas): el puente lo abre y da su ventana. */
+    async vscodeComoPantalla(ruta) {
+      const r = await pedir({ op: "vscodeComoPantalla", ruta });
+      return r.ok && r.hwnd ? { hwnd: Number(r.hwnd), titulo: String(r.titulo ?? ruta) } : { error: r.error ?? "unknown error" };
+    },
     /** Una web como pantalla, sin el selector: el puente la abre en su Edge y da su ventana. */
     async abrirWeb(url) {
       const r = await pedir({ op: "abrirWeb", url });

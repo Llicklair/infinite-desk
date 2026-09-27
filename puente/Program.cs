@@ -203,7 +203,7 @@ app.Map("/vista", async (HttpContext ctx) =>
     }
     using var ws = await ctx.WebSockets.AcceptWebSocketAsync();
     try { await Vista.Servir(ws, (IntPtr)hv); }
-    catch (Exception e) { Registro.Anotar($"vista directa de {hv}: {e.Message}"); }
+    catch (Exception e) { Registro.Anotar($"vista directa de {hv}: {e.Message} [{e.GetType().Name} en {e.StackTrace?.Split('\n').FirstOrDefault()?.Trim()}]"); }
 });
 
 // Un atajo global para salir de la pantalla aunque el teclado lo tenga la ventana, no el mundo.
@@ -297,6 +297,18 @@ object? Responder(JsonElement m, WebSocket ws)
             return new { id, ok = presentado };
         case "escritorio":
             return new { id, ok = true, cosas = Escritorio.Listar() };
+        case "vscodeComoPantalla":
+        {
+            // Atlas abre un repo: en VS Code y dentro del mundo, en vivo (Ventanas.Web.cs).
+            var rutaCode = Texto(m, "ruta");
+            _ = Task.Run(async () =>
+            {
+                var (hc, tituloCode, errorCode) = await Ventanas.AbrirRepoComoPantalla(rutaCode, Proyectos.Carpeta(repo));
+                Registro.Anotar($"vscode como pantalla {rutaCode}: {errorCode ?? $"ok ({hc})"}");
+                await Enviar(ws, new { id, ok = errorCode == null, hwnd = (long)hc, titulo = tituloCode, error = errorCode });
+            });
+            return null;
+        }
         case "vscode":
             // La carpeta de proyectos se lee cada vez: se puede cambiar con la P sin reiniciar.
             var antesDeCode = Ventanas.DePrimerNivel();

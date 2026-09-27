@@ -833,9 +833,38 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
       await nuevaPantalla(nombre);
       return;
     }
-    const p = colocarPantalla(await capturaNativa(r.hwnd, r.titulo));
+    await pantallaNativa(r.hwnd, r.titulo);
+  }
+  /**
+   * Una ventana (por su HWND) como pantalla que va siempre por el puente, en vivo; si ya hay una
+   * pantalla de esa ventana, no se duplica: se avisa.
+   * @param {number} hwnd @param {string} titulo
+   */
+  async function pantallaNativa(hwnd, titulo) {
+    const ya = pantallas.find((q) => q.hwnd === hwnd);
+    if (ya) { avisar(`"${titulo}" is already a screen here: look around (or press Enter on it to work in it)`); return ya; }
+    if (!puente) return null;
+    const p = colocarPantalla(await capturaNativa(hwnd, titulo));
     const puenteAhora = puente;
-    vistasNativas.set(p, puenteAhora.vistaDirecta(r.hwnd, (datos) => p.aplicarDirecto(datos)));
+    vistasNativas.set(p, puenteAhora.vistaDirecta(hwnd, (datos) => p.aplicarDirecto(datos)));
+    return p;
+  }
+  /**
+   * Un repo en VS Code DENTRO del mundo (Atlas): antes se abría fuera y había que traerlo con N.
+   * Con un puente antiguo, como antes.
+   * @param {GrafoExportado} g
+   */
+  async function abrirRepoComoPantalla(g) {
+    if (!puente?.conectado) { abrirEnVSCode(g); return; }
+    avisar(`Opening ${g.nombre} in VS Code…`);
+    const r = await puente.vscodeComoPantalla(g.raiz);
+    if ("error" in r) {
+      if (/unknown/i.test(r.error)) abrirEnVSCode(g);
+      else avisar(`Couldn't open ${g.nombre}: ${r.error}`);
+      return;
+    }
+    ultimoAbierto = { repo: g.nombre, cuando: Date.now() };
+    await pantallaNativa(r.hwnd, r.titulo);
   }
   /**
    * Lo que Kiri decide hacer: música o algo para distraerse (el primer vídeo de YouTube para su
@@ -909,7 +938,14 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
     if (a.tipo === "web") { await abrirComoPantalla(a.url, new URL(a.url).hostname); return; }
     if (a.tipo === "grafo") { void regenerar([a.repo]); return; }
     const g = grafoDe(a.repo);
-    if (a.tipo === "vscode") { if (g) abrirEnVSCode(g); return; }
+    if (a.tipo === "vscode") { if (g) await abrirRepoComoPantalla(g); return; }
+    if (a.tipo === "agente") {
+      // Un agente de Claude en su rama y su worktree (tools/agente.mjs): commitea ahí, nunca hace push.
+      const r = await puente?.orquestador(["lanzar", "claude", base64(a.tarea), a.repo]);
+      avisar(r?.ok ? `Agent sent to ${a.repo}: it works on its own branch; watch it on the island (O → Agents)` : `Couldn't send the agent: ${r?.error ?? "no bridge"}`);
+      if (r?.ok) void maestra?.refrescar();
+      return;
+    }
     // "ir": volando hasta su isla, mirándola (de la zona zen, primero de vuelta).
     const isla = islas.find((i) => i.grafo.nombre === a.repo);
     if (!isla) return;
