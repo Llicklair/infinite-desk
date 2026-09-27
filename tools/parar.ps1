@@ -1,4 +1,4 @@
-# npm run parar (Windows): para todo lo de infinite-desk y deja las ventanas como estaban.
+﻿# npm run parar (Windows): para todo lo de infinite-desk y deja las ventanas como estaban.
 # Para cuando algo se queda raro (la barra de tareas, una ventana que no se deja clicar). No
 # desinstala nada: el arranque del fondo y el clic derecho siguen puestos (npm run fondo -- --quitar).
 param([switch]$Explorador)
@@ -53,7 +53,8 @@ $datos = Join-Path $env:LOCALAPPDATA 'infinite-desk'
 $puentes = { Get-CimInstance Win32_Process -Filter "Name='infinite-desk-bridge.exe'" }
 
 # 1. El mundo: por las buenas (así el puente, si sigue vivo, devuelve lo que tuviera enganchado).
-Get-Process msedge, chrome -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowTitle -like 'infinite-desk ·*' } |
+# Por su título exacto: el mundo, no la grabadora (tools/grabar.html), que también empezaba así.
+Get-Process msedge, chrome -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowTitle -match '^infinite-desk · [0-9a-z]{1,8}$' } |
   ForEach-Object { [void]$_.CloseMainWindow(); "mundo cerrado: $($_.MainWindowTitle)" }
 Start-Sleep -Milliseconds 1500
 

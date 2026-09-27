@@ -79,10 +79,14 @@ public delegate bool Visitar(IntPtr h, IntPtr l);
 [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
 /// La ventana del mundo entre TODAS las de primer nivel: mientras comparte una ventana, la
 /// "principal" de Edge es su barra de "está compartiendo" y buscarlo por ella no lo encontraba.
+/// Por su título EXACTO ("infinite-desk · " y un código, src/mundo.js): con solo el principio,
+/// la grabadora (tools/grabar.html) pasaba por el mundo y Entrar la traía a ella sin abrir nada
+/// (uso real: "no me deja entrar a infinite-desk mientras estoy grabando").
 public static IntPtr Buscar() {
   IntPtr hallada = IntPtr.Zero;
+  var mundo = new System.Text.RegularExpressions.Regex("^infinite-desk · [0-9a-z]{1,8}$");
   EnumWindows((h, l) => { var t = new System.Text.StringBuilder(128); GetWindowText(h, t, 128);
-    string s = t.ToString(); if (s.StartsWith("infinite-desk ") && !s.Contains("fondo")) { hallada = h; return false; } return true; }, IntPtr.Zero);
+    if (mundo.IsMatch(t.ToString())) { hallada = h; return false; } return true; }, IntPtr.Zero);
   return hallada; }
 '@
 $h = [Entrar.Mundo]::Buscar()
