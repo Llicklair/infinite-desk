@@ -28,7 +28,8 @@ npm run medir [-- --pantallas 0,4,8 --res 1920x1080] # GPU real (Windows): fps, 
 npm run marca -- --nombre "X" --colores "#rrggbb,#rrggbb" [--logo f] # capa de marca (tecla B) -> wallpaper/marca.js, sin versionar; --quitar la borra
 npm run parar [-- --explorador] # lo para todo y devuelve las ventanas escondidas; con --explorador, reinicia el Explorador
 npm run empaquetar          # dist\infinite-desk-<versión>-win-x64.zip para un Windows limpio: mundo construido, puente autocontenido en un .exe, Node portátil e Instalar.cmd (tools/instalar.mjs; Desinstalar.cmd, tools/desinstalar.mjs); no está en terminado
-npm run diagnostico         # foto de Windows e infinite-desk (barra de tareas, foco, qué la tapa) ANTES de reiniciar nada
+npm run diagnostico         # foto de Windows e infinite-desk (barra de tareas, foco, qué la tapa, si una ventana nueva recibe escritorio) ANTES de reiniciar nada
+tools/reiniciar-explorador.cmd # doble clic cuando Windows se queda sordo (panel de sonido, buscador): la foto de diagnostico y reinicia SOLO el Explorador
 npm run probar-puente       # pruebas de extremo a extremo con el puente y el mundo abiertos (rueda, esconder, Esc, N)
 ```
 

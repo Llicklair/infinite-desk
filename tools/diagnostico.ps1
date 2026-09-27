@@ -77,6 +77,11 @@ public static class Diag {
       return true; }, IntPtr.Zero);
     return "  con escritorio: " + con + "\n" + (sb.Length == 0 ? "  sin escritorio: ninguna\n" : "  SIN escritorio (no salen en N):\n" + sb);
   }
+  /// El escritorio virtual de una ventana (Guid.Empty si no tiene, o si no se pudo preguntar).
+  public static Guid Escritorio(IntPtr h) {
+    var m = (IVirtualDesktopManager)new VirtualDesktopManager(); Guid id;
+    return m.GetWindowDesktopId(h, out id) == 0 ? id : Guid.Empty;
+  }
   /// Toda ventana invisible y atravesable con título (lo que deja el puente al esconder).
   public static string Escondidas() {
     var sb = new StringBuilder();
@@ -114,6 +119,19 @@ L "ratón en $($p.X),$($p.Y) · confinado a $($c.L),$($c.T) - $($c.R),$($c.B)"
 L ""
 L "== escritorios virtuales =="
 L ([Diag]::SinEscritorio())
+# La prueba directa: una ventana NUEVA (propia, fuera de la vista, un instante) ¿recibe escritorio?
+# Cuando el Explorador se estropea, las nuevas no lo reciben (y el panel de sonido de la barra, que es
+# una ventana nueva cada vez, deja de salir: uso real, "Windows ensordecido", 2026-09-27).
+Add-Type -AssemblyName System.Windows.Forms
+$prueba = New-Object System.Windows.Forms.Form
+$prueba.Text = 'infinite-desk diagnostico'; $prueba.StartPosition = 'Manual'; $prueba.ShowInTaskbar = $true
+$prueba.Location = New-Object System.Drawing.Point(-32000, -32000); $prueba.Size = New-Object System.Drawing.Size(200, 100)
+$prueba.Show()
+1..15 | ForEach-Object { [System.Windows.Forms.Application]::DoEvents(); Start-Sleep -Milliseconds 100 }
+$idNueva = [Diag]::Escritorio($prueba.Handle)
+$prueba.Close()
+L "  una ventana nueva $(if ($idNueva -and $idNueva -ne [Guid]::Empty) { "recibe escritorio: sí ($idNueva)" } else { 'recibe escritorio: NO (el Explorador está tocado: tools\reiniciar-explorador.cmd)' })"
+L ""
 L "== procesos del shell =="
 foreach ($n in 'explorer', 'SearchApp', 'SearchHost', 'StartMenuExperienceHost', 'ShellExperienceHost', 'TextInputHost') {
   Get-Process $n -ErrorAction SilentlyContinue | ForEach-Object {
