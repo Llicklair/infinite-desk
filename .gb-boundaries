@@ -322,3 +322,14 @@ risco       -/-> zen-medidas
 risco       -/-> zen-flora
 lago        -/-> zen-medidas
 andar       -/-> zen-medidas
+
+# Las piezas del mundo (Kiri y Atlas en él, el espacio de trabajo, los datos de la demo) las monta
+# mundo: ninguna vuelve a él, y su núcleo puro (apoyo, asistente, espacio) no las conoce.
+asistentes     -/-> mundo
+espacio-mundo  -/-> mundo
+demostracion   -/-> mundo
+apoyo          -/-> asistentes
+asistente      -/-> asistentes
+espacio        -/-> espacio-mundo
+tools -/-> asistentes
+tools -/-> espacio-mundo

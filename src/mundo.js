@@ -6,7 +6,7 @@ import { colocarIslas, firmaGrafos, islasNuevas } from "./islas.js";
 import { crearGrafo3D, liberar } from "./grafo3d.js";
 import { rotulo } from "./rotulo.js";
 import { capturaDeDemostracion, capturaNativa, capturarVentana, crearPantalla, puedeCapturar } from "./pantallas.js";
-import { espacioParaGuardar, leerEspacio, planDeRestauracion } from "./espacio.js";
+import { crearEspacioDeTrabajo } from "./espacio-mundo.js";
 import { colorDeAgente, encendidosPorAgentes, repoDeTitulo, senalesDeAgentes, siguienteRepo, vigorOnda } from "./vinculo.js";
 import { crearConsola } from "./consola3d.js";
 import { paletaConMarca, paletaDeHora, vidaDeRepo } from "./ambiente.js";
@@ -24,10 +24,9 @@ import { crearPuente, releerScript } from "./puente.js";
 import { crearPanelFicheros } from "./ficheros.js";
 import { crearPanelAjustes } from "./ajustes.js";
 import { crearTutorial } from "./tutorial.js";
-import { KIRI, crearCharla } from "./charla.js";
-import { crearAtlas } from "./atlas3d.js";
+import { crearAsistentes } from "./asistentes.js";
 import { NOMBRE_ATLAS } from "./asistente.js";
-import { base64 } from "./apoyo.js";
+import { estadoDeDemostracion, revisionDeDemostracion } from "./demostracion.js";
 
 const VELOCIDAD = 9; // metros por segundo; Shift la triplica
 const ALTURA_OJOS = 1.7;
@@ -803,21 +802,8 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
   marca = !fondo ? crearMarca(escena, { alturaLogo: palantir.cima + 10.8 }) : null;
   // La zona zen (Z), lejos de las islas; con su cielo, y las luces y la niebla de su ambiente.
   zen = !fondo ? crearZen(escena, { hemi, sol, niebla, cieloMundo: cielo.objeto, renderer, avisar: (t) => avisar(t), alHablar: () => abrirCharla() }) : null;
-  // El espíritu de la zona zen (E sobre él: el panel; V: hablarle por voz sin abrir nada).
   /** @param {string[]} args */
   const alOrquestador = (args) => (puente ? puente.orquestador(args) : Promise.resolve({ ok: false, error: "no bridge (come in from the desktop right-click menu)" }));
-  const charla = ui.charla && zen
-    ? crearCharla(ui.charla, KIRI, {
-      orquestador: alOrquestador,
-      figura: () => zen?.espiritu ?? null,
-      avisar: (t) => avisar(t),
-      alCerrar: () => { if (!mirar.isLocked && !escribiendo) ui.portada.hidden = false; },
-      hacer: (a) => void hacerDeKiri(a),
-      anotar: (t) => puente?.anotar(t),
-      oido: () => (puente?.conectado ? puente.escuchar : null),
-      nombres: () => ["Kiri", "Atlas", "palantír", "galaxy-brain", ...nombres],
-    })
-    : null;
   /** Lo que corta la vista nativa de cada pantalla que va siempre por el puente. @type {Map<Pantalla, () => void>} */
   const vistasNativas = new Map();
   /**
@@ -877,178 +863,34 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
     return p;
   }
 
-  // --- el espacio de trabajo: al volver, como se dejó (src/espacio.js) ---------------------------
-  // Uso real: "que se quede como lo dejaste" (al salir se perdían las pantallas y dónde estaban).
-  // Se guarda solo tras cada cambio (traer, mover, redimensionar, cambiar de grafo, cerrar) y se
-  // restaura al entrar: lo que sigue abierto vuelve a su sitio sin el selector de N; los repos y
-  // las webs cerrados se reabren.
-  let restaurando = false;
-  /** @type {ReturnType<typeof setTimeout> | null} */
-  let guardarLuego = null;
-  function cambioEnEspacio() {
-    if (restaurando || fondo || opciones.vista !== "dentro") return;
-    if (guardarLuego) clearTimeout(guardarLuego);
-    guardarLuego = setTimeout(() => void guardarEspacio(), 1500);
-  }
-  async function guardarEspacio() {
-    if (!puente?.conectado || restaurando) return;
-    const programas = new Map((await puente.ventanas()).map((v) => [v.hwnd, v.proceso]));
-    const entradas = pantallas.filter((p) => p.hwnd !== null).map((p) => ({
-      tipo: p.origen.tipo, titulo: p.titulo, repo: p.repo, raiz: p.origen.raiz, url: p.origen.url,
-      proceso: programas.get(/** @type {number} */ (p.hwnd)),
-      pos: p.objeto.position.toArray(), giro: p.objeto.quaternion.toArray(), escala: p.objeto.scale.x,
-    }));
-    await puente.espacio(espacioParaGuardar(entradas));
-  }
-  async function restaurarEspacio() {
-    if (!puente?.conectado || fondo || opciones.vista !== "dentro") return;
-    const entradas = leerEspacio(await puente.espacio());
-    if (!entradas.length) return;
-    restaurando = true;
-    try {
-      const plan = planDeRestauracion(entradas, await puente.ventanas(), pantallas.flatMap((p) => (p.hwnd === null ? [] : [p.hwnd])));
-      let traidas = 0, reabiertas = 0;
-      for (const paso of plan) {
-        const e = paso.entrada;
-        /** @type {Pantalla | null} */
-        let p = null;
-        if (paso.hacer === "traer" && paso.hwnd !== null) {
-          await puente.traer(paso.hwnd);
-          p = await pantallaNativa(paso.hwnd, e.titulo, { tipo: e.tipo, url: e.url, raiz: e.raiz }, true);
-          if (p) traidas++;
-        } else if (paso.hacer === "abrirRepo") {
-          const g = (window.GB_GRAFOS ?? []).find((x) => x.raiz === e.raiz || x.nombre === e.repo);
-          if (g) p = await abrirRepoComoPantalla(g, true);
-          if (p) reabiertas++;
-        } else if (paso.hacer === "abrirWeb" && e.url) {
-          p = await abrirComoPantalla(e.url, e.titulo, true);
-          if (p) reabiertas++;
-        }
-        if (!p) continue;
-        p.objeto.position.fromArray(e.pos);
-        p.objeto.quaternion.fromArray(e.giro);
-        p.objeto.scale.setScalar(e.escala);
-        if (e.repo && p.repo !== e.repo) p.enganchar(grafoDe(e.repo));
-      }
-      if (traidas + reabiertas) avisar(`Your workspace is back: ${traidas + reabiertas} screen${traidas + reabiertas === 1 ? "" : "s"}${reabiertas ? ` (${reabiertas} reopened)` : ""}`);
-    } finally {
-      restaurando = false;
-    }
-  }
-  /**
-   * Lo que Kiri decide hacer: música o algo para distraerse (el primer vídeo de YouTube para su
-   * búsqueda, abierto directamente como pantalla en vivo), o el cielo.
-   * @param {import("./apoyo.js").Accion} a
-   */
-  async function hacerDeKiri(a) {
-    if (a.tipo === "ambiente") {
-      zen?.ponerAmbiente(a.valor);
-      return;
-    }
-    if (!puente?.conectado) { avisar("No bridge, so it can't open YouTube"); return; }
-    const r = await puente.orquestador(["video", base64(a.busqueda)]);
-    if (!r.ok || !r.datos?.url) { avisar(`Couldn't find it on YouTube: ${r.error ?? "no result"}`); return; }
-    await abrirComoPantalla(r.datos.url, `"${r.datos.titulo}" on YouTube`);
-  }
-  // Atlas, el asistente de trabajo del mundo normal (src/asistente.js): un dron que te acompaña; K
-  // abre su panel y V le habla por voz (fuera de la zona zen). Sabe de tus repos (y lee su código),
-  // de las noticias y de los repos top, y abre cosas: VS Code, islas, el lector, webs, la consola.
-  const figuraAtlas = !fondo ? crearAtlas(palantir.esfera.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(3, 0, 3))) : null;
-  if (figuraAtlas) escena.add(figuraAtlas.grupo);
-  /** @type {import("./charla.js").Persona} */
-  const ATLAS = {
-    nombre: NOMBRE_ATLAS,
-    sub: "Your work assistant: it knows your repos (and can read their code), the palantír's news and the month's top GitHub repos, opens things for you and sends agents to change code. It's an AI (Claude): what you say goes to Anthropic to answer. It remembers work things about you on this computer, apart from Kiri.",
-    saludo: (es) => (es ? `Hola, soy ${NOMBRE_ATLAS}. ¿En qué andamos hoy?` : `Hi, I'm ${NOMBRE_ATLAS}. What are we working on?`),
-    pedir: (turnos) => ["atlas", base64(JSON.stringify({
-      turnos, mirando: { isla: islaApuntada(), pantalla: apuntado?.tipo === "pantalla" ? apuntado.pantalla.titulo : null },
-    }))],
-    recuerda: true,
-    memoria: {
-      recordar: (turnos) => ["atlasRecordar", base64(JSON.stringify(turnos))],
-      recuerdos: ["recuerdos", "atlas"],
-      olvidar: (id) => ["olvidar", id, "atlas"],
-    },
-    voz: { ritmo: 1.03, tono: 1, volumen: 1, pausaMs: 160 },
-    claveVoz: "infinite-desk.voz-de-atlas",
-    vocesPreferidas: /alvaro|jorge|guy|davis|andrew/i,
-    volver: "Back to the palantír",
-    pie: `Esc: close · K opens this · V talks to ${NOMBRE_ATLAS} by voice without opening it`,
-    clase: "atlas",
-  };
-  const atlas = ui.atlas && figuraAtlas
-    ? crearCharla(ui.atlas, ATLAS, {
-      orquestador: alOrquestador,
-      figura: () => figuraAtlas,
-      avisar: (t) => avisar(t),
-      alCerrar: () => { if (!mirar.isLocked && !escribiendo) ui.portada.hidden = false; },
-      hacer: (a) => void hacerDeAtlas(a),
-      anotar: (t) => puente?.anotar(t),
-      oido: () => (puente?.conectado ? puente.escuchar : null),
-      nombres: () => ["Kiri", "Atlas", "palantír", "galaxy-brain", ...nombres],
-    })
-    : null;
-  function abrirAtlas() {
-    if (!atlas) return;
-    void atlas.abrir();
-    mirar.unlock();
-  }
+  // --- el espacio de trabajo: al volver, como se dejó (src/espacio-mundo.js) ---------------------------
+  const espacio = crearEspacioDeTrabajo({
+    activo: () => !fondo && opciones.vista === "dentro",
+    puente, pantallas, avisar, grafoDe, pantallaNativa, abrirRepoComoPantalla, abrirComoPantalla,
+  });
+  function cambioEnEspacio() { espacio.cambio(); }
+  // Kiri (el espíritu de la zona zen: E sobre él, el panel; V, por voz) y Atlas (el asistente de
+  // trabajo del mundo normal: K, o V): sus paneles, la figura de Atlas y lo que hacen (src/asistentes.js).
   /** Un viaje de la cámara (Atlas te lleva a una isla): a dónde y qué mirar. @type {{pos: THREE.Vector3, mira: THREE.Vector3} | null} */
   let viaje = null;
-  /**
-   * Lo que Atlas decide hacer en el mundo.
-   * @param {import("./asistente.js").AccionAtlas} a
-   */
-  async function hacerDeAtlas(a) {
-    if (a.tipo === "zen") { if (!zen?.activa) alternarZen(); return; }
-    if (a.tipo === "ventana") { await nuevaPantalla(); return; }
-    if (a.tipo === "consola") { maestra?.abrir(a.pestana); mirar.unlock(); return; }
-    if (a.tipo === "leer") {
-      const t = palantir.tarjetas[a.tarjeta];
-      const enlace = t && palantir.enlaceDe(t);
-      if (enlace) leer(enlace);
-      return;
-    }
-    if (a.tipo === "web") { await abrirComoPantalla(a.url, new URL(a.url).hostname); return; }
-    if (a.tipo === "grafo") { void regenerar([a.repo]); return; }
-    const g = grafoDe(a.repo);
-    if (a.tipo === "vscode") { if (g) await abrirRepoComoPantalla(g); return; }
-    if (a.tipo === "trabajar") {
-      // A su isla, y su VS Code como pantalla delante de ella (uso real: "prepárame para trabajar en X").
-      const isla = islas.find((i) => i.grafo.nombre === a.repo);
-      if (!isla || !g) return;
-      if (zen?.activa) alternarZen();
-      const objetivo = isla.g3d.objeto.getWorldPosition(new THREE.Vector3());
-      const desde = camara.position.clone().sub(objetivo).setY(0).normalize();
-      viaje = { pos: objetivo.clone().addScaledVector(desde, 22).setY(objetivo.y + 5), mira: objetivo };
-      const p = await abrirRepoComoPantalla(g);
-      if (p) {
-        p.objeto.position.copy(objetivo).addScaledVector(desde, 12).setY(objetivo.y + 5);
-        p.objeto.lookAt(viaje?.pos ?? camara.position);
-        cambioEnEspacio();
-      }
-      return;
-    }
-    if (a.tipo === "agente") {
-      // Un agente de Claude en su rama y su worktree (tools/agente.mjs): commitea ahí, nunca hace push.
-      const r = await puente?.orquestador(["lanzar", "claude", base64(a.tarea), a.repo]);
-      avisar(r?.ok ? `Agent sent to ${a.repo}: it works on its own branch; watch it on the island (O → Agents)` : `Couldn't send the agent: ${r?.error ?? "no bridge"}`);
-      if (r?.ok) void maestra?.refrescar();
-      return;
-    }
-    // "ir": volando hasta su isla, mirándola (de la zona zen, primero de vuelta).
-    const isla = islas.find((i) => i.grafo.nombre === a.repo);
-    if (!isla) return;
-    if (zen?.activa) alternarZen();
-    const objetivo = isla.g3d.objeto.getWorldPosition(new THREE.Vector3());
-    const desde = camara.position.clone().sub(objetivo).setY(0).normalize();
-    viaje = { pos: objetivo.clone().addScaledVector(desde, 22).setY(objetivo.y + 5), mira: objetivo };
-  }
-  function abrirCharla() {
-    if (!charla) return;
-    void charla.abrir();
-    mirar.unlock();
-  }
+  const asistentes = crearAsistentes({
+    ui, escena, camara, puente, zen, palantir, fondo, orquestador: alOrquestador, avisar,
+    alCerrar: () => { if (!mirar.isLocked && !escribiendo) ui.portada.hidden = false; },
+    soltarRaton: () => mirar.unlock(),
+    nombres: () => nombres,
+    mirando: () => ({ isla: islaApuntada(), pantalla: apuntado?.tipo === "pantalla" ? apuntado.pantalla.titulo : null }),
+    alternarZen: () => alternarZen(),
+    nuevaPantalla: () => nuevaPantalla(),
+    consola: (pestana) => { maestra?.abrir(pestana); mirar.unlock(); },
+    refrescarConsola: () => void maestra?.refrescar(),
+    leer, regenerar: (repos) => void regenerar(repos), grafoDe,
+    isla: (repo) => islas.find((i) => i.grafo.nombre === repo)?.g3d.objeto.getWorldPosition(new THREE.Vector3()) ?? null,
+    abrirComoPantalla, abrirRepoComoPantalla, cambioEnEspacio,
+    volar: (pos, mira) => { viaje = { pos, mira }; },
+  });
+  const { kiri: charla, atlas, figuraAtlas } = asistentes;
+  function abrirCharla() { asistentes.abrirKiri(); }
+  function abrirAtlas() { asistentes.abrirAtlas(); }
   const laMarca = marca;
   if (laMarca) {
     releerScript("marca.js").then(() => {
@@ -1627,7 +1469,7 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
   if (tutorial && pasoTutorial !== null) tutorial.empezar(Number(pasoTutorial) || 0);
   // El espacio de trabajo: al conectar con el puente por primera vez, como se dejó.
   let espacioRestaurado = false;
-  const alPuente = () => { if (!espacioRestaurado) { espacioRestaurado = true; void restaurarEspacio(); } };
+  const alPuente = () => { if (!espacioRestaurado) { espacioRestaurado = true; void espacio.restaurar(); } };
   puente?.alConectar(alPuente);
   if (puente?.conectado) alPuente();
   // `?ajustes`: los ajustes abiertos (el audio, para comprobarlo sin manos).
@@ -1764,60 +1606,4 @@ export function montarMundo(contenedor, grafos, ui, opciones = {}) {
 
     renderer.render(escena, camara);
   });
-}
-
-/**
- * La revisión de un agente de mentira (`?vista=demo&maestra=agentes`, Review): para verla sin manos.
- * @param {string[]} repos
- */
-function revisionDeDemostracion(repos) {
-  return {
-    id: "b", repo: repos[1] ?? "repo", rama: "agente/20260926-1150-add-a-readme-section", tarea: "Add a README section about the architecture",
-    estado: "hecho", enRama: "main", limpio: true, commits: ["3f2a91c docs: architecture section in the README"],
-    stat: " README.md | 14 ++++++++++++--\n 1 file changed, 12 insertions(+), 2 deletions(-)",
-    diff: ["diff --git a/README.md b/README.md", "--- a/README.md", "+++ b/README.md", "@@ -40,6 +40,16 @@ How to run it",
-      " npm run terminado", "-## Notes", "-Work in progress.", "+## Architecture", "+", "+A pure core (tested in Node), the 3D world (Three.js) and a native bridge (C#).",
-      "+The bridge captures windows with WGC and talks to the world over a local WebSocket."].join("\n"),
-    consola: "Reading README.md…\nWriting the architecture section…\nCommitted: docs: architecture section in the README",
-  };
-}
-
-/**
- * Un estado de mentira para `?vista=demo&maestra`: las islas como repos, con cambios y agentes
- * inventados (capturas sin manos, sin puente).
- * @param {string[]} repos
- * @returns {import("./maestra.js").EstadoMaestra}
- */
-function estadoDeDemostracion(repos) {
-  const ahora = Date.now();
-  return {
-    carpeta: "C:/dev",
-    cuentas: {
-      claude: { instalado: true, sesion: true, cuenta: "you@example.com", plan: "max" },
-      codex: { instalado: true, sesion: false, detalle: "Not logged in" },
-      gemini: { instalado: false, sesion: false, detalle: "not installed" },
-      github: { instalado: true, sesion: true, cuenta: "you" },
-    },
-    repos: repos.map((nombre, i) => ({ nombre, rama: i % 7 === 3 ? "feature/x" : "main", cambios: i % 4 === 0 ? i + 1 : 0, delante: i % 5 === 1 ? 2 : 0, detras: i % 6 === 2 ? 1 : 0, sinRemoto: i % 9 === 8, ultimoCommit: Math.round(ahora / 1000 - i * 36000) })),
-    agentes: [
-      { id: "a", repo: repos[0] ?? "repo", proveedor: "claude", tarea: "Update the dependencies and make the tests pass", rama: "agente/20260926-1210-update-the-dependencies", worktree: "", inicio: new Date(ahora - 4 * 60000).toISOString(), estado: "trabajando" },
-      { id: "b", repo: repos[1] ?? "repo", proveedor: "claude", tarea: "Add a README section about the architecture", rama: "agente/20260926-1150-add-a-readme-section", worktree: "", inicio: new Date(ahora - 30 * 60000).toISOString(), fin: new Date(ahora - 22 * 60000).toISOString(), estado: "hecho", cambios: 2, commit: true },
-    ],
-    uso: { claude: { trabajando: 1, hoy: 2, minutosHoy: 12 }, codex: { trabajando: 0, hoy: 0, minutosHoy: 0 }, gemini: { trabajando: 0, hoy: 0, minutosHoy: 0 } },
-    galaxyBrain: { instalado: false, python: "3.11", avisoPython: "Python 3.11: repos using Python 3.12+ syntax may not parse", local: null },
-    actividad: [
-      { ts: new Date(ahora - 4 * 60000).toISOString(), tipo: "agente", repo: repos[0] ?? "repo", texto: "Claude Code: Update the dependencies and make the tests pass", ref: "a" },
-      { ts: new Date(ahora - 22 * 60000).toISOString(), tipo: "agente-hecho", repo: repos[1] ?? "repo", texto: "Claude Code finished: 2 file(s) committed on agente/20260926-1150-add-a-readme-section", ref: "b" },
-      { ts: new Date(ahora - 60 * 60000).toISOString(), tipo: "fallo", repo: repos.includes("galaxy-brain") ? "galaxy-brain" : repos[0] ?? "repo", texto: "NameError: name 're' is not defined (cli.py:2489)", ref: "d1" },
-      { ts: new Date(ahora - 3 * 3600000).toISOString(), tipo: "commit", repo: repos[2] ?? "repo", texto: "Marcos: feat: something new" },
-      { ts: new Date(ahora - 30 * 3600000).toISOString(), tipo: "pull", repo: repos[3] ?? "repo", texto: "Fast-forward 3 files changed" },
-    ],
-    fallos: [
-      { id: "d1", repo: repos.includes("galaxy-brain") ? "galaxy-brain" : repos[0] ?? "repo", tipo: "NameError", mensaje: "name 're' is not defined", fichero: "src/galaxybrain/cli.py", linea: 2489, veces: 20, ultimo: new Date(ahora - 3600000).toISOString(), primero: new Date(ahora - 5 * 86400000).toISOString() },
-      { id: "d2", repo: repos[0] ?? "repo", tipo: "OSError", mensaje: "[Errno 22] Invalid argument", fichero: null, linea: null, veces: 38, ultimo: new Date(ahora - 7200000).toISOString(), primero: new Date(ahora - 20 * 86400000).toISOString() },
-      // Uno de cada: su fichero cambió después (quizás arreglado) y otro marcado a mano.
-      { id: "d3", repo: repos[0] ?? "repo", tipo: "KeyError", mensaje: "'config'", fichero: "src/ajustes.py", linea: 42, veces: 3, ultimo: new Date(ahora - 86400000).toISOString(), primero: new Date(ahora - 2 * 86400000).toISOString(), tocado: new Date(ahora - 3 * 3600000).toISOString(), estado: "quizas" },
-      { id: "d4", repo: repos[0] ?? "repo", tipo: "TypeError", mensaje: "'NoneType' object is not iterable", fichero: "src/lista.py", linea: 7, veces: 1, ultimo: new Date(ahora - 2 * 86400000).toISOString(), primero: new Date(ahora - 2 * 86400000).toISOString(), estado: "arreglado" },
-    ],
-  };
 }
