@@ -291,3 +291,8 @@ dictado     -/-> charla
 dictado     -/-> mundo
 dictado     -/-> audio
 dictado     -/-> puente
+
+# Mallas de una pieza desde una forma (malla-sdf) es núcleo puro.
+malla-sdf   -/-> espiritu
+malla-sdf   -/-> zen
+malla-sdf   -/-> mundo
