@@ -62,13 +62,16 @@ public static class Diag {
   }
   /// Ventanas de programa visibles SIN escritorio virtual. El selector de Edge/Chrome (N) solo lista
   /// las del escritorio actual: si el Explorador deja de apuntar las ventanas nuevas a un escritorio
-  /// (medido tras reiniciarlo: ninguna ventana nueva tenía), esas no salen en N.
+  /// (medido tras reiniciarlo: ninguna ventana nueva tenía), esas no salen en N. Las ocultas por el
+  /// sistema (cloaked: apps que Windows lanza por adelantado y deja suspendidas, como Configuración)
+  /// no tienen escritorio y es lo normal: no cuentan (2026-09-27 despistaron hacia una causa falsa).
   public static string SinEscritorio() {
     var sb = new StringBuilder(); int con = 0;
     var m = (IVirtualDesktopManager)new VirtualDesktopManager();
     EnumWindows((h, l) => {
       if (!IsWindowVisible(h) || GetWindow(h, 4) != IntPtr.Zero || (GetL(h, -20).ToInt64() & 0x80) != 0) return true;
       var t = new StringBuilder(10); if (GetWindowText(h, t, 10) == 0) return true;
+      int oculta; if (DwmGetWindowAttribute(h, 14 /*DWMWA_CLOAKED*/, out oculta, 4) == 0 && oculta != 0) return true;
       Guid id; if (m.GetWindowDesktopId(h, out id) != 0) return true;
       if (id == Guid.Empty) sb.Append("  " + N(h) + "\n"); else con++;
       return true; }, IntPtr.Zero);
@@ -113,8 +116,21 @@ L "== escritorios virtuales =="
 L ([Diag]::SinEscritorio())
 L "== procesos del shell =="
 foreach ($n in 'explorer', 'SearchApp', 'SearchHost', 'StartMenuExperienceHost', 'ShellExperienceHost', 'TextInputHost') {
-  Get-Process $n -ErrorAction SilentlyContinue | ForEach-Object { L "  $($_.ProcessName)/$($_.Id) responde=$($_.Responding) desde $($_.StartTime.ToString('HH:mm:ss')) hilos=$($_.Threads.Count)" }
+  Get-Process $n -ErrorAction SilentlyContinue | ForEach-Object {
+    # Las apps del shell (ShellExperienceHost…) se suspenden con sus paneles cerrados, y entonces
+    # Responding dice False: es lo normal, no un cuelgue (2026-09-27 despistó).
+    $suspendido = @($_.Threads | Where-Object { $_.ThreadState -ne 'Wait' -or $_.WaitReason -ne 'Suspended' }).Count -eq 0
+    $estado = if ($suspendido) { 'suspendido (normal)' } else { "responde=$($_.Responding)" }
+    L "  $($_.ProcessName)/$($_.Id) $estado desde $($_.StartTime.ToString('dd/MM HH:mm:ss')) hilos=$($_.Threads.Count)"
+  }
 }
+L ""
+L "== el shell y la captura en el registro de Windows (48 h) =="
+# Cuándo se cayó o se colgó algo del shell, y el servicio de captura (el que usa el puente, WGC).
+$eventos = Get-WinEvent -FilterHashtable @{ LogName = 'Application'; Id = 1000, 1002; StartTime = (Get-Date).AddHours(-48) } -ErrorAction SilentlyContinue |
+  Where-Object { $_.Message -match 'explorer|ShellExperienceHost|StartMenuExperienceHost|SearchApp|CaptureService|shell' }
+if ($eventos) { $eventos | Select-Object -First 15 | ForEach-Object { L "  $($_.TimeCreated.ToString('dd/MM HH:mm:ss')) $(($_.Message -split "`n")[0].Trim())" } }
+else { L "  (nada)" }
 L ""
 L "== infinite-desk =="
 Get-CimInstance Win32_Process -Filter "Name='infinite-desk-bridge.exe'" | ForEach-Object {
