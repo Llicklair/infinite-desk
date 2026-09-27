@@ -301,3 +301,24 @@ malla-sdf   -/-> mundo
 espacio     -/-> mundo
 espacio     -/-> pantallas
 espacio     -/-> puente
+
+# Las piezas de la zona zen (medidas, ambientes, shaders, sonido, flora, lejos, lluvia) las monta zen:
+# ninguna vuelve a la zona ni al mundo, y el núcleo puro de la zona no las conoce.
+zen-medidas   -/-> zen
+zen-ambientes -/-> zen
+zen-shaders   -/-> zen
+zen-sonido    -/-> zen
+zen-flora     -/-> zen
+zen-lejos     -/-> zen
+zen-lluvia    -/-> zen
+zen-medidas   -/-> mundo
+zen-ambientes -/-> mundo
+zen-shaders   -/-> mundo
+zen-sonido    -/-> mundo
+zen-flora     -/-> mundo
+zen-lejos     -/-> mundo
+zen-lluvia    -/-> mundo
+risco       -/-> zen-medidas
+risco       -/-> zen-flora
+lago        -/-> zen-medidas
+andar       -/-> zen-medidas
