@@ -1,8 +1,12 @@
 // Los agentes de galaxy-brain sobre los nodos: quién está tocando qué ahora mismo. Lo sabe
 // `gb who --json` (derivado de los worktrees de git: cambios sin commitear y commits recientes),
 // y aquí solo se decide CUÁNDO preguntarlo: cuando cambia un fichero de un repo con gb (con un
-// poco de espera, para no preguntar en mitad de un guardado) y, para los repos con agentes, cada
-// 5 s (sus consolas, y que se apaguen solos al commitear o parar). Una pregunta a la vez.
+// poco de espera, para no preguntar en mitad de un guardado); cuando un agente nace, escribe en su
+// worktree o acaba (se vigilan la carpeta de los worktrees y la de sus fichas: están FUERA de la
+// carpeta de proyectos); y, para los repos con agentes, cada 5 s (sus consolas, y que se apaguen
+// solos al commitear o parar). Tres preguntas a la vez: gb who tarda de 1 a 13 s por repo (medido),
+// y de una en una, con 19 agentes de ~40 s, muchos acababan antes de que llegara su turno y su isla
+// no se encendía (uso real: "algunos no se han llegado a encender", 2026-09-27).
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Text.Json;
@@ -13,15 +17,19 @@ namespace InfiniteDesk.Puente;
 sealed class Agentes(string mundo, Func<object, Task> difundir)
 {
     // Con agentes, cada 5 s: sus consolas se leen de disco (gb who) y tienen que verse moverse.
-    const int ESPERA_MS = 3000, REPASO_MS = 5000;
+    const int ESPERA_MS = 3000, REPASO_MS = 5000, TODOS_MS = 120000;
 
     /// <summary>nombre del repo -> su raíz, solo los que tienen grafo de gb (de wallpaper/grafos.js).</summary>
     Dictionary<string, string> repos = new(StringComparer.OrdinalIgnoreCase);
     /// <summary>Lo último que se mandó de cada repo, para no repetir lo que no cambió.</summary>
     readonly ConcurrentDictionary<string, string> ultimo = new(StringComparer.OrdinalIgnoreCase);
     readonly ConcurrentDictionary<string, Timer> esperas = new(StringComparer.OrdinalIgnoreCase);
-    readonly SemaphoreSlim uno = new(1, 1);
-    FileSystemWatcher? vigia;
+    readonly SemaphoreSlim turnos = new(3, 3);
+    /// <summary>Los repos con una pregunta ya en camino por algo de sus agentes (no se pospone).</summary>
+    readonly ConcurrentDictionary<string, byte> enCamino = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>Los repos con una pregunta esperando turno (como mucho una cada uno).</summary>
+    readonly ConcurrentDictionary<string, byte> esperandoTurno = new(StringComparer.OrdinalIgnoreCase);
+    FileSystemWatcher? vigia, vigiaWorktrees, vigiaFichas;
     Timer? repaso;
 
     /// <summary>Lo que hay ahora de cada repo con agentes: para una página que se acaba de conectar.</summary>
@@ -38,7 +46,66 @@ sealed class Agentes(string mundo, Func<object, Task> difundir)
     {
         Releer();
         VigilarCarpeta();
+        VigilarAgentes();
         EmpezarRepaso();
+    }
+
+    /// <summary>
+    /// Los worktrees de los agentes y sus fichas (tools/agente.mjs, en %LOCALAPPDATA%\infinite-desk):
+    /// ahí nace, trabaja y acaba cada uno, y el vigilante de la carpeta de proyectos no los ve.
+    /// </summary>
+    void VigilarAgentes()
+    {
+        var datos = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "infinite-desk");
+        var worktrees = Path.Combine(datos, "worktrees");
+        var fichas = Path.Combine(datos, "agentes");
+        Directory.CreateDirectory(worktrees);
+        Directory.CreateDirectory(fichas);
+        // worktrees\<repo>\<agente>\…: el repo es el primer tramo. Su consola (<agente>.consola.log)
+        // se escribe sin parar: sin posponer, o la pregunta no llegaría nunca.
+        vigiaWorktrees = new FileSystemWatcher(worktrees)
+        {
+            IncludeSubdirectories = true,
+            NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName,
+            InternalBufferSize = 64 * 1024,
+        };
+        void EnWorktree(string ruta)
+        {
+            if (ruta.Contains(@"\node_modules\")) return;
+            var nombre = Path.GetRelativePath(worktrees, ruta).Split(Path.DirectorySeparatorChar)[0];
+            if (repos.ContainsKey(nombre)) PreguntarSinPosponer(nombre, ESPERA_MS);
+        }
+        vigiaWorktrees.Changed += (_, e) => EnWorktree(e.FullPath);
+        vigiaWorktrees.Created += (_, e) => EnWorktree(e.FullPath);
+        vigiaWorktrees.Deleted += (_, e) => EnWorktree(e.FullPath);
+        vigiaWorktrees.Renamed += (_, e) => EnWorktree(e.FullPath);
+        vigiaWorktrees.EnableRaisingEvents = true;
+        // Una ficha nueva (nace) o que cambia (acaba, se descarta, se integra): su repo, ya.
+        vigiaFichas = new FileSystemWatcher(fichas, "*.json") { NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName };
+        void EnFicha(string ruta)
+        {
+            for (int i = 0; i < 3; i++)
+            {
+                try
+                {
+                    using var doc = JsonDocument.Parse(File.ReadAllText(ruta));
+                    var nombre = doc.RootElement.GetProperty("repo").GetString();
+                    if (nombre != null && repos.ContainsKey(nombre)) PreguntarSinPosponer(nombre, 500);
+                    return;
+                }
+                catch (IOException) { Thread.Sleep(100); } // aún se está escribiendo
+                catch { return; } // a medio escribir o sin repo: la siguiente escritura avisará
+            }
+        }
+        vigiaFichas.Changed += (_, e) => EnFicha(e.FullPath);
+        vigiaFichas.Created += (_, e) => EnFicha(e.FullPath);
+        vigiaFichas.EnableRaisingEvents = true;
+    }
+
+    /// <summary>Como Preguntar, pero si ya hay una en camino no la retrasa (lo que se escribe sin parar).</summary>
+    void PreguntarSinPosponer(string nombre, int espera)
+    {
+        if (enCamino.TryAdd(nombre, 0)) Preguntar(nombre, espera);
     }
 
     /// <summary>Se eligió otra carpeta de proyectos (la P en el mundo): se vigila la nueva.</summary>
@@ -75,16 +142,26 @@ sealed class Agentes(string mundo, Func<object, Task> difundir)
 
     void EmpezarRepaso()
     {
-        // Los que tienen agentes se repasan solos: un commit o parar de trabajar los apaga.
-        // Y cada 30 s, todos: un agente nace en un worktree FUERA del repo (git worktree add), y
-        // eso no toca nada que vigile el FileSystemWatcher (uso real: agentes lanzados para probar).
+        // Los que tienen un agente TRABAJANDO (tocando nodos) se repasan solos cada 5 s: un commit o
+        // parar de trabajar los apaga. Los que solo tienen commits recientes, no: tras una tanda de 19
+        // agentes eran todos, y la cola de gb who no se vaciaba nunca (medido: una isla tardaba 23 s en
+        // encenderse, otra ni en 30). Y cada 2 min, todos, por si algo se escapó a los vigilantes: cada
+        // 30 s, con 15 repos de 1 a 13 s cada uno, la cola casi no se vaciaba y lo que cambiaba
+        // esperaba detrás (medido: ~29 s para encenderse).
         int vuelta = 0;
         repaso = new Timer(_ =>
         {
-            bool todos = ++vuelta % (30000 / REPASO_MS) == 0;
+            bool todos = ++vuelta % (TODOS_MS / REPASO_MS) == 0;
             foreach (var nombre in repos.Keys)
-                if (todos || (ultimo.TryGetValue(nombre, out var json) && !json.Contains("\"agentes\":[]"))) Preguntar(nombre, 0);
+                if (todos || (ultimo.TryGetValue(nombre, out var json) && Trabajando(json))) PreguntarSinPosponer(nombre, 0);
         }, null, REPASO_MS, REPASO_MS);
+    }
+
+    /// <summary>¿Hay en esta foto de gb who algún agente tocando nodos ahora (no solo commits)?</summary>
+    static bool Trabajando(string json)
+    {
+        try { return JsonNode.Parse(json)?["agentes"]?.AsArray().Any(a => (a?["nodos"]?.AsArray().Count ?? 0) > 0) ?? false; }
+        catch { return false; }
     }
 
     void Preguntar(string nombre, int espera)
@@ -97,7 +174,11 @@ sealed class Agentes(string mundo, Func<object, Task> difundir)
     async Task Correr(string nombre)
     {
         if (!repos.TryGetValue(nombre, out var raiz)) return;
-        await uno.WaitAsync();
+        // Una sola esperando turno por repo: si ya hay una, esta sobra (daría lo mismo).
+        if (!esperandoTurno.TryAdd(nombre, 0)) return;
+        await turnos.WaitAsync();
+        esperandoTurno.TryRemove(nombre, out _);
+        enCamino.TryRemove(nombre, out _); // desde aquí, lo que cambie merece otra pregunta
         try
         {
             // Donde lo encontró tools/gb.mjs: en una máquina limpia gb no suele estar en el PATH.
@@ -107,7 +188,7 @@ sealed class Agentes(string mundo, Func<object, Task> difundir)
             psi.Environment["PYTHONUTF8"] = "1";
             using var p = Hijos.Lanzar(psi, TimeSpan.FromMinutes(1), $"gb who {nombre}");
             // El error también se lee: si nadie lo vacía y gb escribe mucho, se queda bloqueado
-            // escribiendo, y con él todas las preguntas siguientes (van de una en una).
+            // escribiendo, y con él las preguntas siguientes (van de tres en tres).
             _ = p.StandardError.ReadToEndAsync();
             var salida = await p.StandardOutput.ReadToEndAsync();
             await p.WaitForExitAsync();
@@ -134,7 +215,7 @@ sealed class Agentes(string mundo, Func<object, Task> difundir)
             await difundir(mensaje);
         }
         catch { /* gb no está o falló: sin agentes que enseñar */ }
-        finally { uno.Release(); }
+        finally { turnos.Release(); }
     }
 
     /// <summary>Los repos con grafo de gb, de lo que exportó `npm run grafo`.</summary>
